@@ -180,6 +180,8 @@ static int dk_put(const char *editor, const char *work, const unsigned char *buf
         am_sentinel("PATINA_DESK_PUT_SKIPS", (long)desk_dos_put_skips);
         return 1;
     }
+    if (!editor)
+        return dk_write(env, buf, len); /* the caller's direct-write case: ENV: alone, IPrefs reads it on the change notice */
     dk_editor(editor, work);
     return 1;
 }
@@ -254,6 +256,10 @@ static int dk_put_palette(const unsigned char *buf, long len)
         len = desk_palette_31safe(buf, len, safe, sizeof safe);
         buf = safe;
         desk_dos_pal31_puts++;
+        /* S85-PAL31-DIRECT: Palette 40.2 USE writes BARTRIMPEN 2 whatever the file holds, so the line under the bar came back and
+         * the work copy never equalled ENV: (S82-SKIP-UNCHANGED never fired). The safe bytes go to ENV: directly, as
+         * dk_palette_31_start already does; running the editor and then copying would reset the Workbench twice. */
+        return dk_put(0, DK_WORK "/palette.prefs", buf, len);
     }
     return dk_put("Palette", DK_WORK "/palette.prefs", buf, len);
 }
@@ -1519,6 +1525,8 @@ static void dk_restore_targets(unsigned mask, const char *dir)
         len = dk_read(name, buf, 1);
         if (len < 0)
             DeleteFile((STRPTR)ed[i].file);
+        else if (ed[i].t == DT_PALETTE && !dk_palette_editor_ok())
+            dk_env_fix_file(dir, ed[i].file); /* S85-PAL31-DIRECT: no Palette 40.2 run (it forces BARTRIMPEN 2), the copy alone */
         else
             dk_editor(ed[i].editor, name);
         if (ed[i].t == DT_PALETTE)
