@@ -184,8 +184,9 @@ int wbl_start(const char *const *names_in, int count, struct MsgPort *reply, cha
     if (pri > 127) pri = 127;
     toolwin = icon ? FindToolType((STRPTR *)icon->do_ToolTypes, (STRPTR) "TOOLWINDOW") : 0;
 
-    /* No NP_CurrentDir: dos does not unlock it when the process ends. Workbench gives none either;
-     * the program's startup code goes to wa_Lock. NP_HomeDir (PROGDIR:) is unlocked at exit. */
+    /* No NP_CurrentDir: Workbench gives none either; the program's startup code goes to wa_Lock.
+     * (Measured: dos unlocks a given pr_CurrentDir at exit, so that is not the reason.)
+     * NP_HomeDir (PROGDIR:) is unlocked at exit. */
     p = CreateNewProcTags(NP_Seglist, r->seg, NP_FreeSeglist, FALSE, NP_Name, (ULONG)r->names[0],
                           NP_StackSize, stack, NP_Priority, pri,
                           NP_Input, 0, NP_Output, 0, NP_CloseInput, FALSE, NP_CloseOutput, FALSE,
