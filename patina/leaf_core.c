@@ -1047,3 +1047,7 @@ int lf_in_theme_editor(const char *node)
     return node && (strcmp(node, "settings.theme") == 0 || strncmp(node, "settings.theme.", 15) == 0);
 }
 
+int lf_leave_needed(const char *from, const char *to)
+{
+    return lf_in_theme_editor(from) && !lf_in_theme_editor(to);
+}

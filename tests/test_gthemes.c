@@ -3195,11 +3195,19 @@ static void test_gthemes_te6_live(void)
     gte_live = 0;
 }
 
-/* ---- TE-7.1 (D1): the editor's Save asks for the Workbench reset only when a reset-bound field changed. Real entry points: the row
- * edit (lf_setting_set_text) and gt_save_editor, with the sentinel gt_dos_reset_prompts. ---- */
+/* ---- TE-7.1 (D1), S87: the editor autosaves every change; the Workbench reset is asked ONCE, by gte_close, for the reset-bound
+ * fields that differ from the gte_open snapshot. ---- */
 static unsigned te7_asked_mask;
 static int te7_asks;
 static void te7_ask(unsigned mask) { te7_asked_mask = mask; te7_asks++; }
+
+static void test_gthemes_leave_needed(void)
+{
+    CHECK(lf_leave_needed("settings.theme", "settings"));
+    CHECK(lf_leave_needed("settings.theme.bar", ""));
+    CHECK(!lf_leave_needed("settings.theme.bar", "settings.theme"));
+    CHECK(!lf_leave_needed("settings", ""));
+}
 
 static void test_gthemes_te7_reset_prompt(void)
 {
@@ -3217,25 +3225,33 @@ static void test_gthemes_te7_reset_prompt(void)
     bar = te4_row("Title Bar Height");
     CHECK(radius != 0 && bar != 0);
     p0 = gt_dos_reset_prompts;
-    /* a live field: saved and applied, no prompt */
+    /* a live field: saved, no ask at close */
     CHECK_INT(lf_setting_set_text(&io, radius, "7", &failed), 0);
-    CHECK(gt_save_editor(&fs, "nord", &gt_ed.m, "nord", tm_apply, wbr_bound_mask, te7_ask, why, sizeof why));
+    CHECK(gt_save_edit(&fs, "nord", &gt_ed.m, "nord", tm_apply, why, sizeof why));
+    gte_close("nord", wbr_bound_mask, te7_ask);
     CHECK_INT(te7_asks, 0);
-    CHECK_INT((int)(gt_dos_reset_prompts - p0), 0);
-    gte_saved();
-    /* a reset-bound field: the prompt, with exactly that field in the mask */
+    /* three reset-bound changes, each saved: no ask until close, then exactly one with that field */
     CHECK_INT(lf_setting_set_text(&io, bar, "30", &failed), 0);
-    CHECK(gt_save_editor(&fs, "nord", &gt_ed.m, "nord", tm_apply, wbr_bound_mask, te7_ask, why, sizeof why));
+    CHECK(gt_save_edit(&fs, "nord", &gt_ed.m, "nord", tm_apply, why, sizeof why));
+    CHECK_INT(lf_setting_set_text(&io, bar, "31", &failed), 0);
+    CHECK(gt_save_edit(&fs, "nord", &gt_ed.m, "nord", tm_apply, why, sizeof why));
+    CHECK_INT(lf_setting_set_text(&io, bar, "32", &failed), 0);
+    CHECK(gt_save_edit(&fs, "nord", &gt_ed.m, "nord", tm_apply, why, sizeof why));
+    CHECK_INT(te7_asks, 0);
+    gte_close("nord", wbr_bound_mask, te7_ask);
     CHECK_INT(te7_asks, 1);
     CHECK_INT((int)te7_asked_mask, WBR_B_BAR_HEIGHT);
-    CHECK_INT((int)(gt_dos_reset_prompts - p0), 1);          /* the sentinel: the ask ran once through Save */
-    gte_saved();
-    /* saved again unchanged: nothing new to reset */
-    CHECK(gt_save_editor(&fs, "nord", &gt_ed.m, "nord", tm_apply, wbr_bound_mask, te7_ask, why, sizeof why));
+    CHECK_INT((int)(gt_dos_reset_prompts - p0), 1);
+    gte_close("nord", wbr_bound_mask, te7_ask);              /* closed again: nothing new */
     CHECK_INT(te7_asks, 1);
-    /* a reset-bound edit saved while another theme is the current one: nothing running changes */
-    CHECK_INT(lf_setting_set_text(&io, bar, "31", &failed), 0);
-    CHECK(gt_save_editor(&fs, "nord", &gt_ed.m, "other", tm_apply, wbr_bound_mask, te7_ask, why, sizeof why));
+    /* a change then Revert: back at the snapshot, no ask */
+    CHECK_INT(lf_setting_set_text(&io, bar, "40", &failed), 0);
+    gte_revert();
+    gte_close("nord", wbr_bound_mask, te7_ask);
+    CHECK_INT(te7_asks, 1);
+    /* a reset-bound edit while another theme is the current one: nothing running changes */
+    CHECK_INT(lf_setting_set_text(&io, bar, "41", &failed), 0);
+    gte_close("other", wbr_bound_mask, te7_ask);
     CHECK_INT(te7_asks, 1);
     tm_free(&m);
 }
@@ -3500,6 +3516,7 @@ static void test_gthemes_screens_page_reloads_when_stale_and_keeps_unsaved_edits
 void suite_gthemes(void)
 {
     test_drawn_windows_take_their_screens_theme();
+    test_gthemes_leave_needed();
     test_gthemes_te7_reset_prompt();
     test_gthemes_te6_live();
     test_gthemes_te3_save();

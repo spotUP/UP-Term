@@ -1710,19 +1710,18 @@ int gt_save_edit(const prefs_fs *fs, const char *name, const gt_model *m, const 
 
 unsigned long gt_dos_reset_prompts;
 
-int gt_save_editor(const prefs_fs *fs, const char *name, const gt_model *m, const char *current, int (*apply)(const char *name),
-                   unsigned (*bound)(const gt_model *running, const gt_model *neu), void (*ask)(unsigned mask), char *why, int cap)
+/* The editor autosaves every change but asks for the Workbench reset ONCE, when it closes: the reset-bound fields of the theme as
+ * gte_open loaded it against the buffer now (Revert back to the snapshot gives 0). Only for the current theme. */
+void gte_close(const char *current, unsigned (*bound)(const gt_model *running, const gt_model *neu), void (*ask)(unsigned mask))
 {
     unsigned mask = 0;
-    if (current && !cmp_ci(name, current) && bound && gt_ed.open && !cmp_ci(name, gt_ed.name))
-        mask = bound(&gt_ed.saved, m);       /* before gt_save: the file on disk is still the running one */
-    if (!gt_save_edit(fs, name, m, current, apply, why, cap))
-        return 0;
+    if (current && !cmp_ci(gt_ed.name, current) && bound && gt_ed.open)
+        mask = bound(&gt_ed.orig, &gt_ed.m);
+    gt_ed.orig = gt_ed.m;       /* a second close (another exit path, a re-open) asks nothing new */
     if (mask && ask) {
         gt_dos_reset_prompts++;
         ask(mask);
     }
-    return 1;
 }
 
 /* ---- TE-4: the edit buffer and the editor's rows ---- */

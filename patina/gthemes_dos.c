@@ -374,7 +374,7 @@ int gt_dos_save(const char *name, const gt_model *m, char *why, int cap)
     int r;
     gt_dos_drawers();
     gt_dos_current(cur, (int)sizeof cur);
-    r = gt_save_editor(&prefs_dos_fs, name, m, cur, gt_dos_apply_saved, wbr_bound_mask, gt_dos_reset_ask, why, cap);
+    r = gt_save_edit(&prefs_dos_fs, name, m, cur, gt_dos_apply_saved, why, cap);
     gt_dos_desk_restore();      /* TE-6.2: a saved edit of another theme leaves no preview on the desktop */
     return r;
 }
@@ -428,9 +428,18 @@ int gt_dos_reset_base(void)
     return gte_reset_to_base(gt_dos_read, 0);
 }
 
+/* The editor closes (menu exit, or another theme replacing the buffer): the one Workbench reset ask for the whole session. */
+void gt_dos_edit_close(void)
+{
+    char cur[GT_NAME];
+    gt_dos_current(cur, (int)sizeof cur);
+    gte_close(cur, wbr_bound_mask, gt_dos_reset_ask);
+}
+
 /* TE-4: load the named theme's model into the editor's edit buffer (gte_open). 1 opened; 0 when the theme has no model. */
 int gt_dos_edit_open(const char *name)
 {
+    gt_dos_edit_close();                /* the buffer is about to be replaced */
     gte_store = gt_dos_autosave;        /* the editor autosaves: every edit writes the theme, and applies it when it is current */
     gte_live = gt_dos_preview_model;    /* TE-6.3: every edit of the buffer shows on the desktop */
     return gte_open_from(gt_dos_read, 0, name);

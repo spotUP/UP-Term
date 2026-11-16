@@ -110,6 +110,7 @@ int lf_setting_text(const amconf_io *io, const sd_setting *s, char *out, int n);
  * input is LF_SET_INVALID with the files untouched. Both files are written like lf_setting_set. */
 /* TE-5: 1 when node is settings.theme or one of its pages (the Theme Editor, which shows the preview pane) */
 int lf_in_theme_editor(const char *node);
+int lf_leave_needed(const char *from, const char *to);   /* the move from -> to leaves the Theme Editor subtree */
 int lf_setting_set_colour(const amconf_io *io, const sd_setting *s, int entry, const char *text, int *failed);
 /* The "RRGGBB" palette entry n has now (the file's, else xterm's built-in), and the current hex of row s
  * (the swatch's own, or the palette entry `entry`) for the Custom prompt's prefill. */

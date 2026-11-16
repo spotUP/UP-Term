@@ -909,6 +909,8 @@ static void go_up(gui *g)
     char up[KM_ID * 2];
     int has_up = mn_parent(g->node, up, sizeof up);
     if (has_up) {
+        if (lf_leave_needed(g->node, up))
+            gt_dos_edit_close();         /* S87: the one Workbench reset ask, on leaving the editor */
         strcpy(g->node, up);
         g->filter[0] = 0;
         list_rebuild(g);
@@ -1793,6 +1795,7 @@ static int gui_hide(void)
         return 0;
     CloseWindow(g->win);
     g->win = 0;
+    gt_dos_edit_close();    /* S87: autosaved edits ask for the Workbench reset once, now */
     wbr_report(SIGBREAKF_CTRL_F, WBR_DISMISS, 0);
     g->rp = 0;
     screen_unbind(g);

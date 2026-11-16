@@ -434,6 +434,8 @@ static int menu_levels(const char *start)
             if (act == MN_BACK_CLEAR_FILTER) {
                 filter[0] = 0;
             } else if (act == MN_BACK_UP && mn_parent(node, up, sizeof up)) {
+                if (lf_leave_needed(node, up))
+                    gt_dos_edit_close();   /* S87: the one Workbench reset ask, on leaving the editor */
                 strcpy(node, up);
             } else
                 return 0;
@@ -464,6 +466,8 @@ static int menu_levels(const char *start)
                 if (act == MN_BACK_DROP_CHAR)
                     filter[l - 1] = 0;
                 else if (act == MN_BACK_UP && mn_parent(node, up, sizeof up)) {
+                    if (lf_leave_needed(node, up))
+                        gt_dos_edit_close();
                     strcpy(node, up);
                 } else
                     return 0;               /* root, no filter: closes as Escape */
@@ -574,6 +578,7 @@ static int menu_loop(const char *start)
         rc = menu_levels(start);
     else
         ui_message("%s", "patina-menu: out of memory");
+    gt_dos_edit_close();   /* S87: autosaved edits ask for the Workbench reset once, now */
     if (pv_drawn[0])
         preview_sync(1);   /* closed on a previewed row (Esc, toggle): the consoles get the saved theme back */
     pv_drawn[0] = 0;       /* a warm server's next open starts from the saved theme again */
