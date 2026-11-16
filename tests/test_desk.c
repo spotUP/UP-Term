@@ -949,6 +949,23 @@ static void test_desk_wbpattern_ask(void)
     CHECK(memcmp(out + 26, fresh + 26, (size_t)(m - 26)) == 0);
 }
 
+/* DOpus desktop picture reply parser */
+static void test_desk_dopus_picture_parse(void)
+{
+    char p[64], pl[100];
+    CHECK_INT(desk_dopus_picture_parse("\"Work:Pics/a.iff\" desktop tile precision image border off", p, sizeof p), 15);
+    CHECK(strcmp(p, "Work:Pics/a.iff") == 0);
+    CHECK_INT(desk_dopus_picture_parse("\"Rushhours:Graphics/2D/ImageFX/BackDrop.iff\" desktop tile precision image border off", pl, sizeof pl), 42);
+    CHECK_INT(desk_dopus_picture_parse("\"\" desktop tile precision image border off", p, sizeof p), 0);
+    CHECK_INT(desk_dopus_picture_parse("Work:Pics/a.iff desktop", p, sizeof p), 0);
+    CHECK_INT(desk_dopus_picture_parse("\"Work:Pics/a.iff desktop", p, sizeof p), 0);
+    CHECK_INT(desk_dopus_picture_parse("", p, sizeof p), 0);
+    CHECK_INT(desk_dopus_picture_parse(0, p, sizeof p), 0);
+    CHECK_INT(desk_dopus_picture_parse("\"My Disk:Wall Paper/b c.iff\" desktop", p, sizeof p), 26);
+    CHECK(strcmp(p, "My Disk:Wall Paper/b c.iff") == 0);
+    CHECK_INT(desk_dopus_picture_parse("\"Work:Pics/a.iff\" desktop", p, 8), 0);   /* does not fit */
+}
+
 /* WALLPAPER-KEPT (user report 2026-11-14): a user's ROOT and SCREEN pictures survive the theme's wbpattern.prefs */
 static void test_desk_wbpattern_keeps_pictures(void)
 {
@@ -2378,6 +2395,7 @@ void suite_desk(void)
     test_desk_wbpattern_no_dots();
     test_desk_wbpattern_keeps_pictures();
     test_desk_wbpattern_ask();
+    test_desk_dopus_picture_parse();
     test_flat_on_keeps_backdrop_pen_distinct_from_window_background();
     test_flat_pick_leaves_pen5_magenta_on_deep_workbench();
     test_flat_backdrop_screen_pen_deep();

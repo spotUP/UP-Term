@@ -161,6 +161,7 @@ long desk_wbpattern(const gtheme *t, int depth, const unsigned char *prev, long 
                     unsigned char *out, long cap);
 /* S85-FLAT-ASK: 1 when prev holds a user picture (ROOT, DRAWER or SCREEN chunk without WBPF_PATTERN) */
 int desk_wbpattern_has_picture(const unsigned char *prev, long prevlen);
+int desk_dopus_picture_parse(const char *reply, char *out, int cap);   /* path of a DOpus desktop picture, 0 = none */
 /* as desk_wbpattern; keep_pics 0 drops the pictures so the theme tone replaces them */
 long desk_wbpattern_pick(const gtheme *t, int depth, const unsigned char *prev, long prevlen, int keep_pics,
                          unsigned char *out, long cap);

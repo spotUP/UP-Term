@@ -741,6 +741,27 @@ int desk_wbpattern_has_picture(const unsigned char *prev, long prevlen)
     return 0;
 }
 
+/* Directory Opus "query background desktop" reply: `"<path>" desktop tile ...`. Returns the path length; 0 for "" or a reply with no
+ * closed leading quote (the path may hold spaces, so only the quotes delimit it). */
+int desk_dopus_picture_parse(const char *reply, char *out, int cap)
+{
+    const char *q;
+    int n;
+    if (out && cap > 0)
+        out[0] = 0;
+    if (!reply || !out || cap < 2 || reply[0] != '"')
+        return 0;
+    q = strchr(reply + 1, '"');
+    if (!q)
+        return 0;
+    n = (int)(q - reply - 1);
+    if (n >= cap)
+        return 0;
+    memcpy(out, reply + 1, (size_t)n);
+    out[n] = 0;
+    return n;
+}
+
 /* S85-FLAT-ASK: keep 0 = the owner chose "Use theme colour", the pictures count as absent and the flat tone replaces them */
 long desk_wbpattern_pick(const gtheme *t, int depth, const unsigned char *prev, long prevlen, int keep_pics,
                          unsigned char *out, long cap)

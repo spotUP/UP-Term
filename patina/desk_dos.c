@@ -536,6 +536,19 @@ int desk_dos_confirm_pending(void)
 /* S85-FLAT-ASK: every apply that finds a user picture in wbpattern.prefs asks once ("Keep your picture" / "Use theme colour"); dk_pic_ask is
  * on only inside desk_dos_apply, the start apply and the live re-write keep the picture. Nothing is saved: the next apply asks again. */
 static int dk_pic_ask, dk_pic_answer = -1;
+/* Under Directory Opus as Workbench the desktop picture is DOpus's own, not wbpattern.prefs: the same question covers it. The path is kept in
+ * T:patina-revert/dopuspic so Revert (another process) can put it back. */
+#define DK_DOPUSPIC DK_REVERT "/dopuspic"
+static char dk_dopus_pic[160];
+static int dk_dopus_has_picture(void)
+{
+    char reply[200];
+    dk_dopus_pic[0] = 0;
+    if (!rexx_port_exists(DOPUS_PORT) || rexx_send(DOPUS_PORT, "dopus query background desktop", reply, sizeof reply) < 0)
+        return 0;
+    return desk_dopus_picture_parse(reply, dk_dopus_pic, sizeof dk_dopus_pic) > 0;
+}
+
 static int dk_pic_keep(const unsigned char *prev, long plen)
 {
     static struct EasyStruct es = {
@@ -545,9 +558,11 @@ static int dk_pic_keep(const unsigned char *prev, long plen)
                   "theme colour? Reverting brings it back.",
         (UBYTE *)"Keep your picture|Use theme colour" };
     struct IntuitionBase *IntuitionBase;
-    if (!dk_pic_ask || plen <= 0 || !desk_wbpattern_has_picture(prev, plen))
+    if (!dk_pic_ask)
         return 1;
     if (dk_pic_answer < 0) {
+        if (!(plen > 0 && desk_wbpattern_has_picture(prev, plen)) && !dk_dopus_has_picture())
+            return 1;
         dk_pic_answer = 1;
         IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
         if (IntuitionBase) {
@@ -1372,9 +1387,15 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     dk_live_want = 0;
     dk_pic_ask = 1;
     dk_pic_answer = -1;
+    dk_dopus_pic[0] = 0;
     r = dk_apply(th, why, cap);
     if (!(r > 0 && (r & (1 << DT_PALETTE))) && dk_flat_pens(th) && r >= 0)
         r |= 1 << DT_PALETTE;   /* the theme colours are in the palette and DOpus has them: no wb_pens_apply */
+    if (dk_pic_answer == 0 && dk_dopus_pic[0]) {   /* "Use theme colour": the palette and pattern are written, now DOpus drops its picture */
+        dk_write(DK_DOPUSPIC, (const unsigned char *)dk_dopus_pic, (long)strlen(dk_dopus_pic));
+        rexx_send(DOPUS_PORT, "dopus clear background desktop", 0, 0);
+        rexx_send(DOPUS_PORT, "dopus refresh background", 0, 0);
+    }
     dk_pic_ask = 0;
     if (r >= 0) {
         /* after dk_flat_pens: its flat-off palette restore writes palette.prefs from the live screen when the original is gone, and the
@@ -1513,6 +1534,7 @@ void desk_dos_confirmed(void)
     DeleteFile((STRPTR)DK_PENDING);
     DeleteFile((STRPTR)DK_WBPEND);
     DeleteFile((STRPTR)DK_PREVTHEME);
+    DeleteFile((STRPTR)DK_DOPUSPIC);
     DeleteFile((STRPTR)DK_WBB_SNAP);
     DeleteFile((STRPTR)DK_WBG_SNAP);
     desk_dos_keeps++;
@@ -1614,6 +1636,23 @@ static int dk_revert_theme_name(char *name, int cap)
     return n > 0 && desk_revert_theme_parse((const char *)b, n, name, cap);
 }
 
+/* Revert of "Use theme colour" under Directory Opus: the saved picture path goes back through the same ARexx commands */
+static void dk_revert_dopus_picture(void)
+{
+    unsigned char b[sizeof dk_dopus_pic];
+    char line[sizeof dk_dopus_pic + 40];
+    long n = dk_read(DK_DOPUSPIC, b, sizeof b - 1);
+    if (n <= 0)
+        return;
+    b[n] = 0;
+    DeleteFile((STRPTR)DK_DOPUSPIC);
+    if (!rexx_port_exists(DOPUS_PORT))
+        return;
+    sprintf(line, "dopus set background \"%s\" desktop", (char *)b);
+    rexx_send(DOPUS_PORT, line, 0, 0);
+    rexx_send(DOPUS_PORT, "dopus refresh background", 0, 0);
+}
+
 void desk_dos_revert(void)
 {
     unsigned mask = dk_pending_mask();
@@ -1624,6 +1663,7 @@ void desk_dos_revert(void)
     dk_live_want = 0;
     DeleteFile((STRPTR)DK_PENDING);
     wb = dk_wb_restore();
+    dk_revert_dopus_picture();
     if (dk_revert_theme_name(name, sizeof name)) {   /* the prefs theme line goes back first: the pens below follow the previous theme */
         am_prefs *ap;
         int failed = 0;
