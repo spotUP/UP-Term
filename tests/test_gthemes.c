@@ -3313,6 +3313,11 @@ static void test_gthemes_screens_page_rows_follow_the_open_screens_and_edit_the_
     CHECK_INT(gte_row_step(scr_row(GTSE_TAKE, 1)), GTR_OK);
     gt_se_text(buf, sizeof buf);
     CHECK_STR(buf, "default workbench\nDOPUS.1 = nord takeover\n");
+    CHECK(gte_row_is_theme_name(scr_row(GTSE_THEME, 1)) && gte_row_is_theme_name(scr_row(GTSE_PTHEME, 0)));
+    CHECK(!gte_row_is_theme_name(scr_row(GTSE_PAT, 0)) && !gte_row_is_theme_name(scr_row(GTSE_TAKE, 1)));
+    CHECK_INT(gte_row_step(scr_row(GTSE_THEME, 1)), GTR_OK);   /* Enter on a Theme row steps to the next installed theme */
+    scr_label(scr_row(GTSE_THEME, 1), t);
+    CHECK(strstr(t, "Nord") == 0 && strstr(t, "Theme: ") != 0);
     CHECK_INT(gte_row_set_text(scr_row(GTSE_THEME, 1), "nosuch"), GTR_BAD);
     CHECK_INT(gte_row_set_text(scr_row(GTSE_THEME, 0), "nord"), GTR_BAD);
     CHECK_INT(gte_row_step(scr_row(GTSE_TAKE, 0)), GTR_BAD);

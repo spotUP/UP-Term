@@ -2663,6 +2663,11 @@ int gte_row_set_text(const sd_setting *s, const char *text)
     }
 }
 
+int gte_row_is_theme_name(const sd_setting *s)
+{
+    return s->store == SD_GTHEME && s->page == PG_PAGE_THEME_SCREENS && s->kind == SD_STRING && (s->aux == GTSE_THEME || s->aux == GTSE_PTHEME);
+}
+
 int gte_row_step(const sd_setting *s)
 {
     char t[96];

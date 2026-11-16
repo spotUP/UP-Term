@@ -418,6 +418,8 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
         return theme_action(s, it->label, ui);
     if (s->store == SD_GTHEME && s->kind != SD_CYCLE && s->kind != SD_FONT && !SD_HAS_PICKER(s)) {   /* a font row opens the requester below */
         char value[UC_MAX_VALUE + 2];
+        if (gte_row_is_theme_name(s))   /* TI-1: steps Main Theme, the installed themes (and Exclude): no typing, same stored value */
+            return gte_row_step(s) == GTR_OK;
         if (s->kind == SD_INFO || !ui->ask_value || !gte_row_text(s, value, sizeof value))
             return 0;
         if (!ui->ask_value(ui->ctx, it->label, "text", value, sizeof value))
