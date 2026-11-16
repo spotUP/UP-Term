@@ -155,6 +155,12 @@ static int asl_otag(void *ctx, char *out, int cap)
     return asl_pick_file(w->scr, w->win, "Choose an outline font", "FONTS:", "#?.otag", 1, out, cap, &named) && named;
 }
 
+static int asl_drawer(void *ctx, char *out, int cap)
+{
+    const asl_where *w = (const asl_where *)ctx;
+    return asl_pick_drawer(w->scr, w->win, "Choose a drawer", 0, out, cap);
+}
+
 static int asl_mode(void *ctx, unsigned long id, int depth, unsigned long *oid, int *odepth)
 {
     const asl_where *w = (const asl_where *)ctx;
@@ -431,7 +437,7 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
             ui->refused(ui->ctx, it->label, LF_SET_INVALID, "not accepted: check the colour or reference");
         return r == GTR_OK;
     }
-    if (s->kind == SD_INT || s->kind == SD_STRING) {
+    if ((s->kind == SD_INT || s->kind == SD_STRING) && !lf_is_drawer_row(s)) {
         char value[UC_MAX_VALUE + 2], why[80];
         if (!MN_IS_SETTING(it) || !lf_setting_text(amconf_dos_io(), s, value, sizeof value))
             return 0;
@@ -444,12 +450,13 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
         ui->refused(ui->ctx, it->label, r, why);
         return 0;
     }
-    if (s->kind == SD_FONT || s->kind == SD_SCREENMODE) {
+    if (s->kind == SD_FONT || s->kind == SD_SCREENMODE || lf_is_drawer_row(s)) {
         lf_asl asl;
         asl_where where;
         asl.font = asl_font;
         asl.mode = asl_mode;
         asl.otag = asl_otag;
+        asl.drawer = asl_drawer;
         asl.ctx = &where;
         if (!MN_IS_SETTING(it))
             return 0;

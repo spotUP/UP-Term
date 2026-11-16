@@ -66,6 +66,38 @@ int asl_pick_file(struct Screen *scr, struct Window *win, const char *title,
     return ok;
 }
 
+int asl_pick_drawer(struct Screen *scr, struct Window *win, const char *title,
+                    const char *drawer, char *out, int cap)
+{
+    struct Library *AslBase = OpenLibrary((STRPTR)"asl.library", 37);
+    struct FileRequester *fr;
+    struct TagItem t[6];
+    int n = 0, ok = 0;
+    out[0] = 0;
+    if (!AslBase)
+        return 0;
+    if (win) {
+        t[n].ti_Tag = ASLFR_Window;       t[n++].ti_Data = (ULONG)win;
+    } else {
+        t[n].ti_Tag = ASLFR_Screen;       t[n++].ti_Data = (ULONG)scr;
+    }
+    t[n].ti_Tag = ASLFR_TitleText;        t[n++].ti_Data = (ULONG)title;
+    if (drawer && drawer[0]) {
+        t[n].ti_Tag = ASLFR_InitialDrawer; t[n++].ti_Data = (ULONG)drawer;
+    }
+    t[n].ti_Tag = ASLFR_DrawersOnly;      t[n++].ti_Data = TRUE;
+    t[n].ti_Tag = TAG_DONE;               t[n].ti_Data = 0;
+    fr = (struct FileRequester *)AllocAslRequest(ASL_FileRequest, t);
+    if (fr && AslRequest(fr, 0)) {
+        copy_cut(out, (const char *)fr->fr_Drawer, cap);
+        ok = out[0] != 0;
+    }
+    if (fr)
+        FreeAslRequest(fr);
+    CloseLibrary(AslBase);
+    return ok;
+}
+
 int asl_pick_font(struct Screen *scr, struct Window *win, const char *title,
                   const char *name, long size, int fixed_only,
                   char *out_name, int cap, long *out_size)

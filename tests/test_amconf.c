@@ -943,6 +943,47 @@ static void test_lf_theme_font_pick(void)
     CHECK_STR(out, "JetBrains Mono.font/13");
 }
 
+static int fake_drawer(void *ctx, char *out, int cap)
+{
+    fake_asl *f = (fake_asl *)ctx;
+    if (!f->ok)
+        return 0;
+    snprintf(out, (size_t)cap, "%s", f->otag_path);
+    return 1;
+}
+
+/* TI-4: the drawer rows open a drawers-only requester; a pick joins the comma list, a listed drawer leaves it */
+static void test_lf_drawer_pick(void)
+{
+    memfs m;
+    prefs_fs fs;
+    amconf_io io = io_of(&m, &fs);
+    const sd_setting *row = &sd_settings[SDI_AM_MUSIC];
+    fake_asl fk;
+    lf_asl asl;
+    char out[UC_MAX_VALUE];
+    int failed = 0;
+    memset(&fk, 0, sizeof fk);
+    memset(&asl, 0, sizeof asl);
+    asl.drawer = fake_drawer;
+    asl.ctx = &fk;
+    CHECK(lf_is_drawer_row(row));
+    CHECK(!lf_is_drawer_row(&sd_settings[SDI_FONT]));
+    mf_put(&m, AP, "patina-music-drawers = Work:Music\n");
+    CHECK_INT(lf_setting_pick(&io, row, &asl, &failed), LF_SET_CANCELLED);
+    lf_setting_text(&io, row, out, sizeof out);
+    CHECK_STR(out, "Work:Music");
+    fk.ok = 1;
+    strcpy(fk.otag_path, "Work:Mods");
+    CHECK_INT(lf_setting_pick(&io, row, &asl, &failed), LF_SET_OK);
+    lf_setting_text(&io, row, out, sizeof out);
+    CHECK_STR(out, "Work:Music,Work:Mods");
+    strcpy(fk.otag_path, "Work:Music");                  /* already listed: removed */
+    CHECK_INT(lf_setting_pick(&io, row, &asl, &failed), LF_SET_OK);
+    lf_setting_text(&io, row, out, sizeof out);
+    CHECK_STR(out, "Work:Mods");
+}
+
 /* LF_SETTING font and screen mode pickers (plan 2026-10-26-patina-prefs-inline.md, M6): a picked font or mode
  * is written to ENV: and ENVARC:, a cancelled requester leaves both files byte-identical. */
 static void test_lf_setting_asl_pickers(void)
@@ -1162,5 +1203,6 @@ void suite_amconf(void)
     test_lf_setting_colour_picker();
     test_lf_setting_asl_pickers();
     test_lf_theme_font_pick();
+    test_lf_drawer_pick();
     test_lf_profile_and_theme_lists();
 }

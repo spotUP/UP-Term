@@ -22,6 +22,10 @@ int asl_pick_file(struct Screen *scr, struct Window *win, const char *title,
                   const char *drawer, const char *pattern, int reject_icons,
                   char *out, int cap, int *file_named);
 
+/* A drawers-only file requester starting in `drawer` (0: none): the chosen drawer path in out. */
+int asl_pick_drawer(struct Screen *scr, struct Window *win, const char *title,
+                    const char *drawer, char *out, int cap);
+
 /* A font requester, name ("topaz.font", "" none) and size preselected; only
  * fixed-width fonts when fixed_only. The chosen ta_Name in out_name (cap
  * bytes), its ta_YSize in *out_size. */
