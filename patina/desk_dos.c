@@ -248,10 +248,47 @@ static int dk_palette_editor_ok(void)
 
 /* S56-PALETTE-31-SAFE: the one way a palette.prefs reaches SYS:Prefs/Palette. Below 47 the bytes go through desk_palette_31safe first; a file
  * it refuses (no PALT, unterminated pen list) is not written at all. */
+/* the Workbench screen's colours as 4-bit 0x0RGB (GetRGB4), at most 256; returns how many, 0 when no screen */
+static int dk_live_rgb4(unsigned short rgb4[256])
+{
+    int i, n = 0;
+    struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
+    struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
+    struct Screen *scr = IntuitionBase && GfxBase ? ipd_lock_wb_screen() : 0;
+    if (scr) {
+        n = 1 << scr->RastPort.BitMap->Depth;
+        if (n > 256)
+            n = 256;
+        for (i = 0; i < n; i++)
+            rgb4[i] = (unsigned short)GetRGB4(scr->ViewPort.ColorMap, i);
+        UnlockPubScreen(0, scr);
+    }
+    if (GfxBase)
+        CloseLibrary((struct Library *)GfxBase);
+    if (IntuitionBase)
+        CloseLibrary((struct Library *)IntuitionBase);
+    return n;
+}
+
+/* S85-FIRST-REDRAW: back once the screen shows the palette just written (at most 6 s, DK_RESET_SECS). IPrefs takes the ENV: notice
+ * 1.5-7 s late and looks idle meanwhile, so dk_wait_iprefs passed at once: on the first apply WBPattern, the live pens and our
+ * windows redrew in the old colours (rig 84, 3.1: backdrop near-black, Patina window half recoloured). */
+static void dk_wait_palette(const unsigned char *pal, long len)
+{
+    static unsigned short rgb4[256];
+    int i;
+    for (i = 0; i < 6 * 4; i++) {
+        if (desk_palette_landed(pal, len, rgb4, dk_live_rgb4(rgb4), dk_screen_depth()))
+            break;
+        Delay(12);
+    }
+}
+
 unsigned long desk_dos_pal31_puts;
 static int dk_put_palette(const unsigned char *buf, long len)
 {
     static unsigned char safe[DK_BUF];
+    int ok;
     if (!dk_palette_editor_ok()) {
         len = desk_palette_31safe(buf, len, safe, sizeof safe);
         buf = safe;
@@ -259,9 +296,12 @@ static int dk_put_palette(const unsigned char *buf, long len)
         /* S85-PAL31-DIRECT: Palette 40.2 USE writes BARTRIMPEN 2 whatever the file holds, so the line under the bar came back and
          * the work copy never equalled ENV: (S82-SKIP-UNCHANGED never fired). The safe bytes go to ENV: directly, as
          * dk_palette_31_start already does; running the editor and then copying would reset the Workbench twice. */
-        return dk_put(0, DK_WORK "/palette.prefs", buf, len);
-    }
-    return dk_put("Palette", DK_WORK "/palette.prefs", buf, len);
+        ok = dk_put(0, DK_WORK "/palette.prefs", buf, len);
+    } else
+        ok = dk_put("Palette", DK_WORK "/palette.prefs", buf, len);
+    if (ok)
+        dk_wait_palette(buf, len);
+    return ok;
 }
 
 int (*desk_dos_wb_close)(void);
@@ -875,7 +915,7 @@ static long dk_palette_base(int restore, const unsigned char pens[DK_SLOTS], int
     static unsigned char cur[DK_BUF];
     static unsigned short rgb4[256];
     long len = restore ? dk_read(DK_FLAT_PAL, cur, sizeof cur) : -1;
-    int i, n = 0;
+    int n;
     if (len < 0)
         len = dk_read("ENV:Sys/Palette.prefs", cur, sizeof cur);
     if (len < 0)
@@ -883,23 +923,7 @@ static long dk_palette_base(int restore, const unsigned char pens[DK_SLOTS], int
     len = len > 0 ? desk_palette_pens(cur, len, pens, buf, cap) : 0;
     if (len > 0)
         return len;
-    {
-        struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
-        struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
-        struct Screen *scr = IntuitionBase && GfxBase ? ipd_lock_wb_screen() : 0;
-        if (scr) {
-            n = 1 << scr->RastPort.BitMap->Depth;
-            if (n > 256)
-                n = 256;
-            for (i = 0; i < n; i++)
-                rgb4[i] = (unsigned short)GetRGB4(scr->ViewPort.ColorMap, i);
-            UnlockPubScreen(0, scr);
-        }
-        if (GfxBase)
-            CloseLibrary((struct Library *)GfxBase);
-        if (IntuitionBase)
-            CloseLibrary((struct Library *)IntuitionBase);
-    }
+    n = dk_live_rgb4(rgb4);
     return desk_palette_live(rgb4, n, depth, pens, buf, cap);
 }
 

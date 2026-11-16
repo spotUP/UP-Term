@@ -1022,6 +1022,29 @@ static void test_desk_wbpattern_no_dots(void)
     }
 }
 
+static void test_desk_palette_landed(void)
+{
+    /* S85-FIRST-REDRAW: the apply waits until the screen shows every pen the written palette sets (4-bit, GetRGB4) */
+    static unsigned char pal[BUF_MAX];
+    unsigned char pens[DK_SLOTS];
+    unsigned short rgb4[8];
+    gtheme a;
+    long n, c;
+    int pen, depth = 3;
+    probe_theme(&a);
+    desk_pens_flat(pens);
+    n = desk_palette(&a, 8, pens, pal, sizeof pal);
+    CHECK(n > 0);
+    for (pen = 0; pen < 8; pen++) {
+        c = desk_palette_rgb(pal, n, pen, depth);
+        rgb4[pen] = c < 0 ? 0x123 : (unsigned short)(((c >> 12) & 0xf00) | ((c >> 8) & 0xf0) | ((c >> 4) & 0xf));
+    }
+    CHECK_INT(desk_palette_landed(pal, n, rgb4, 8, depth), 1);
+    CHECK_INT(desk_palette_landed(pal, n, 0, 0, depth), 1); /* no screen: no wait */
+    rgb4[desk_backdrop_pen()] ^= 0x111; /* the old theme's backdrop colour still on the screen */
+    CHECK_INT(desk_palette_landed(pal, n, rgb4, 8, depth), 0);
+}
+
 static void test_flat_on_keeps_backdrop_pen_distinct_from_window_background(void)
 {
     /* FLAT-BACKDROP-SAME-AS-WINDOW: flat pens put BACKGROUNDPEN on pen 0 (the window colour); the backdrop must use another pen,
@@ -2350,6 +2373,7 @@ void suite_desk(void)
     test_knob_colour();
     test_flat_colour_pens();
     test_desk_backdrop();
+    test_desk_palette_landed();
     test_desk_wbpattern();
     test_desk_wbpattern_no_dots();
     test_desk_wbpattern_keeps_pictures();

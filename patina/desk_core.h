@@ -138,6 +138,8 @@ int desk_backdrop_pen_at(int depth);
 /* FLAT-VIS-1: the screen pen the backdrop tile pen is drawn in (tile pens 4-7 land on 2^depth-8+pen: 255 on 8 planes, = the tile pen at depth <= 3) */
 int desk_backdrop_screen_pen(int depth);
 long desk_palette_rgb(const unsigned char *cur, long curlen, int pen, int depth);
+/* S85-FIRST-REDRAW: 1 when the live colours (rgb4, nlive GetRGB4 entries) show every pen the palette.prefs pal sets */
+int desk_palette_landed(const unsigned char *pal, long len, const unsigned short *rgb4, int nlive, int depth);
 long desk_palette_set_rgb(const unsigned char *cur, long curlen, int pen, int depth, uc_u32 c, unsigned char *out, long cap);
 /* FILENAME-PEN: a pen at or above the screen's colour count folds to DK_BG (the one fold rule of the pen maps and the backdrop fallback) */
 int desk_pen_fold(int pen, int ncolors);

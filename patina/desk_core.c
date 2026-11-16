@@ -577,6 +577,21 @@ long desk_palette_rgb(const unsigned char *cur, long curlen, int pen, int depth)
     return ((long)cur[e + 2] << 16) | ((long)cur[e + 4] << 8) | (long)cur[e + 6];
 }
 
+/* S85-FIRST-REDRAW: 1 when every pen the palette.prefs pal sets shows its colour on the live screen (rgb4 = nlive 4-bit 0x0RGB
+ * entries, GetRGB4). IPrefs reads a palette notice 1.5-7 s late while it looks idle, so the colours on the screen are the only proof. */
+int desk_palette_landed(const unsigned char *pal, long len, const unsigned short *rgb4, int nlive, int depth)
+{
+    int pen;
+    if (!rgb4 || nlive <= 0)
+        return 1; /* no screen to read: nothing to wait for */
+    for (pen = 0; pen < nlive; pen++) {
+        long c = desk_palette_rgb(pal, len, pen, depth);
+        if (c >= 0 && rgb4[pen] != (unsigned short)(((c >> 12) & 0xf00) | ((c >> 8) & 0xf0) | ((c >> 4) & 0xf)))
+            return 0;
+    }
+    return 1;
+}
+
 /* cur with the colour of one pen replaced; the pen map and the other colours stay. 0 when cur has no such entry or does not fit out. */
 long desk_palette_set_rgb(const unsigned char *cur, long curlen, int pen, int depth, uc_u32 c, unsigned char *out, long cap)
 {
