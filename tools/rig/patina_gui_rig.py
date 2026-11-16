@@ -1263,12 +1263,21 @@ def setup():
         stage_rig.require_fresh(SETUP_NAMES)
     else:
         stage_rig.make(SETUP_NAMES)
+    # The menu server clears CTRL_C and reads its quit only while idle: a menu left open kept the kit patina-gui
+    # alive past the Break, and the new Patina reused it (S85l+, rig 84). Close the menu, quit through ARexx first.
+    import patina_rig
+    close_menu()
+    if patina_rig.port_up():
+        patina_rig.arexx('QUIT')
+        time.sleep(4)
     for n in setup_break_targets(c.run('Status', 20)[1]):   # the kit Patina (and any earlier copy) must not hold the port
         c.run('Break %s' % n, 20)
     time.sleep(2)
     # Ctrl-C unloads patina-flat unless a patch is chained over it; a resident that stays makes the fresh copy say
     # "already running" and exit, so the rig would test the old one
     if not check(not process_running('patina-flat'), 'setup: the earlier patina-flat resident unloaded on Break'):
+        return False
+    if not check(not setup_break_targets(c.run('Status', 20)[1]), 'setup: no earlier Patina program still runs'):
         return False
     # Lock("UP-Term:bin") on a multi-directory assign returns only the first match, VTCX:Apps/bin; pl_dup_path puts
     # that one lock on the children's path, so upkg and the rest of the kit must be in it. Kit first, build over it.

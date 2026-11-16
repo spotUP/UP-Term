@@ -36,4 +36,14 @@ for out, want_dir in (('UP-Term        Empty-12MB-FFS:UP-Term\n', 'Empty-12MB-FF
     got_dir = g.kit_upterm_dir(out)
     if got_dir != want_dir:
         sys.exit('FAIL: kit dir from %r is %r, want %r (3.2 installs live at SYS:UP-Term, not Rushhours:)' % (out, got_dir, want_dir))
+# S85l+ (rig 84): the menu server clears CTRL_C and reads its quit only while idle, so a menu left open kept the old
+# patina-gui alive past the Break and the new Patina reused it. setup closes the menu and sends PATINA QUIT before the
+# Break, and fails when any Patina program still runs after it.
+import inspect
+src = inspect.getsource(g.setup)
+brk = src.find("c.run('Break %s'")
+if not (0 <= src.find('close_menu()') < brk and 0 <= src.find("arexx('QUIT')") < brk):
+    sys.exit('FAIL: setup must close the menu and send PATINA QUIT before the Break')
+if src.find('no earlier Patina program still runs') < brk:
+    sys.exit('FAIL: setup must check after the Break that no Patina program still runs')
 print('OK setup Breaks every Patina program copy whatever its path, and copies the kit from the installed UP-Term:')
