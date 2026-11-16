@@ -2536,6 +2536,37 @@ static void test_gthemes_te4_pickers(void)
     CHECK_INT(n, before - 1);
 }
 
+static void test_gthemes_ti2_numbers_step_instead_of_typing(void)
+{
+    const sd_setting *r, *b, *p;
+    char t[32];
+    int i;
+    te4_open_builtin();
+    r = te4_row("Corner Radius");        /* max 16: step 1 */
+    b = te4_row("Title Bar Height");      /* max 64: step 4 */
+    p = te4_row("Inactive Window Dimming");   /* max 100: step 10 */
+    CHECK(r != 0 && b != 0 && p != 0);
+    CHECK_INT(gte_row_set_text(r, "15"), GTR_OK);
+    CHECK_INT(gte_row_step(r), GTR_OK);
+    gte_row_text(r, t, sizeof t);
+    CHECK_STR(t, "16");
+    CHECK_INT(gte_row_step(r), GTR_OK);   /* from max it wraps to 0 */
+    gte_row_text(r, t, sizeof t);
+    CHECK_STR(t, "0");
+    CHECK_INT(gte_row_set_text(b, "62"), GTR_OK);
+    CHECK_INT(gte_row_step(b), GTR_OK);   /* clamps at max */
+    gte_row_text(b, t, sizeof t);
+    CHECK_STR(t, "64");
+    CHECK_INT(gte_row_set_text(p, "95"), GTR_OK);
+    CHECK_INT(gte_row_step(p), GTR_OK);
+    gte_row_text(p, t, sizeof t);
+    CHECK_STR(t, "100");
+    for (i = 0; i < 12; i++)
+        gte_row_step(p);                  /* 100 -> 0 -> 10 ... -> 100 -> 0 */
+    gte_row_text(p, t, sizeof t);
+    CHECK_STR(t, "0");
+}
+
 static void test_gthemes_te4_modes(void)
 {
     const sd_setting *mode, *el = 0;
@@ -3518,6 +3549,7 @@ void suite_gthemes(void)
     test_gthemes_screen_rows_list_rules_of_closed_screens_after_the_open_ones();
     test_gthemes_screen_rows_a_full_rule_table_refuses_and_changes_nothing();
     test_gthemes_screen_rows_survive_write_and_parse();
+    test_gthemes_ti2_numbers_step_instead_of_typing();
     test_gthemes_screens_page_rows_follow_the_open_screens_and_edit_the_rules();
     test_gthemes_screens_page_default_buttons_and_closed_rules();
     test_gthemes_screens_page_pattern_rules_add_move_edit_remove();
