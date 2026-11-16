@@ -2569,7 +2569,11 @@ def upterm_sync(check=False):
     import ami
     built = ROOT / "build/amiga"
     d = upterm_bin()
-    stale = stale_names(built, lambda n: ami.read_file(d + "/" + n))
+    import struct
+    # only names the drawer holds: reading all of build/amiga back costs one round trip per file on every start
+    held = set(ami.req(0x02, struct.pack(">H", 30) + ("List \"%s\" FILES QUICK NOHEAD" % d).encode("latin-1"), 60)[4:]
+               .decode("latin-1").lower().split())
+    stale = stale_names(built, lambda n: ami.read_file(d + "/" + n) if n.lower() in held else None)
     if check or not stale:
         print("[WARN] %d stale in %s: %s" % (len(stale), d, ", ".join(stale)) if stale else "[OK] %s matches build/amiga" % d)
         return stale
