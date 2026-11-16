@@ -154,6 +154,8 @@ const char *sd_text_reason(int check);
 #define SD_HAS_PICKER(s) ((s)->kind == SD_COLOUR || (s)->kind == SD_PALETTE || SD_IS_THEME_COLOUR(s))
 /* Entry numbers of the picker's rows (seg of a MN_ROW_CHOICE row): 0..15 the palette entries, then this. */
 #define SD_PICK_CUSTOM 16
+/* TI-3: a pointer colour row also offers Default, which clears the override (gte_row_has_default) */
+#define SD_PICK_DEFAULT 17
 
 /* The menu's page groups: `settings:<name>` in the keymap [menu] names a page of Prefs. The PG_PAGE_* of a
  * name, -1 when none; the name of a page, 0 when out of range. */

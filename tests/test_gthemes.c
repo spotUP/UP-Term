@@ -2507,6 +2507,9 @@ static void test_gthemes_te4_pickers(void)
         CHECK(gt_ed.m.look.pointer[1] == 0x0a0b0cUL);
         gte_row_text(pp, buf, sizeof buf);
         CHECK_STR(buf, "#0a0b0c");
+        CHECK_INT(lf_setting_set_colour(&io, pp, SD_PICK_DEFAULT, 0, &failed), LF_SET_OK);   /* Default clears the override */
+        CHECK(gt_ed.m.look.pointer[1] == 0);
+        CHECK_INT(lf_setting_set_colour(&io, sw, SD_PICK_DEFAULT, 0, &failed), LF_SET_KIND);   /* a real swatch has none */
     }
     /* reference rows: a palette entry becomes a literal, Custom takes any reference */
     CHECK_INT(lf_setting_set_colour(&io, ref, 2, 0, &failed), LF_SET_OK);

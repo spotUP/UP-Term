@@ -385,6 +385,7 @@ const struct sd_setting *gte_row(int id);
 int gte_nrows(void);                                      /* rows numbered SDI_COUNT .. SDI_COUNT + gte_nrows() - 1 */
 int gte_row_visible(const struct sd_setting *s);                 /* a swatch past the count, an element state it does not use, or an Elements page in Simple mode are not */
 int gte_row_text(const struct sd_setting *s, char *out, int n);  /* current value as text */
+int gte_row_has_default(const struct sd_setting *s);   /* TI-3: a pointer colour row; its picker offers Default (clears the override) */
 int gte_row_set_text(const struct sd_setting *s, const char *text); /* GTR_OK or GTR_BAD, GTR_* */
 int gte_row_step(const struct sd_setting *s);
 int gte_row_is_theme_name(const struct sd_setting *s); /* 1 for a Screens-page Theme / Rule Theme row: Enter steps the installed themes */

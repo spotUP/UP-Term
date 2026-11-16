@@ -463,7 +463,9 @@ int lf_setting_set_colour(const amconf_io *io, const sd_setting *s, int entry, c
         /* TE-4: a palette entry becomes a literal colour; Custom takes a colour, and on a reference row any reference
          * (a swatch name, Darker(...), Mix(...)); an element row accepts empty (follows its group) */
         int r;
-        if (entry == SD_PICK_CUSTOM) {
+        if (entry == SD_PICK_DEFAULT && gte_row_has_default(s))
+            r = gte_row_set_text(s, "");   /* clears the override through ed_touch like any edit */
+        else if (entry == SD_PICK_CUSTOM) {
             if (!text)
                 return LF_SET_KIND;
             if (s->kind == SD_SWATCH) {
@@ -732,6 +734,8 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
                 int v = atoi(it[i].seg);
                 if (v == SD_PICK_CUSTOM)
                     strcpy(it[i].label, "Custom...");
+                else if (v == SD_PICK_DEFAULT)
+                    strcpy(it[i].label, "Default");
                 else if (v >= 0 && v < 16) {
                     char hex[16];
                     lf_palette_hex(io, v, hex);
@@ -759,6 +763,8 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
             int v = atoi(it[i].seg);
             if (v == SD_PICK_CUSTOM)
                 strcpy(it[i].label, "Custom...");
+            else if (v == SD_PICK_DEFAULT)
+                strcpy(it[i].label, "Default");
             else if (v >= 0 && v < 16) {
                 char hex[16];
                 lf_palette_hex(io, v, hex);

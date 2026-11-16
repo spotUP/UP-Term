@@ -2627,6 +2627,11 @@ int gte_row_label(const sd_setting *s, char *out, int n)
     return 1;
 }
 
+int gte_row_has_default(const sd_setting *s)
+{
+    return s->store == SD_GTHEME && s->kind == SD_SWATCH && s->aux >= ER_POINTER;
+}
+
 int gte_row_set_text(const sd_setting *s, const char *text)
 {
     uc_u32 c = 0;
