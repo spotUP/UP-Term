@@ -28,8 +28,7 @@
 
 enum { FLAT_G_NORMAL = 0, FLAT_G_SELECTED = 1, FLAT_G_INACTIVE = 2 };
 enum { FLAT_ROLE_BACK = 0, FLAT_ROLE_TEXT = 1, FLAT_ROLE_LINE = 2, FLAT_ROLE_FRAME = 3, FLAT_ROLE_KNOB = 4 };
-/* FLAT_ROLE_KNOB (S32-ARROW-KNOB-COLOUR): the scroller knob's state pen (flat_knob_state_pen: accent in an active window, inactive bar tone
- * otherwise), passed in as knob_pen; pen_line when knob_pen < 0. The scroller arrows and the size gadget draw in it, pressed or not. */
+/* FLAT_ROLE_KNOB (S32-ARROW-KNOB-COLOUR): the scroller knob's state pen (flat_knob_state_pen: the inactive bar tone in both states, S86-ACTIVE-SCROLL-GREY), passed in as knob_pen; pen_line when knob_pen < 0. The scroller arrows and the size gadget draw in it, pressed or not. */
 /* FLAT_ROLE_FRAME: the pen of the frame the gadget sits on (window border, inactive border, screen bar block); drawn
  * as pen_back when flat_glyph_draw gets frame_pen < 0. Only the window gadgets use it as their box background. */
 
@@ -134,7 +133,7 @@ int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, i
 /* S56-LOCALE-KNOB: a SMARTKNOBIMAGE prop (3.2 GadTools listview scrollers) draws its knob through a frameiclass IM_DRAWFRAME, not a
  * RectFill, so scroller_pen never sees it. flat_smart_knob says whether image is that knob: prop gadget, AUTOKNOB and SMARTKNOBIMAGE set,
  * and image is the BOOPSI frame Intuition hangs off the AUTOKNOB Image's NextImage. flat_knob_frame_draw paints it like a Workbench
- * window knob: a box in flat_knob_state_pen (accent active, inactive bar tone) with the rounded corners of flat_frame_draw_round. */
+ * window knob: a box in flat_knob_state_pen (inactive bar tone in both states) with the rounded corners of flat_frame_draw_round. */
 int flat_smart_knob(int is_prop, unsigned prop_flags, const void *knob_next, const void *image);
 int flat_knob_frame_draw(const flat_state *s, int depth, int active, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd, void *ctx);
 

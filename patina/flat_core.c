@@ -1087,10 +1087,7 @@ static int flat_outline_of_depth(const flat_state *s, int depth)
 
 int flat_knob_state_pen(const flat_state *s, int depth, int active)
 {
-    if (active) {
-        int o = flat_outline_of_depth(s, depth);
-        return o ? o : flat_knob_pen(s, depth);
-    }
+    (void)active;   /* S86-ACTIVE-SCROLL-GREY: active and inactive windows share the inactive grey */
     return flat_inactive_pen(s, depth) >= 0 ? flat_inactive_pen(s, depth) : flat_knob_pen(s, depth);
 }
 

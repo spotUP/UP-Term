@@ -1597,7 +1597,7 @@ static void test_which_from_gtype(void)
         fs.pen_knob = 249; fs.pen_inbar = 250; fs.pen_sel = 4;
         on = flat_knob_state_pen(&fs, 8, 1);
         off = flat_knob_state_pen(&fs, 8, 0);
-        CHECK_INT(on != 0 && off != 0 && on != off, 1);
+        CHECK_INT(on != 0 && off != 0 && on == off, 1);   /* S86-ACTIVE-SCROLL-GREY */
         for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
         CHECK_INT(flat_knob_frame_draw(&fs, 8, 1, 10, 10, 10, 18, round_fill, round_read, cv), 1);
         CHECK_INT(cv->pix[14][14] == on && cv->pix[10][14] == on && cv->pix[27][14] == on, 1);   /* box: active knob pen */
@@ -2129,7 +2129,7 @@ static void test_scroller(void)
     int kn, tr;
     flat_init(&s);
     desk_flat_state(1, 1, 1, &s);
-    kn = s.pen_outline;                                                  /* S32-KNOB-STATE: the active knob is the accent pen_outline (was the muted pen: invisible on the track) */
+    kn = flat_knob_state_pen(&s, 3, 1);                                  /* S86-ACTIVE-SCROLL-GREY: the active knob shares the inactive grey (was the accent pen_outline) */
     tr = s.pen_back;
     CHECK(kn != tr);
     CHECK(kn != DK_SELECTION);
@@ -2202,13 +2202,13 @@ static void test_scroller(void)
     s.held = 1;
     CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), -1);
     s.held = 0;
-    /* S32-KNOB-STATE: active -> pen_outline, inactive -> pen_inbar, either missing/invalid -> today's knob pen */
+    /* S86-ACTIVE-SCROLL-GREY: active == inactive -> pen_inbar, missing/invalid -> today's knob pen */
     {
         int ko = s.pen_outline, ki = s.pen_inbar;
         s.pen_outline = 5; s.pen_inbar = 6;
-        CHECK_INT(flat_knob_state_pen(&s, 4, 1), 5);
+        CHECK_INT(flat_knob_state_pen(&s, 4, 1), 6);
         CHECK_INT(flat_knob_state_pen(&s, 4, 0), 6);
-        CHECK_INT(flat_scroller_pen(&s, 4, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 5);   /* through the scroller entry */
+        CHECK_INT(flat_scroller_pen(&s, 4, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 6);   /* through the scroller entry */
         CHECK_INT(flat_scroller_pen(&s, 4, 0, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 6);
         s.pen_outline = 0; s.pen_inbar = 0;
         CHECK_INT(flat_knob_state_pen(&s, 4, 1), flat_knob_pen(&s, 4));
@@ -2262,11 +2262,13 @@ static void test_knob_pen(void)
     flat_state s;
     flat_init(&s);
     desk_flat_state(1, 1, 1, &s);
-    s.pen_outline = 0;                                                   /* the knob pen is the fallback below the S32-KNOB-STATE accent */
+    s.pen_outline = 0; s.pen_inbar = 0;                                  /* the knob pen is the fallback below the S86-ACTIVE-SCROLL-GREY inactive grey */
     s.pen_knob = 9;
     CHECK_INT(flat_knob_pen(&s, 4), 9);
+    { int dt = s.pen_dimtext; s.pen_dimtext = 0;   /* no inactive grey known: the knob pen */
     CHECK_INT(flat_scroller_pen(&s, 4, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 9);   /* reachable through the scroller entry */
     CHECK_INT(flat_scroller_pen(&s, 8, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 9);
+      s.pen_dimtext = dt; }
     CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), DK_MUTED);   /* 3 planes: no free pen */
     CHECK_INT(flat_knob_pen(&s, 3), DK_MUTED);
     s.pen_knob = 0;
@@ -2781,7 +2783,7 @@ static void test_inactive_pens(void)
     CHECK_INT(flat_inactive_pen(&s, 3), 6);          /* under 16 colours: the muted pen */
     CHECK_INT(flat_inbar_colour(0x000000UL, 0x646464UL), 0x2d2d2dUL);   /* 45 percent */
     CHECK_INT(flat_scroller_pen(&s, 4, 0, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 9);   /* inactive knob */
-    CHECK(flat_scroller_pen(&s, 4, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69) != 9);     /* active knob unchanged */
+    CHECK_INT(flat_scroller_pen(&s, 4, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 9);   /* S86-ACTIVE-SCROLL-GREY: active knob equals inactive */
 }
 
 
