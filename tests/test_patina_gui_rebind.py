@@ -43,6 +43,10 @@ NEED = [
     # Keep after an apply reopened the menu 360 wide instead of 575 and cut its rows.
     ('gui_open', r'strcpy\(g->open_node, node\)'),
     ('gui_show', r'\bmg_width_t\(&km, g->open_node,'),
+    # S85l+ (16 Nov): the back buffer is a friend bitmap of the screen. Kept across a hide, buffer_fit found it big
+    # enough and never pointed g->rp back at it after gui_show set g->rp to the window: draws went to the window and
+    # paint_end blitted the stale pre-hide buffer (the theme list) over the Style rows of the 188-high box.
+    ('screen_unbind', r'\bbuffer_free\(g\)'),
 ]
 # taken or dropped anywhere else, a resource can outlive the screen it was made for
 ONLY_IN_PAIR = [r'\bpick_font\(g\)', r'\bmt_close\(', r'\big_open\(', r'\big_close\(', r'\bUnlockPubScreen\(0, g->scr\)',

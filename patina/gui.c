@@ -1767,7 +1767,6 @@ static void gui_show(void)
 
 static void cleanup(gui *g)
 {
-    buffer_free(g);
     if (g->win)
         CloseWindow(g->win);
     g->win = 0;
@@ -1833,6 +1832,7 @@ static const char *screen_bind(gui *g)
 /* screen_bind's undo, the window already closed: pens before the font (pens_release tells the font), the screen last. */
 static void screen_unbind(gui *g)
 {
+    buffer_free(g);   /* a friend of the screen's bitmap; a kept one also left g->rp on the window after gui_show (S85l+) */
     ig_close();
     if (g->cm)
         pens_release(g);
