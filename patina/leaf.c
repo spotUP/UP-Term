@@ -416,7 +416,7 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
     s = gte_row(it->ix);
     if (s->kind == SD_GACTION)
         return theme_action(s, it->label, ui);
-    if (s->store == SD_GTHEME && s->kind != SD_CYCLE && !SD_HAS_PICKER(s)) {
+    if (s->store == SD_GTHEME && s->kind != SD_CYCLE && s->kind != SD_FONT && !SD_HAS_PICKER(s)) {   /* a font row opens the requester below */
         char value[UC_MAX_VALUE + 2];
         if (s->kind == SD_INFO || !ui->ask_value || !gte_row_text(s, value, sizeof value))
             return 0;

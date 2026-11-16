@@ -533,6 +533,29 @@ int lf_setting_pick(const amconf_io *io, const sd_setting *s, const lf_asl *asl,
 {
     char cur[UC_MAX_VALUE], depth[UC_MAX_VALUE], spec[UC_MAX_VALUE];
     *failed = 0;
+    if (s->store == SD_GTHEME && s->kind == SD_FONT) {      /* a theme font slot: stored "name.font/size" through the typed-value path */
+        char name[UC_MAX_VALUE], iname[UC_MAX_VALUE];
+        long size = 0, isize = 0;
+        char *slash;
+        size_t n;
+        if (!gte_row_text(s, cur, sizeof cur))
+            cur[0] = 0;
+        slash = strchr(cur, '/');
+        if (slash) {
+            isize = atol(slash + 1);
+            *slash = 0;
+        }
+        snprintf(iname, sizeof iname, "%s", cur);
+        if (!asl->font || !asl->font(asl->ctx, iname, isize, s->aux - 1 == GT_FONT_SHELL, name, sizeof name, &size))
+            return LF_SET_CANCELLED;
+        n = strlen(name);
+        if (!n || strchr(name, '/') || n + 20 >= sizeof spec)
+            return LF_SET_INVALID;
+        snprintf(spec, sizeof spec, "%s%s", name, n >= 5 && !strcmp(name + n - 5, ".font") ? "" : ".font");
+        if (size > 0)
+            snprintf(spec + strlen(spec), sizeof spec - strlen(spec), "/%ld", size);
+        return gte_row_set_text(s, spec) == GTR_OK ? LF_SET_OK : LF_SET_INVALID;
+    }
     if (s->kind == SD_FONT && s->id != SDI_FALLBACK) {
         char name[UC_MAX_VALUE], iname[UC_MAX_VALUE];
         long size = 0, isize = 0;

@@ -905,6 +905,44 @@ static int fake_otag(void *ctx, char *out, int cap)
     return 1;
 }
 
+/* a theme font row (store SD_GTHEME) opens the requester and stores "name.font/size" through gte_row_set_text */
+static void test_lf_theme_font_pick(void)
+{
+    static gt_model gm;
+    memfs m;
+    prefs_fs fs;
+    amconf_io io = io_of(&m, &fs);
+    fake_asl fk;
+    lf_asl asl;
+    const sd_setting *row = 0;
+    char out[80];
+    int i, failed = 0;
+    memset(&fk, 0, sizeof fk);
+    memset(&gm, 0, sizeof gm);
+    strcpy(gm.look.font[GT_FONT_SHELL], "courier.font/11");
+    gte_open(&gm, "t");
+    for (i = SDI_COUNT; i < SDI_COUNT + gte_nrows(); i++)
+        if (gte_row(i)->kind == SD_FONT && gte_row(i)->aux == GT_FONT_SHELL + 1)
+            row = gte_row(i);
+    CHECK(row != 0);
+    if (!row)
+        return;
+    asl.font = fake_font;
+    asl.mode = fake_mode;
+    asl.otag = fake_otag;
+    asl.ctx = &fk;
+    CHECK_INT(lf_setting_pick(&io, row, &asl, &failed), LF_SET_CANCELLED);
+    CHECK_STR(fk.in_name, "courier.font");
+    CHECK_INT(fk.in_size, 11);
+    CHECK_INT(fk.fixed, 1);
+    gte_row_text(row, out, sizeof out);
+    CHECK_STR(out, "courier.font/11");                   /* cancel keeps the old value */
+    fk.ok = 1;
+    CHECK_INT(lf_setting_pick(&io, row, &asl, &failed), LF_SET_OK);
+    gte_row_text(row, out, sizeof out);
+    CHECK_STR(out, "JetBrains Mono.font/13");
+}
+
 /* LF_SETTING font and screen mode pickers (plan 2026-10-26-patina-prefs-inline.md, M6): a picked font or mode
  * is written to ENV: and ENVARC:, a cancelled requester leaves both files byte-identical. */
 static void test_lf_setting_asl_pickers(void)
@@ -1123,5 +1161,6 @@ void suite_amconf(void)
     test_lf_setting_text();
     test_lf_setting_colour_picker();
     test_lf_setting_asl_pickers();
+    test_lf_theme_font_pick();
     test_lf_profile_and_theme_lists();
 }
