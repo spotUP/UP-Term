@@ -904,6 +904,32 @@ static long picture_chunk(unsigned char *at, int which, const char *name)
     return 8 + body + (body & 1);
 }
 
+/* S85-FLAT-ASK: picture detection, and the two answers of the requester */
+static void test_desk_wbpattern_ask(void)
+{
+    static unsigned char prev[BUF_MAX], out[BUF_MAX], fresh[BUF_MAX];
+    long n = 26, plen, m, f;
+    gtheme t;
+    probe_theme(&t);
+    memcpy(prev, "FORM\0\0\0\0PREFPRHD\0\0\0\6", 20);
+    memset(prev + 20, 0, 6);
+    CHECK_INT(desk_wbpattern_has_picture(0, 0), 0);
+    f = desk_wbpattern(&t, 3, 0, 0, fresh, sizeof fresh);
+    CHECK_INT(desk_wbpattern_has_picture(fresh, f), 0);   /* the theme's own pattern file is no picture */
+    n += picture_chunk(prev + n, 0, "Work:Wallpaper/AF-Backdrop.iff");
+    prev[4] = (unsigned char)((n - 8) >> 24); prev[5] = (unsigned char)((n - 8) >> 16);
+    prev[6] = (unsigned char)((n - 8) >> 8); prev[7] = (unsigned char)(n - 8);
+    plen = n;
+    CHECK_INT(desk_wbpattern_has_picture(prev, plen), 1);
+    m = desk_wbpattern_pick(&t, 3, prev, plen, 1, out, sizeof out);   /* Keep your picture */
+    CHECK(m > 0 && find_bytes(out, m, "Work:Wallpaper/AF-Backdrop.iff", 31) != 0);
+    m = desk_wbpattern_pick(&t, 3, prev, plen, 0, out, sizeof out);   /* Use theme colour */
+    CHECK(m > 0 && find_bytes(out, m, "Work:Wallpaper/AF-Backdrop.iff", 31) == 0);
+    CHECK_INT(desk_wbpattern_has_picture(out, m), 0);
+    CHECK_INT(m, f);
+    CHECK(memcmp(out + 26, fresh + 26, (size_t)(m - 26)) == 0);
+}
+
 /* WALLPAPER-KEPT (user report 2026-11-14): a user's ROOT and SCREEN pictures survive the theme's wbpattern.prefs */
 static void test_desk_wbpattern_keeps_pictures(void)
 {
@@ -2307,6 +2333,7 @@ void suite_desk(void)
     test_desk_wbpattern();
     test_desk_wbpattern_no_dots();
     test_desk_wbpattern_keeps_pictures();
+    test_desk_wbpattern_ask();
     test_flat_on_keeps_backdrop_pen_distinct_from_window_background();
     test_flat_pick_leaves_pen5_magenta_on_deep_workbench();
     test_flat_backdrop_screen_pen_deep();

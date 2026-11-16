@@ -487,6 +487,31 @@ int desk_dos_confirm_pending(void)
     return dk_pending_mask() != 0;
 }
 
+/* S85-FLAT-ASK: every apply that finds a user picture in wbpattern.prefs asks once ("Keep your picture" / "Use theme colour"); dk_pic_ask is
+ * on only inside desk_dos_apply, the start apply and the live re-write keep the picture. Nothing is saved: the next apply asks again. */
+static int dk_pic_ask, dk_pic_answer = -1;
+static int dk_pic_keep(const unsigned char *prev, long plen)
+{
+    static struct EasyStruct es = {
+        sizeof(struct EasyStruct), 0, (UBYTE *)"Patina desktop theme",
+        (UBYTE *)"Your Workbench backdrop is a picture.\n"
+                  "Keep your picture, or replace it with the\n"
+                  "theme colour? Reverting brings it back.",
+        (UBYTE *)"Keep your picture|Use theme colour" };
+    struct IntuitionBase *IntuitionBase;
+    if (!dk_pic_ask || plen <= 0 || !desk_wbpattern_has_picture(prev, plen))
+        return 1;
+    if (dk_pic_answer < 0) {
+        dk_pic_answer = 1;
+        IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
+        if (IntuitionBase) {
+            dk_pic_answer = EasyRequestArgs(0, &es, 0, 0) == 1;   /* left button = 1 = keep */
+            CloseLibrary((struct Library *)IntuitionBase);
+        }
+    }
+    return dk_pic_answer;
+}
+
 static void dk_orig_off(unsigned desk_mask, int flat);
 static void dk_orig_save(unsigned mask, int wbprefs);
 static int dk_apply(const gtheme *th, char *why, int cap)
@@ -574,7 +599,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     }
     if (mask & (1u << DT_WBPATTERN)) {
         plen = dk_read("ENV:Sys/wbpattern.prefs", prev, sizeof prev);
-        len = desk_wbpattern(th, depth > 3 ? 3 : depth, plen > 0 ? prev : 0, plen > 0 ? plen : 0, buf, sizeof buf);
+        len = desk_wbpattern_pick(th, depth > 3 ? 3 : depth, plen > 0 ? prev : 0, plen > 0 ? plen : 0, dk_pic_keep(prev, plen), buf, sizeof buf);
         ok &= dk_put("WBPattern", DK_WORK "/wbpattern.prefs", buf, len); /* dk_editor waits for IPrefs */
     }
     if ((mask & (1u << DT_POINTER)) && !dk_pointer_editor_ok()) {
@@ -950,7 +975,7 @@ static int dk_flat_pens(const gtheme *th)
         dk_live_want = -1;
     if (own) {
         plen = dk_read("ENV:Sys/wbpattern.prefs", prev, sizeof prev);
-        wlen = desk_wbpattern(th, depth > 3 ? 3 : depth, plen > 0 ? prev : 0, plen > 0 ? plen : 0, out, sizeof out);
+        wlen = desk_wbpattern_pick(th, depth > 3 ? 3 : depth, plen > 0 ? prev : 0, plen > 0 ? plen : 0, dk_pic_keep(prev, plen), out, sizeof out);
         if (wlen > 0 && (wlen != plen || memcmp(out, prev, wlen)))
             dk_put("WBPattern", DK_WORK "/wbpattern.prefs", out, wlen);
     } else if (restore) {
@@ -1315,9 +1340,12 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
 {
     int r;
     dk_live_want = 0;
+    dk_pic_ask = 1;
+    dk_pic_answer = -1;
     r = dk_apply(th, why, cap);
     if (!(r > 0 && (r & (1 << DT_PALETTE))) && dk_flat_pens(th) && r >= 0)
         r |= 1 << DT_PALETTE;   /* the theme colours are in the palette and DOpus has them: no wb_pens_apply */
+    dk_pic_ask = 0;
     if (r >= 0) {
         /* after dk_flat_pens: its flat-off palette restore writes palette.prefs from the live screen when the original is gone, and the
          * originals must have the last word on the ENV: files (FP-2) */

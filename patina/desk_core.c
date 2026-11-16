@@ -713,8 +713,19 @@ int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *
 
 /* WALLPAPER-KEPT (user report 2026-11-14, Amiga Forever): a picture the user set (ROOT, DRAWER or SCREEN) is kept byte for
  * byte; the theme's flat tone goes only where the file had a pattern or nothing */
-long desk_wbpattern(const gtheme *t, int depth, const unsigned char *prev, long prevlen,
-                    unsigned char *out, long cap)
+int desk_wbpattern_has_picture(const unsigned char *prev, long prevlen)
+{
+    long l;
+    int w;
+    for (w = 0; w < 3; w++)
+        if (prev_chunk(prev, prevlen, w, 0, &l))
+            return 1;
+    return 0;
+}
+
+/* S85-FLAT-ASK: keep 0 = the owner chose "Use theme colour", the pictures count as absent and the flat tone replaces them */
+long desk_wbpattern_pick(const gtheme *t, int depth, const unsigned char *prev, long prevlen, int keep_pics,
+                         unsigned char *out, long cap)
 {
     unsigned char data[PT_DATA], *at;
     const unsigned char *pic[3], *keep;
@@ -722,7 +733,7 @@ long desk_wbpattern(const gtheme *t, int depth, const unsigned char *prev, long 
     int w;
     (void)t;
     for (w = 0; w < 3; w++) {
-        pic[w] = prev_chunk(prev, prevlen, w, 0, &piclen[w]);
+        pic[w] = keep_pics ? prev_chunk(prev, prevlen, w, 0, &piclen[w]) : 0;
         total += pic[w] ? piclen[w] : PT_CHUNK;
     }
     if (cap < total || cap < DK_WBPATTERN_SIZE)
@@ -756,6 +767,12 @@ long desk_wbpattern(const gtheme *t, int depth, const unsigned char *prev, long 
         at += PT_CHUNK;
     }
     return total;
+}
+
+long desk_wbpattern(const gtheme *t, int depth, const unsigned char *prev, long prevlen,
+                    unsigned char *out, long cap)
+{
+    return desk_wbpattern_pick(t, depth, prev, prevlen, 1, out, cap);
 }
 
 /* ---- R1.21a: pointer.prefs ---- */

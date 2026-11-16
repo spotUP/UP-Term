@@ -157,6 +157,11 @@ int desk_pens_sync(int flat, const unsigned short *live, int nlive, unsigned cha
  * Returns the size, 0 when cap is too small. */
 long desk_wbpattern(const gtheme *t, int depth, const unsigned char *prev, long prevlen,
                     unsigned char *out, long cap);
+/* S85-FLAT-ASK: 1 when prev holds a user picture (ROOT, DRAWER or SCREEN chunk without WBPF_PATTERN) */
+int desk_wbpattern_has_picture(const unsigned char *prev, long prevlen);
+/* as desk_wbpattern; keep_pics 0 drops the pictures so the theme tone replaces them */
+long desk_wbpattern_pick(const gtheme *t, int depth, const unsigned char *prev, long prevlen, int keep_pics,
+                         unsigned char *out, long cap);
 
 /* R1.21a: write the theme's colours into the RGB table of every PNTR chunk of buf in place (triple 1 foreground,
  * 2 background, 3 accent); bitmaps stay. Returns the chunk count, -1 when buf is no pointer.prefs. */
