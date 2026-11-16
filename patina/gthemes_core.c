@@ -2227,6 +2227,7 @@ int gte_ref_step(const gt_ref *cur, int dir, char *out, int cap)
 
 /* ---- the rows ---- */
 #define ER_MAX 512
+#define ER_POINTER 200   /* TI-3: aux of a pointer colour row (a SD_SWATCH row past the real swatch indexes) */
 #define ER_LABEL 44
 #define ER_INFO_SHARE 100 /* TE-8.3: + group id, the share line of that group on a shallow screen */
 #define ER_INFO_BASE 1
@@ -2401,7 +2402,7 @@ static void er_build(void)
     for (i = 0; i < 3; i++) {
         snprintf(l, ER_LABEL, "Pointer Colour %d", i + 1);
         snprintf(k, 24, "pointer%d", i);
-        er_add(PG_PAGE_THEME_DESKTOP, SD_STRING, k, l)->aux = 200 + i;
+        er_add(PG_PAGE_THEME_DESKTOP, SD_SWATCH, k, l)->aux = ER_POINTER + i;   /* TI-3: a literal colour with the swatch picker */
     }
     er_add(PG_PAGE_THEME_FILES, SD_GACTION, "duplicate", "Duplicate Theme...")->aux = GTA_DUPLICATE;
     er_add(PG_PAGE_THEME_FILES, SD_GACTION, "import", "Import Theme...")->aux = GTA_IMPORT;
@@ -2496,7 +2497,7 @@ int gte_row_visible(const sd_setting *s)
         return b.grp_with[s->aux - ER_INFO_SHARE] != s->aux - ER_INFO_SHARE;
     }
     if (s->kind == SD_SWATCH)
-        return s->aux < gt_ed.m.nswatch;
+        return s->aux >= ER_POINTER || s->aux < gt_ed.m.nswatch;
     if (s->kind == SD_ELEMENT)
         return (gt_elem_defs[s->aux].states >> s->aux2) & 1;
     return 1;
@@ -2560,6 +2561,13 @@ int gte_row_text(const sd_setting *s, char *out, int n)
         return se_text(s, out, n);
     switch (s->kind) {
     case SD_SWATCH:
+        if (s->aux >= ER_POINTER) {
+            if (gt_ed.m.look.pointer[s->aux - ER_POINTER]) {
+                hex_text(gt_ed.m.look.pointer[s->aux - ER_POINTER], t);
+                snprintf(out, (size_t)n, "%s", t);
+            }
+            return 1;
+        }
         if (s->aux >= gt_ed.m.nswatch)
             return 0;
         hex_text(gt_ed.m.swatch[s->aux], t);
@@ -2580,12 +2588,6 @@ int gte_row_text(const sd_setting *s, char *out, int n)
         return 1;
     case SD_FONT:
         snprintf(out, (size_t)n, "%s", gt_ed.m.look.font[s->aux - 1]);
-        return 1;
-    case SD_STRING:
-        if (gt_ed.m.look.pointer[s->aux - 200]) {
-            hex_text(gt_ed.m.look.pointer[s->aux - 200], t);
-            snprintf(out, (size_t)n, "%s", t);
-        }
         return 1;
     case SD_INFO:
         info_text(s->aux, out, n);
@@ -2608,8 +2610,10 @@ int gte_row_label(const sd_setting *s, char *out, int n)
     if (s->store == SD_GTHEME && s->page == PG_PAGE_THEME_SCREENS)
         return se_label(s, out, n);
     if (s->kind == SD_SWATCH) {
-        snprintf(nm, sizeof nm, "%s", gt_ed.m.swatch_name[s->aux < gt_ed.m.nswatch ? s->aux : 0]);
-        label = nm;
+        if (s->aux < ER_POINTER) {
+            snprintf(nm, sizeof nm, "%s", gt_ed.m.swatch_name[s->aux < gt_ed.m.nswatch ? s->aux : 0]);
+            label = nm;
+        }
     }
     if (s->kind == SD_GACTION) {
         snprintf(out, (size_t)n, "%s", label);
@@ -2625,12 +2629,18 @@ int gte_row_label(const sd_setting *s, char *out, int n)
 
 int gte_row_set_text(const sd_setting *s, const char *text)
 {
-    int i;
     uc_u32 c = 0;
     if (s->store == SD_GTHEME && s->page == PG_PAGE_THEME_SCREENS)
         return se_set_text(s, text);
     switch (s->kind) {
     case SD_SWATCH:
+        if (s->aux >= ER_POINTER) {
+            if (*text && !hex_parse(text, &c))
+                return GTR_BAD;
+            gt_ed.m.look.pointer[s->aux - ER_POINTER] = c;
+            ed_touch();
+            return GTR_OK;
+        }
         return gte_swatch_set(s->aux, text);
     case SD_SWATCHREF:
         return gte_group_set(s->aux, s->aux2, text);
@@ -2649,13 +2659,6 @@ int gte_row_set_text(const sd_setting *s, const char *text)
         if (strlen(text) >= sizeof gt_ed.m.look.font[0])
             return GTR_BAD;
         strcpy(gt_ed.m.look.font[s->aux - 1], text);
-        ed_touch();
-        return GTR_OK;
-    case SD_STRING:
-        i = s->aux - 200;
-        if (*text && !hex_parse(text, &c))
-            return GTR_BAD;
-        gt_ed.m.look.pointer[i] = c;
         ed_touch();
         return GTR_OK;
     default:

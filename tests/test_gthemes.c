@@ -2495,6 +2495,18 @@ static void test_gthemes_te4_pickers(void)
     CHECK_STR(hex, "0a0b0c");
     CHECK_INT(lf_setting_set_colour(&io, sw, SD_PICK_CUSTOM, "nothex", &failed), LF_SET_INVALID);
     CHECK_INT(lf_setting_set_colour(&io, sw, 17, 0, &failed), LF_SET_KIND);
+    /* TI-3: Pointer Colour 1-3 are picker rows; Custom stores the literal colour in look.pointer */
+    {
+        const sd_setting *pp = 0;
+        for (i = 0; i < gte_nrows(); i++)
+            if (!strcmp(gte_row(SDI_COUNT + i)->key, "pointer1"))
+                pp = gte_row(SDI_COUNT + i);
+        CHECK(pp != 0 && SD_HAS_PICKER(pp) && gte_row_visible(pp));
+        CHECK_INT(lf_setting_set_colour(&io, pp, SD_PICK_CUSTOM, "0a0b0c", &failed), LF_SET_OK);
+        CHECK(gt_ed.m.look.pointer[1] == 0x0a0b0cUL);
+        gte_row_text(pp, buf, sizeof buf);
+        CHECK_STR(buf, "#0a0b0c");
+    }
     /* reference rows: a palette entry becomes a literal, Custom takes any reference */
     CHECK_INT(lf_setting_set_colour(&io, ref, 2, 0, &failed), LF_SET_OK);
     gte_row_text(ref, buf, sizeof buf);
