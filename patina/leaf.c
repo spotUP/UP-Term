@@ -389,6 +389,15 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
     return ok;
 }
 
+int lf_number_step(const mn_item *it, int dir)
+{
+    const sd_setting *s;
+    if (!MN_IS_SETTING(it))
+        return 0;
+    s = gte_row(it->ix);
+    return s->store == SD_GTHEME && s->kind == SD_INT && gte_row_step_dir(s, dir) == GTR_OK;
+}
+
 int lf_setting_enter(const mn_item *it, const lf_ui *ui)
 {
     const sd_setting *s;

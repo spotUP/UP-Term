@@ -388,6 +388,7 @@ int gte_row_has_default(const struct sd_setting *s);   /* TI-3: a pointer colour
 int gte_row_set_text(const struct sd_setting *s, const char *text); /* GTR_OK or GTR_BAD, GTR_* */
 int gte_row_step(const struct sd_setting *s);
 int gte_row_is_theme_name(const struct sd_setting *s); /* 1 for a Screens-page Theme / Rule Theme row: Enter steps the installed themes */
+int gte_row_step_dir(const struct sd_setting *s, int dir); /* dir < 0: a bounded number steps down (0 wraps to max); other rows refuse */
 /* A cycle row (Mode, the look cycles) to value index. */
 int gte_row_set_index(const struct sd_setting *s, int index);                    /* cycle rows, ref rows (next swatch) */
 int gte_row_label(const struct sd_setting *s, char *out, int n); /* "Label: value" */

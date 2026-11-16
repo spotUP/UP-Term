@@ -1131,14 +1131,24 @@ static void key_list(gui *g, int k, int ch)
             go_up(g);
         break;
     case K_LEFT:
-        go_up(g);
+    case K_RIGHT:
+        if (g->sel >= g->shift && g->sel < g->count) {
+            const mn_item *row = &g->it[g->idx[g->sel - g->shift]];
+            if (lf_number_step(row, k == K_RIGHT ? 1 : -1)) {   /* TI-2: a bounded number steps with the arrows */
+                keep_setting = row->ix;
+                list_rebuild(g);
+                break;
+            }
+        }
+        if (k == K_LEFT) {
+            go_up(g);
+            break;
+        }
+        if (g->sel >= g->shift && g->sel < g->count && mn_right_enters(&g->it[g->idx[g->sel - g->shift]]))
+            activate(g, 1);              /* the Return path; a leaf is not run by Right */
         break;
     case K_ENTER:
         activate(g, 0);
-        break;
-    case K_RIGHT:
-        if (g->sel >= g->shift && g->sel < g->count && mn_right_enters(&g->it[g->idx[g->sel - g->shift]]))
-            activate(g, 1);              /* the Return path; a leaf is not run by Right */
         break;
     case K_UP:
         set_sel(g, g->sel - 1);

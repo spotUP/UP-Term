@@ -444,6 +444,11 @@ static int menu_levels(const char *start)
         if (rc != 0)
             return rc;
         i = ui_hotkey();
+        if ((i == UI_HOTKEY_RIGHT || i == UI_HOTKEY_LEFT) && ui_selected() >= shift && ui_selected() < c + shift
+            && lf_number_step(&it[idx[ui_selected() - shift]], i == UI_HOTKEY_RIGHT ? 1 : -1)) {   /* TI-2: a bounded number steps with the arrows */
+            keep_ix = it[idx[ui_selected() - shift]].ix;
+            continue;
+        }
         if (i == UI_HOTKEY_RIGHT) {            /* Right enters a group or a setting with a page, as Return does */
             int s = ui_selected();
             if (s >= shift && s < c + shift && mn_right_enters(&it[idx[s - shift]]))

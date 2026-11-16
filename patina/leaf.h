@@ -276,6 +276,9 @@ int lf_open_index(const char *label, const char *path, const lf_ui *ui);
  * value), written to the file through the DOS io. A failed write goes to ui->refused. 1 when a value was
  * written (the caller rebuilds the level), 0 when not. */
 int lf_setting_enter(const mn_item *it, const lf_ui *ui);
+/* Left (dir -1) and Right (dir 1) on a Theme Editor bounded number row step it down / up (Enter steps up too). 1 when it stepped
+ * (the caller rebuilds the level), 0 when the row is not such a number, so Left keeps meaning "go back". */
+int lf_number_step(const mn_item *it, int dir);
 /* lf_setting_labels over the DOS io: the level's setting rows show their current values. */
 void lf_setting_relabel(mn_item *it, int n);
 

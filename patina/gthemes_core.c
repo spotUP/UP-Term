@@ -2677,9 +2677,17 @@ int gte_row_is_theme_name(const sd_setting *s)
 
 int gte_row_step(const sd_setting *s)
 {
+    return gte_row_step_dir(s, 1);
+}
+
+/* dir < 0 steps a bounded number down (0 wraps to max); every other row kind only steps up */
+int gte_row_step_dir(const sd_setting *s, int dir)
+{
     char t[96];
     if (s->store == SD_GTHEME && s->page == PG_PAGE_THEME_SCREENS)
         return se_step(s);
+    if (dir < 0 && s->kind != SD_INT)
+        return GTR_BAD;
     if (s->kind == SD_CYCLE && s->aux == -1) {
         gt_ed.advanced = !gt_ed.advanced;
         ed_touch();
