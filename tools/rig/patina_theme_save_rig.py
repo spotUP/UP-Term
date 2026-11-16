@@ -230,6 +230,13 @@ def theme_hex(name, key):
     return m.group(1).lower() if m else '565f89'
 
 
+def theme_roles(name):
+    """The colours 0-3 desk_palette writes for theme `name` (desk_role DK_BG, DK_MUTED, DK_FG, DK_ACCENT) as 'rrggbb',
+    printed by the host build of desk_core (desk_expect roles): the C stays the one source of the role maths."""
+    import patina_desk_rig as d
+    return d.expect(name, 'roles', []).decode().split()
+
+
 def workbench_cols():
     """Palette entries 0-3 of the Workbench screen (VTCX:Apps/bin/dripens 'cols:' line, put there by hand), as 'rrggbb' strings."""
     for l in c.run('VTCX:Apps/bin/dripens Workbench')[1].splitlines():
@@ -266,7 +273,7 @@ def wb_pens_check(name):
     if not got or int(got) < 1:
         return 'PATINA_WBPENS did not rise after picking %s (refused=%s)' % (name, refused or '-')
     # S84-WB-TITLE-PENS: role order (gthemes_core.h DK_BG, DK_MUTED, DK_FG, DK_ACCENT), the order desk_palette writes
-    want = [theme_hex(name, k) for k in ('bg', 'dim', 'fg', 'accent')]
+    want = theme_roles(name)
     cols = workbench_cols()
     print('  [INFO] %s: Workbench colours 0-3 %s, theme %s' % (name, cols, want))
     if cols != want:

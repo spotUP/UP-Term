@@ -4,6 +4,7 @@
  *   desk_expect <theme> wbpattern <depth>              (no previous file)
  *   desk_expect <theme> pointer <basefile>
  *   desk_expect <theme> font <basefile|-> <fontsdir>   (- = desk_font_default; a font counts as present when <fontsdir>/<name> exists)
+ *   desk_expect <theme> roles                          (desk_role 0..3, the colours desk_palette writes to Workbench pens 0-3: "rrggbb" per line)
  *   desk_expect - pens                                 (desk_pens slots 0..11, "pens: n n ..." like dripens; slot 11 as 2, R1.17 pen 11)
  *   desk_expect - fields <palette|wbpattern|pointer|font> <file> [ncolors]
  *       the THEMED FIELDS of a prefs file as "name value" lines (the stock editors rewrite ENV:Sys files in their own layout
@@ -167,12 +168,18 @@ int main(int argc, char **argv)
         }
         return 0;
     }
-    if (argc < 4)
+    if (argc < 3 || (argc < 4 && strcmp(argv[2], "roles")))
         return 2;
     tl = slurp(argv[1], (unsigned char *)text, sizeof text - 1);
     if (tl < 0)
         return 2;
     gt_parse(text, tl, &th);
+    if (!strcmp(argv[2], "roles")) {
+        int i;
+        for (i = DK_BG; i <= DK_ACCENT; i++)
+            printf("%06lx\n", (unsigned long)desk_role(&th, i) & 0xffffffUL);
+        return 0;
+    }
     if (!strcmp(argv[2], "palette")) {
         unsigned char pens[DK_SLOTS];
         if (argc > 4 && !strcmp(argv[4], "flat"))
