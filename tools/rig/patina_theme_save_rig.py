@@ -218,18 +218,6 @@ def theme_accent(name):
     return v >> 16, (v >> 8) & 255, v & 255
 
 
-FILE_KEY = {'bg': 'background', 'fg': 'foreground', 'dim': 'dark_foreground', 'accent': 'accent'}
-
-
-def theme_hex(name, key):
-    """The colour `key` (bg, fg, dim, accent) of the shipped theme `name` as 'rrggbb'."""
-    t = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'dist', 'patina-themes', name + '.theme')
-    with open(t, encoding='latin-1') as f:
-        m = re.search(r'^%s\s*=\s*"#([0-9a-fA-F]{6})"' % FILE_KEY[key], f.read(), re.M)
-    # gthemes_core.c: a file without dark_foreground gets the built-in dim
-    return m.group(1).lower() if m else '565f89'
-
-
 def theme_roles(name):
     """The colours 0-3 desk_palette writes for theme `name` (desk_role DK_BG, DK_MUTED, DK_FG, DK_ACCENT) as 'rrggbb',
     printed by the host build of desk_core (desk_expect roles): the C stays the one source of the role maths."""
