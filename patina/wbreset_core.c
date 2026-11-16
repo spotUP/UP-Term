@@ -48,6 +48,7 @@ int wbr_close_begin(wbr_rec *r, void *self, wbr_sig *out)
     int i, n = 0;
     r->phase = WBR_CLOSING;
     r->closes++;
+    r->closing++;
     for (i = 0; i < WBR_MAX; i++) {
         wbr_client *c = &r->c[i];
         if (c->task && c->task != self && c->has_win) {
@@ -84,11 +85,15 @@ int wbr_close_end(wbr_rec *r, int ok, int timed_out, wbr_sig *out)
 {
     if (timed_out)
         r->timeouts++;
+    if (r->closing)
+        r->closing--;
     if (ok) {
         r->phase = WBR_CLOSED;
         return 0;
     }
     r->failed++;
+    if (r->closing || r->phase == WBR_CLOSED)
+        return 0;
     r->phase = WBR_OPEN;                /* another program's window kept the Workbench: ours come back now */
     return hidden_list(r, out);
 }
@@ -100,6 +105,13 @@ int wbr_open_end(wbr_rec *r, int ok, wbr_sig *out)
     r->opens++;
     r->phase = WBR_OPEN;
     return hidden_list(r, out);
+}
+
+int wbr_seen_open(wbr_rec *r, uint32_t closes0, int listed, wbr_sig *out)
+{
+    if (r->phase != WBR_CLOSED || !listed || r->closes != closes0)
+        return 0;
+    return wbr_open_end(r, 1, out);
 }
 
 int wbr_client_step(wbr_rec *r, void *task)

@@ -674,7 +674,8 @@ int main(void)
     desk_dos_wb_close = desk_wb_close;
     desk_dos_wb_open = desk_wb_open;
     strut_patch_install();                      /* BAR-STRIP-RESERVE: no patch (error) = windows open as before */
-    wbr_patch_install();                        /* WBRESET-EXT: no patch (error) = the old behaviour */
+    if (!wbr_patch_install())                   /* WBRESET-EXT: no patch (error) = the old behaviour */
+        tick_hook(wbr_patch_poll);
     borderblank_follow();                       /* AM-BORDERBLANK: the setting read by style_load at startup */
     wbm_begin();
     g_wb_hold = tick_open_ok && wbm_check(0) == WBM_WAIT;

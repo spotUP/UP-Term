@@ -31,7 +31,7 @@ typedef struct wbr_client {
 
 typedef struct wbr_rec {
     uint16_t phase;
-    uint16_t pad;                   /* (the in-flight counter lives in the gates, see WBR_GATE_BUSY) */
+    uint16_t closing;               /* CloseWorkBench calls inside the patch now (IPrefs and DOpus overlap; S85l) */
     uint32_t closes, opens, failed, timeouts;
     int16_t diag_vis, diag_wins;    /* diagnostic: Workbench visitors / windows just before the original CloseWorkBench */
     int32_t diag_ok;                /* diagnostic: what the original CloseWorkBench returned */
@@ -56,10 +56,18 @@ int wbr_close_begin(wbr_rec *r, void *self, wbr_sig *out);
 /* Clients the patch still waits for: a listed (non-self) client that still has a window. */
 int wbr_pending(const wbr_rec *r, void *self);
 /* After the original CloseWorkBench: ok -> phase CLOSED, nothing to signal; failed -> phase OPEN and out lists
- * the hidden HIDE clients, which reopen at once. timed_out counts the waits that ran out. Returns the count. */
+ * the hidden HIDE clients, which reopen at once. timed_out counts the waits that ran out. Returns the count.
+ * S85l: a failed close changes nothing while another close is still in flight, or after one already closed the
+ * Workbench (IPrefs' close succeeds, then the close DOpus runs beside it fails on the closed screen): the clients
+ * reopening then found no Workbench and stayed closed for good. */
 int wbr_close_end(wbr_rec *r, int ok, int timed_out, wbr_sig *out);
 /* After the original OpenWorkBench: ok -> phase OPEN and out lists the hidden HIDE clients. Returns the count. */
 int wbr_open_end(wbr_rec *r, int ok, wbr_sig *out);
+/* S85L-WB-REOPEN: the Workbench came back without our OpenWorkBench (Directory Opus reopens it with LockPubScreen,
+ * or a nested CloseWorkBench ended after the open and left the phase CLOSED). listed = the Workbench screen is public
+ * in the screen list, read after closes0 = r->closes was taken; a close begun since then makes the reading stale.
+ * CLOSED + listed + no new close -> what wbr_open_end(ok) does. Returns the count in out. */
+int wbr_seen_open(wbr_rec *r, uint32_t closes0, int listed, wbr_sig *out);
 
 /* A client woke on its signal: what to do now. DO_HIDE marks it hidden (HIDE mode); the client closes its
  * windows and reports has_win 0 through wbr_set. DO_SHOW clears hidden; the client reopens. */

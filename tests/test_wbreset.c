@@ -6,11 +6,12 @@
 #include "../patina/wbreset_core.h"
 #include "harness.h"
 
-static char bar_t, gui_t, menu_t, iprefs_t;
+static char bar_t, gui_t, menu_t, iprefs_t, dopus_t;
 #define BAR ((void *)&bar_t)
 #define GUI ((void *)&gui_t)
 #define MENU ((void *)&menu_t)
 #define IPREFS ((void *)&iprefs_t)
+#define DOPUS ((void *)&dopus_t)
 #define SIG_F 0x8000UL
 #define SIG_C 0x1000UL
 
@@ -56,6 +57,66 @@ static void test_external_reset(void)
     CHECK_INT(wbr_client_step(&r, MENU), WBR_DO_NONE);
     CHECK_INT(r.closes, 1);
     CHECK_INT(r.opens, 1);
+}
+
+/* S85L-WB-REOPEN, the reported defect: apply with Directory Opus open. IPrefs closes and reopens the Workbench, then
+ * DOpus' own nested CloseWorkBench ends ok and leaves the phase CLOSED; DOpus reopens with LockPubScreen, which our
+ * OpenWorkBench hook never sees. The bar stayed hidden for good. A Workbench seen in the screen list brings it back. */
+static void test_bar_returns_after_reopen_outside_open_hook(void)
+{
+    wbr_rec r;
+    wbr_sig s[WBR_MAX];
+    uint32_t c0;
+    wbr_init(&r);
+    wbr_set(&r, BAR, SIG_F, WBR_HIDE, 1);
+    wbr_close_begin(&r, IPREFS, s);
+    CHECK_INT(wbr_client_step(&r, BAR), WBR_DO_HIDE);
+    wbr_set(&r, BAR, SIG_F, WBR_HIDE, 0);
+    wbr_close_end(&r, 1, 0, s);
+    CHECK_INT(r.phase, WBR_CLOSED);
+
+    c0 = r.closes;
+    CHECK_INT(wbr_seen_open(&r, c0, 0, s), 0);              /* not listed yet: still closed */
+    CHECK_INT(r.phase, WBR_CLOSED);
+    CHECK_INT(wbr_seen_open(&r, c0 - 1, 1, s), 0);          /* a close began after the reading: stale, ignored */
+    CHECK_INT(wbr_seen_open(&r, c0, 1, s), 1);
+    CHECK_INT(s[0].task == BAR, 1);
+    CHECK_INT(r.phase, WBR_OPEN);
+    CHECK_INT(wbr_client_step(&r, BAR), WBR_DO_SHOW);
+    CHECK_INT(wbr_seen_open(&r, r.closes, 1, s), 0);        /* open already: nothing twice */
+
+    wbr_close_begin(&r, IPREFS, s);                         /* mid-close the screen is still listed: no reopen */
+    CHECK_INT(wbr_seen_open(&r, r.closes, 1, s), 0);
+    CHECK_INT(r.phase, WBR_CLOSING);
+}
+
+/* S85l, rig 84: IPrefs and Directory Opus close the Workbench side by side. A failed close while the other is still in
+ * flight, or after the other closed the Workbench, must not wake the bar: it reopened into a closed Workbench, found no
+ * screen, and stayed gone. The bar comes back on the OpenWorkBench that follows. */
+static void test_bar_returns_after_overlapping_close_fails(void)
+{
+    wbr_rec r;
+    wbr_sig s[WBR_MAX];
+    wbr_init(&r);
+    wbr_set(&r, BAR, SIG_F, WBR_HIDE, 1);
+    wbr_close_begin(&r, IPREFS, s);
+    CHECK_INT(wbr_client_step(&r, BAR), WBR_DO_HIDE);
+    wbr_set(&r, BAR, SIG_F, WBR_HIDE, 0);
+    wbr_close_begin(&r, DOPUS, s);
+    CHECK_INT(wbr_close_end(&r, 0, 0, s), 0);               /* DOpus fails while IPrefs still closes */
+    CHECK_INT(r.phase, WBR_CLOSING);
+    CHECK_INT(wbr_client_step(&r, BAR), WBR_DO_NONE);           /* hidden, not woken */
+    wbr_close_begin(&r, DOPUS, s);
+    CHECK_INT(wbr_close_end(&r, 1, 0, s), 0);               /* IPrefs closed it */
+    CHECK_INT(wbr_close_end(&r, 0, 0, s), 0);               /* DOpus fails on the closed Workbench */
+    CHECK_INT(r.phase, WBR_CLOSED);
+    CHECK_INT(wbr_client_step(&r, BAR), WBR_DO_NONE);
+    CHECK_INT(wbr_open_end(&r, 1, s), 1);
+    CHECK_INT(wbr_client_step(&r, BAR), WBR_DO_SHOW);
+    wbr_close_begin(&r, IPREFS, s);                         /* round trip: a lone failed close still reopens the bar */
+    CHECK_INT(wbr_client_step(&r, BAR), WBR_DO_HIDE);
+    CHECK_INT(wbr_close_end(&r, 0, 0, s), 1);
+    CHECK_INT(r.phase, WBR_OPEN);
 }
 
 /* Another program's window kept the Workbench: ours reopen at once, the phase is OPEN again. */
@@ -311,7 +372,9 @@ void suite_wbreset(void)
 {
     test_reset_bound_table();
     test_external_reset();
+    test_bar_returns_after_reopen_outside_open_hook();
     test_failed_close();
+    test_bar_returns_after_overlapping_close_fails();
     test_retry_while_reopening();
     test_self_and_idle();
     test_table();

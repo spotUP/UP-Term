@@ -23,5 +23,7 @@ void wbr_client_drop(void);
 /* Patina only. 0 = installed; the patch stays off (and Patina runs as before) on any error. */
 int wbr_patch_install(void);
 void wbr_patch_remove(void);
+/* The tick hook: a Workbench reopened outside OpenWorkBench brings the hidden clients back (S85L-WB-REOPEN). */
+void wbr_patch_poll(long now);
 
 #endif

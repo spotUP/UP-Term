@@ -18,6 +18,7 @@
 #include "libpatch.h"
 #include "ipatch.h"
 #include "sentinel_dos.h"
+#include "../handler/pubscr.h"
 
 extern struct IntuitionBase *IntuitionBase;
 
@@ -151,6 +152,28 @@ int wbr_patch_install(void)
         return -5;
     }
     return 0;
+}
+
+/* S85L-WB-REOPEN, from Patina's 1 s tick: a Workbench reopened outside our OpenWorkBench (Directory Opus' LockPubScreen,
+ * or a nested close that ended after the open) brings the hidden clients back. Read under the list lock only: never
+ * LockPubScreen("Workbench") here, Intuition would reopen it (iconpen_dos.h). */
+void wbr_patch_poll(long now)
+{
+    wbr_sig s[WBR_MAX];
+    struct PubScreenNode *pn;
+    uint32_t c0;
+    int listed, n;
+    (void)now;
+    if (!g_pub || g_pub->rec.phase != WBR_CLOSED)
+        return;
+    c0 = g_pub->rec.closes;
+    pn = pubscr_node_in(LockPubScreenList(), "Workbench");
+    listed = pn && pn->psn_Screen && !(pn->psn_Flags & PSNF_PRIVATE);
+    UnlockPubScreenList();
+    Forbid();
+    n = wbr_seen_open(&g_pub->rec, c0, listed, s);
+    signal_all(s, n);
+    Permit();
 }
 
 void wbr_patch_remove(void)
