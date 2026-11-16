@@ -68,6 +68,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   --own-screen also writes the saved environment that puts DOpus on its own 1344x1080 screen (DOPUS.1)
   rig.py clear    remove this rig's build/rig<N> folder (rig 1 only with --rig1); refused while its fs-uae runs (stop it first); retried, [ERROR] if it stays
   rig.py status   is it up (wasabid ping)
+  rig.py upterm-sync [--check]   programs in the rig's real UP-Term:bin vs build/amiga: --check prints [WARN] N stale or [OK]; else puts the build copies and reads back (start runs the check)
   rig.py start --mmu   the 68060 with an MMU (slower, no JIT), for MuForce
   rig.py start --no-jit   the same machine with the JIT compiler off and no MMU added (JIT bug or guest bug?)
   rig.py muforce on|off|log   MuForce crash reports on the rig (tools/rig/muforce.py)
@@ -2473,6 +2474,7 @@ def _start(retries):
                 sys.exit("rig: the boot printed %d error line(s) (see boot.console in the rig's boot drawer)" % len(bad))
             guard_shell_startup()
             guard_upterm_assign()
+            warn_upterm_stale()
             rigwasabi.warn_guru()
             start_watchdog()
             if M060:
@@ -2539,6 +2541,55 @@ def upterm_assign_cmds(user_startup):
     else the rig's UPTERM_ASSIGN fallback (VTC:Apps)."""
     a = upterm_assign(user_startup)
     return ['Assign >NIL: UP-Term: "%s:%s"' % a] if a else ["Assign >NIL: UP-Term: VTC:" + paths.UPTERM_DRAWER]
+
+def stale_names(built, remote_bytes):
+    """Names of the files in `built` whose copy on the rig (remote_bytes(name): bytes, None when not installed there)
+    differs. A program the rig does not hold is not stale: nothing runs it."""
+    out = []
+    for f in sorted(built.iterdir()):
+        if f.is_file():
+            r = remote_bytes(f.name)
+            if r is not None and r != f.read_bytes():
+                out.append(f.name)
+    return out
+
+def upterm_bin():
+    """The running rig's real UP-Term:bin, resolved from `Assign UP-Term: EXISTS` (patina_gui_rig.kit_upterm_dir), not assumed.
+    3.1 kit rigs run programs from there (Rushhours:Tools/UP-Term/bin), which build_drift (host VTC: only) never sees."""
+    import struct
+    import ami
+    from patina_gui_rig import kit_upterm_dir
+    out = ami.req(0x02, struct.pack(">H", 30) + b"Assign UP-Term: EXISTS", 60)[4:].decode("latin-1")
+    return kit_upterm_dir(out).rstrip("/") + "/bin"
+
+def upterm_sync(check=False):
+    """rig.py upterm-sync [--check]: the build/amiga programs in the rig's UP-Term:bin against the build. --check prints
+    [WARN] N stale in <path>: names, or [OK]. Without it the build copies are put there and read back (rc 1 if one differs).
+    Rig 84 ran a fixed Patina beside pre-fix patina-gui and patina-menu out of this drawer, nothing warned."""
+    import ami
+    built = ROOT / "build/amiga"
+    d = upterm_bin()
+    stale = stale_names(built, lambda n: ami.read_file(d + "/" + n))
+    if check or not stale:
+        print("[WARN] %d stale in %s: %s" % (len(stale), d, ", ".join(stale)) if stale else "[OK] %s matches build/amiga" % d)
+        return stale
+    ensure_built([built / n for n in stale])
+    for n in stale:
+        ami.put(str(built / n), d + "/" + n)
+    bad = stale_names(built, lambda n: ami.read_file(d + "/" + n) if n in stale else None)
+    print("[ERROR] still differs in %s: %s" % (d, ", ".join(bad)) if bad else "[OK] put %d into %s: %s" % (len(stale), d, ", ".join(stale)))
+    if bad:
+        sys.exit(1)
+    return stale
+
+def warn_upterm_stale():
+    try:
+        upterm_sync(check=True)
+    except BaseException as e:   # warn only: a failed look never fails the start
+        print("[WARN] rig: UP-Term:bin staleness check failed: %s" % e)
+
+def upterm_sync_command():
+    upterm_sync(check="--check" in sys.argv[2:])
 
 def guard_upterm_assign():
     """S85: rig 84 booted with UP-Term: and lost it later, so Patina read no themes. After the boot, a missing assign is
@@ -3250,7 +3301,7 @@ def main(argv):
     """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
     cmds = {"setup": setup, "start": start, "stop": stop_command, "clear": clear, "gc": gc, "reboot": reboot, "install": install, "kit-restore": kit_restore,
-            "status": status, "logwatch": logwatch, "serialwatch": serialwatch, "muforce": muforce, "dbg": dbg, "dbgbreak": dbgbreak, "watchdog": watchdog, "hold": hold, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
+            "status": status, "upterm-sync": upterm_sync_command, "logwatch": logwatch, "serialwatch": serialwatch, "muforce": muforce, "dbg": dbg, "dbgbreak": dbgbreak, "watchdog": watchdog, "hold": hold, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
             "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg"), "dopus": dopus}
     helps = ("--help", "-h", "help", "?")
     if len(argv) > 1 and (argv[1] in helps or (argv[1] in cmds and any(a in helps for a in argv[2:]))):
