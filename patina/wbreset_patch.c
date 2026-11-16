@@ -33,7 +33,7 @@ static void signal_all(const wbr_sig *s, int n)
 }
 
 /* Diagnostic (WBRESET-EXT 3.1): the Workbench public screen's visitors and windows just before the original runs. */
-static void diag_census(void)
+static int diag_census(void)
 {
     struct List *pl = LockPubScreenList();
     struct PubScreenNode *n;
@@ -49,6 +49,7 @@ static void diag_census(void)
     UnlockPubScreenList();
     g_pub->rec.diag_vis = (int16_t)v;
     g_pub->rec.diag_wins = (int16_t)k;
+    return k;
 }
 
 /* Runs on the caller (IPrefs after a prefs USE, or any program). Never waits inside Forbid, never on its own task. */
@@ -56,7 +57,7 @@ static LONG close_hook(__reg("a6") struct Library *ib)
 {
     wbr_sig s[WBR_MAX];
     struct Task *me = FindTask(0);
-    int n, t, timed = 0;
+    int n, t, wins, timed = 0;
     LONG ok;
     Forbid();
     n = wbr_close_begin(&g_pub->rec, me, s);
@@ -73,8 +74,18 @@ static LONG close_hook(__reg("a6") struct Library *ib)
         }
         timed = n != 0;
     }
-    diag_census();
+    wins = diag_census();
     ok = ((wbfn)ipatch_saved(&g_pc))(ib);
+    /* 3.1 with Directory Opus: DOpus closes its windows only after this call fails (its own patch notifies it
+     * asynchronously), then calls CloseWorkBench itself. Retry so the caller's close lands once DOpus is gone: without
+     * it IPrefs shows "close all windows except drawers" (rig 84, S85k). Phase stays CLOSING meanwhile, so our hidden
+     * clients do not reopen into the race. Only when windows held the screen open: on a closed Workbench the original
+     * fails for good, and retrying there stalled every boot (DOpus' start-up close, rig 84 2 of 2). */
+    if (wins > 0 && me->tc_Node.ln_Type == NT_PROCESS)
+        for (t = 0; !ok && t < WBR_RETRY_TICKS; t += 10) {
+            Delay(10);
+            ok = ((wbfn)ipatch_saved(&g_pc))(ib);
+        }
     g_pub->rec.diag_ok = ok;
     Forbid();
     n = wbr_close_end(&g_pub->rec, ok != 0, timed, s);

@@ -357,7 +357,10 @@ int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char
         return 0;
     /* a DOpus on the Workbench screen shares Workbench's palette: set palette would not reach it (it only recolours
      * Opus's own screen), and the Workbench pens are set by wb_pens_apply instead */
-    if (send(DOPUS_PORT, "dopus screen", reply, (int)sizeof reply, ud) == -1)
+    /* -1: no DOpus. Any other failure: Opus has no screen, its display is closed for a Workbench reset (dopus5
+     * rexx_dopus.c:228). An empty reply must not read as "own screen": its `refresh all` reopens the display under the
+     * reset and leaves GUIF_CLOSE_PENDING set (event_loop.c:617), so Opus ignores every later Workbench close (S85k). */
+    if (send(DOPUS_PORT, "dopus screen", reply, (int)sizeof reply, ud) != 0)
         return sent;
     on_wb = dopus_on_workbench(reply);
     /* DT-3: the set for this screen (font height and pixel aspect) and DT-9 icon-style, DT-2: its brushes in the theme's blend, then the switch */

@@ -428,6 +428,17 @@ static long dk_dopus_send(const char *port, const char *line, char *result, int 
     return rexx_send(port, line, result, cap);
 }
 
+/* S85k: after a Workbench reset Directory Opus reopens its display on its own 1 s timer (dopus5 event_loop.c:924); until then its
+ * screen query fails and dopus_theme_send sends nothing. Wait for the display (at most DK_RESET_SECS), then send the theme. */
+static void dk_dopus_theme(const gtheme *th)
+{
+    char reply[160];
+    int i;
+    for (i = 0; i < DK_RESET_SECS * 4 && rexx_send(DOPUS_PORT, "dopus screen", reply, sizeof reply) > 0; i++)
+        Delay(12);
+    dopus_theme_send(th, dk_dopus_send, 0, &dopustb_dos_ops);
+}
+
 /* B7 new listers: the commodity's tick (DESK_DOPUS_FOLLOW_SECS) gives the listers opened after a theme apply the flat toolbar. Only with the
  * desktop theme switched on (the same palette/flat-pens gate as the start apply) and only when the DOpus port exists: no ARexx traffic
  * otherwise. The recoloured brushes and the set were written by the apply; this only switches the new listers to the screen's set. */
@@ -559,7 +570,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
         dk_live_want = 1;
         dk_live_flat = flat_pens;
         desk_dos_dopus_sends++;
-        dopus_theme_send(th, dk_dopus_send, 0, &dopustb_dos_ops);
+        dk_dopus_theme(th);
     }
     if (mask & (1u << DT_WBPATTERN)) {
         plen = dk_read("ENV:Sys/wbpattern.prefs", prev, sizeof prev);
@@ -954,7 +965,7 @@ static int dk_flat_pens(const gtheme *th)
     }
     if (theme && len > 0) {
         desk_dos_dopus_sends++;
-        dopus_theme_send(th, dk_dopus_send, 0, &dopustb_dos_ops);
+        dk_dopus_theme(th);
         return 1;
     }
     return 0;
@@ -1840,7 +1851,7 @@ int desk_dos_start_apply(void)
         dk_live_want = 1;
         dk_live_flat = flat;
         desk_dos_dopus_sends++;
-        dopus_theme_send(&th, dk_dopus_send, 0, &dopustb_dos_ops);
+        dk_dopus_theme(&th);
     }
     if (plan & DESK_START_POINTER) {
         dk_orig_save(1u << DT_POINTER, 0);

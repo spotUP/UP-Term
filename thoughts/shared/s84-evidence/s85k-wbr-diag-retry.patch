@@ -1,0 +1,127 @@
+diff --git a/patina/wbreset_core.h b/patina/wbreset_core.h
+index 0bdf2145..ec5bf97a 100644
+--- a/patina/wbreset_core.h
++++ b/patina/wbreset_core.h
+@@ -12,6 +12,7 @@
+ #define WBR_SEM_NAME "Patina.WBReset"
+ #define WBR_MAX 8
+ #define WBR_WAIT_TICKS 150          /* the patch waits at most 3 s for the clients to close their windows */
++#define WBR_RETRY_TICKS 100         /* a failed original is retried every 10 ticks for at most 2 s */
+ #define WBR_LVO_CLOSEWB (-78)       /* intuition CloseWorkBench() */
+ #define WBR_LVO_OPENWB (-210)       /* intuition OpenWorkBench() */
+ 
+diff --git a/patina/wbreset_patch.c b/patina/wbreset_patch.c
+index 79c5c9e1..aafaf2b8 100644
+--- a/patina/wbreset_patch.c
++++ b/patina/wbreset_patch.c
+@@ -13,6 +13,7 @@
+ #include <intuition/screens.h>
+ #include <proto/intuition.h>
+ #include <string.h>
++#include <stdio.h>
+ #include "wbreset.h"
+ #include "flat_core.h"
+ #include "libpatch.h"
+@@ -51,6 +52,75 @@ static void diag_census(void)
+     g_pub->rec.diag_wins = (int16_t)k;
+ }
+ 
++static void copy_name(char *d, const char *s, int n)
++{
++    if (!s)
++        s = "(null)";
++    strncpy(d, s, n - 1);
++    d[n - 1] = 0;
++}
++
++/* Diagnostic (S85k blocker census): the first Workbench window that breaks Directory Opus' check_closescreen rule
++ * (dopus5 Program/misc.c:441), and who sits on top of the CloseWorkBench vector. Caller must be a process. */
++static void diag_blocker(void)
++{
++    struct List *pl = LockPubScreenList();
++    struct PubScreenNode *n;
++    struct Window *w;
++    char title[48], task[48];
++    const char *tn;
++    int bad = 0;
++    title[0] = task[0] = 0;
++    for (n = (struct PubScreenNode *)pl->lh_Head; n->psn_Node.ln_Succ; n = (struct PubScreenNode *)n->psn_Node.ln_Succ)
++        if (n->psn_Node.ln_Name && !strcmp(n->psn_Node.ln_Name, "Workbench") && n->psn_Screen)
++            for (w = n->psn_Screen->FirstWindow; w; w = w->NextWindow) {
++                tn = w->UserPort && w->UserPort->mp_SigTask
++                    ? ((struct Task *)w->UserPort->mp_SigTask)->tc_Node.ln_Name : 0;
++                if ((w->Flags & 0x02000000) || (tn && (!strncmp(tn, "dopus", 5) || !strncmp(tn, "DOpus", 5)
++                                                     || !strcmp(tn, "\xab IPrefs \xbb"))))
++                    continue;
++                if (!bad++) {
++                    copy_name(title, (const char *)w->Title, sizeof title);
++                    copy_name(task, w->UserPort ? tn : "(no UserPort)", sizeof task);
++                }
++            }
++    UnlockPubScreenList();
++    am_sentinel("PATINA_WBR_BLOCKERS", bad);
++    am_sentinel_str("PATINA_WBR_BLOCKER", bad ? title : "-");
++    am_sentinel_str("PATINA_WBR_BLOCKER_TASK", bad ? task : "-");
++    am_sentinel("PATINA_WBR_TOP_OURS", *g_pc.slot == (uintptr_t)g_pc.gate);
++    am_sentinel("PATINA_WBR_TOP", (long)*g_pc.slot);
++    am_sentinel("PATINA_WBR_SAVED", (long)ipatch_saved(&g_pc));
++}
++
++/* Diagnostic (S85k): one line per close, ENV:PATINA_WBR_C<n> = caller task, result, retries, Workbench visitors,
++ * windows left (all / DOpus-owned). Read after the original's last try. */
++static void diag_call(long n, struct Task *me, LONG ok, int retries)
++{
++    struct List *pl = LockPubScreenList();
++    struct PubScreenNode *p;
++    struct Window *w;
++    const char *tn;
++    char name[24], line[96];
++    int v = -1, k = 0, d = 0;
++    for (p = (struct PubScreenNode *)pl->lh_Head; p->psn_Node.ln_Succ; p = (struct PubScreenNode *)p->psn_Node.ln_Succ)
++        if (p->psn_Node.ln_Name && !strcmp(p->psn_Node.ln_Name, "Workbench")) {
++            v = p->psn_VisitorCount;
++            if (p->psn_Screen)
++                for (w = p->psn_Screen->FirstWindow; w; w = w->NextWindow) {
++                    k++;
++                    tn = w->UserPort && w->UserPort->mp_SigTask
++                        ? ((struct Task *)w->UserPort->mp_SigTask)->tc_Node.ln_Name : 0;
++                    d += tn && (!strncmp(tn, "dopus", 5) || !strncmp(tn, "DOpus", 5));
++                }
++        }
++    UnlockPubScreenList();
++    copy_name(name, me->tc_Node.ln_Name, sizeof name);
++    sprintf(line, "%s ok=%ld retries=%d vis=%d wins=%d dopus=%d", name, (long)ok, retries, v, k, d);
++    sprintf(name, "PATINA_WBR_C%ld", n);
++    am_sentinel_str(name, line);
++}
++
+ /* Runs on the caller (IPrefs after a prefs USE, or any program). Never waits inside Forbid, never on its own task. */
+ static LONG close_hook(__reg("a6") struct Library *ib)
+ {
+@@ -74,8 +144,26 @@ static LONG close_hook(__reg("a6") struct Library *ib)
+         timed = n != 0;
+     }
+     diag_census();
++    if (me->tc_Node.ln_Type == NT_PROCESS)
++        diag_blocker();
+     ok = ((wbfn)ipatch_saved(&g_pc))(ib);
++    /* 3.1 with Directory Opus: DOpus closes its windows only after this call fails (its own patch notifies it
++     * asynchronously), then calls CloseWorkBench itself. Retry until that close lands or the WB is free; on an
++     * already closed Workbench the original returns TRUE, so IPrefs never shows its requester. Phase stays
++     * CLOSING meanwhile, so our hidden clients do not reopen into the race. */
++    if (me->tc_Node.ln_Type == NT_PROCESS)
++        for (t = 0; !ok && t < WBR_RETRY_TICKS; t += 10) {
++            Delay(10);
++            ok = ((wbfn)ipatch_saved(&g_pc))(ib);
++        }
+     g_pub->rec.diag_ok = ok;
++    if (me->tc_Node.ln_Type == NT_PROCESS) {   /* S85k: which close failed (apply or revert) and after how many retries */
++        static long calls;
++        am_sentinel("PATINA_WBR_CALLS", ++calls);
++        am_sentinel("PATINA_WBR_OK", ok != 0);
++        am_sentinel("PATINA_WBR_RETRIES", t / 10);
++        diag_call(calls, me, ok, t / 10);
++    }
+     Forbid();
+     n = wbr_close_end(&g_pub->rec, ok != 0, timed, s);
+     signal_all(s, n);

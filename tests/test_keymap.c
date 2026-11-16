@@ -4016,6 +4016,7 @@ static void dopus_theme_commands_use_the_theme_directly(void)
 
 typedef struct {
     int n, absent;
+    int closed;           /* Opus's display closed for a Workbench reset: "dopus screen" fails with RXERR_INVALID_QUERY */
     const char *screen;   /* the reply to "dopus screen" */
     const char *all;      /* the reply to "lister query all": the handles, "1 2 3" */
     char tb[4][64];       /* toolbar path of handle 1..3 (index 1..3); "lister set N toolbar P" stores P */
@@ -4035,6 +4036,8 @@ static long dopus_fake_send(const char *port, const char *line, char *result, in
     r->n++;
     if (r->absent)
         return -1;
+    if (r->closed && strcmp(line, "dopus screen") == 0)
+        return 5;
     if (strcmp(line, "lister query all") == 0)
         reply = r->all ? r->all : "";
     else if (sscanf(line, "lister query %d toolbar", &h) == 1 && h >= 1 && h <= 3)
@@ -4089,6 +4092,12 @@ static void dopus_theme_send_goes_to_the_dopus_port(void)
     /* Directory Opus not running: one attempt, then stop */
     memset(&r, 0, sizeof r);
     r.absent = 1;
+    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r, 0), 1L);
+    CHECK_INT((long)r.n, 1L);
+
+    /* S85k: Opus's display closed under a Workbench reset: no refresh into it, the screen query is the only line */
+    memset(&r, 0, sizeof r);
+    r.closed = 1;
     CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r, 0), 1L);
     CHECK_INT((long)r.n, 1L);
 

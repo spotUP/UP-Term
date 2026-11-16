@@ -12,6 +12,7 @@
 #define WBR_SEM_NAME "Patina.WBReset"
 #define WBR_MAX 8
 #define WBR_WAIT_TICKS 150          /* the patch waits at most 3 s for the clients to close their windows */
+#define WBR_RETRY_TICKS 100         /* a failed original is retried every 10 ticks for at most 2 s */
 #define WBR_LVO_CLOSEWB (-78)       /* intuition CloseWorkBench() */
 #define WBR_LVO_OPENWB (-210)       /* intuition OpenWorkBench() */
 
