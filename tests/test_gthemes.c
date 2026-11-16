@@ -311,7 +311,7 @@ static void test_gthemes_roles(void)
             char out[512], want[64];
             uc_u32 wb[WB_PENS];
             CHECK(t.accent != t.bg);
-            CHECK(dopus_theme_commands(&t, out, sizeof out, 1) > 0);
+            CHECK(dopus_theme_commands(&t, out, sizeof out, 1, 0) > 0);
             snprintf(want, sizeof want, "dopus set palette 0x%06lx 0x%06lx 0x%06lx 0x%06lx\n", (unsigned long)t.bg,
                      (unsigned long)t.fg, (unsigned long)t.muted, (unsigned long)t.accent);
             CHECK(strstr(out, want) == out);

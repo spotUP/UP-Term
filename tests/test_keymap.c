@@ -3006,6 +3006,7 @@ static void dopus_lister_info_bars_are_never_filled_bars(void);
 static void dopus_theme_send_goes_to_the_dopus_port(void);
 static void dopus_theme_send_switches_only_a_default_toolbar(void);
 static void dopus_theme_send_picks_the_set_and_recolours(void);
+static void dopus_theme_send_follows_the_lister_font(void);
 static void dopus_toolbar_follow_switches_only_new_listers(void);
 static void wb_pens_contrast_guard(void);
 static void minimal_mode_reaches_the_program(void);
@@ -3733,6 +3734,7 @@ void suite_keymap(void)
     dopus_theme_send_goes_to_the_dopus_port();
     dopus_theme_send_switches_only_a_default_toolbar();
     dopus_theme_send_picks_the_set_and_recolours();
+    dopus_theme_send_follows_the_lister_font();
     dopus_toolbar_follow_switches_only_new_listers();
     wb_pens_contrast_guard();
     minimal_mode_reaches_the_program();
@@ -3960,7 +3962,7 @@ static void dopus_lister_info_bars_are_never_filled_bars(void)
     gtheme th;
     char buf[512];
     gt_builtin(&th);
-    CHECK(dopus_theme_commands(&th, buf, sizeof buf, 0) > 0);
+    CHECK(dopus_theme_commands(&th, buf, sizeof buf, 0, 0) > 0);
     CHECK(strstr(buf, "dopus set pens source 3 0\n") != NULL);
     CHECK(strstr(buf, "dopus set pens dest 2 0\n") != NULL);
     CHECK(strstr(buf, "dopus set pens source 0 3\n") == NULL);
@@ -3992,26 +3994,33 @@ static void dopus_theme_commands_use_the_theme_directly(void)
     /* D14: the Directory Opus listers take the theme's own surface/text/muted/accent roles, not the menu roles */
     gt_builtin(&th);
     snprintf(want, sizeof want, "dopus set palette 0x1a1b26 0xa9b1d6 0x414868 0x7aa2f7\n%s%s", pens, own_end);
-    n = dopus_theme_commands(&th, buf, sizeof buf, 1);
+    n = dopus_theme_commands(&th, buf, sizeof buf, 1, 0);
     CHECK_INT((long)n, (long)strlen(want));
     CHECK_STR(buf, want);
     /* without the palette (Opus on the Workbench screen): the pens only, one key per line */
-    n = dopus_theme_commands(&th, buf, sizeof buf, 0);
+    n = dopus_theme_commands(&th, buf, sizeof buf, 0, 0);
     snprintf(want, sizeof want, "%s%s", pens, wb_end);
     CHECK_INT((long)n, (long)strlen(want));
     CHECK_STR(buf, want);
 
+    /* B8c: a lister font is set before the pens (rexx_dopus.c:688 `set font listers <name> <size>`) and needs `refresh all` even on the Workbench screen */
+    n = dopus_theme_commands(&th, buf, sizeof buf, 0, "helvetica.font 11");
+    snprintf(want, sizeof want, "dopus set font listers helvetica.font 11\n%s%s", pens, own_end);
+    CHECK_INT((long)n, (long)strlen(want));
+    CHECK_STR(buf, want);
+    CHECK_INT((long)dopus_theme_commands(&th, tight, sizeof tight, 0, "helvetica.font 11"), 0L);
+
     /* a colour above 24 bits (0x01RRGGBB leaked in), a missing theme, too small a buffer: 0 and an empty string */
     th.muted = 0x01000000UL;
     strcpy(buf, "x");
-    CHECK_INT((long)dopus_theme_commands(&th, buf, sizeof buf, 1), 0L);
+    CHECK_INT((long)dopus_theme_commands(&th, buf, sizeof buf, 1, 0), 0L);
     CHECK_STR(buf, "");
-    CHECK_INT((long)dopus_theme_commands(0, buf, sizeof buf, 1), 0L);
+    CHECK_INT((long)dopus_theme_commands(0, buf, sizeof buf, 1, 0), 0L);
     gt_builtin(&th);
-    CHECK_INT((long)dopus_theme_commands(&th, tight, sizeof tight, 1), 0L);
-    n = dopus_theme_commands(&th, buf, sizeof buf, 1);
-    CHECK_INT((long)dopus_theme_commands(&th, buf, n, 1), 0L);
-    CHECK_INT((long)dopus_theme_commands(&th, buf, n + 1, 1), (long)n);
+    CHECK_INT((long)dopus_theme_commands(&th, tight, sizeof tight, 1, 0), 0L);
+    n = dopus_theme_commands(&th, buf, sizeof buf, 1, 0);
+    CHECK_INT((long)dopus_theme_commands(&th, buf, n, 1, 0), 0L);
+    CHECK_INT((long)dopus_theme_commands(&th, buf, n + 1, 1, 0), (long)n);
 }
 
 typedef struct {
@@ -4232,6 +4241,56 @@ static int dopus_tb_recolour(const char *set, const unsigned char rgb[8][3], voi
 
 /* DT-3, DT-4, DT-9 through the entry point: the screen's font and aspect and the icon-style setting pick the bank, the recolour gets that set and the theme's CMAP
  * (dt_cmap), a lister on another of our banks is moved, one already on the picked bank is set again only when brushes changed */
+static int font_present(void *ud, const char *name)
+{
+    (void)ud;
+    return strcmp(name, "missing.font") != 0;
+}
+
+static int sent_line(const dopus_rec *r, const char *line)
+{
+    int i;
+    for (i = 0; i < r->n && i < 32; i++)
+        if (strcmp(r->line[i], line) == 0)
+            return 1;
+    return 0;
+}
+
+/* B8c: the lister font is the theme's icon font (the WBFONT of font.prefs); refresh all only when it changed since the last send */
+static void dopus_theme_send_follows_the_lister_font(void)
+{
+    gtheme th;
+    dopus_rec r;
+    dopus_tbrec t;
+    dopus_tb_ops ops;
+    am_prefs prefs;
+    int i;
+    static const char *const font[4] = { "lister1.font", "lister1.font", "lister2.font", "missing.font" };
+
+    gt_builtin(&th);
+    amconf_defaults(&prefs);
+    ops.screen = dopus_tb_screen;
+    ops.recolour = dopus_tb_recolour;
+    ops.outline = dopus_tb_outline;
+    ops.font_exists = font_present;
+    ops.ud = &t;
+    for (i = 0; i < 4; i++) {
+        char want[64];
+        int sets = i == 0 || i == 2;   /* first apply and a different font set it; the same font again and a missing font do not */
+        strcpy(th.font, font[i]);
+        memset(&t, 0, sizeof t);
+        t.prefs = &prefs;
+        t.font_h = 8;
+        t.rx = t.ry = 1;
+        memset(&r, 0, sizeof r);
+        r.screen = "Workbench 800 600 4 0";
+        dopus_theme_send(&th, dopus_fake_send, &r, &ops);
+        snprintf(want, sizeof want, "dopus set font listers %s", font[i]);
+        CHECK_INT(sent_line(&r, want), sets);
+        CHECK_STR(r.line[r.n - 1], sets ? "dopus refresh all" : "dopus refresh lister");
+    }
+}
+
 static void dopus_theme_send_picks_the_set_and_recolours(void)
 {
     gtheme th;
@@ -4248,6 +4307,7 @@ static void dopus_theme_send_picks_the_set_and_recolours(void)
     ops.screen = dopus_tb_screen;
     ops.recolour = dopus_tb_recolour;
     ops.outline = dopus_tb_outline;
+    ops.font_exists = 0;
     ops.ud = &t;
 
     memset(&t, 0, sizeof t);

@@ -15,6 +15,7 @@
 #include <proto/graphics.h>
 #include "dopustb_dos.h"
 #include "dopustb_core.h"
+#include "desk_dos.h"
 #include "menu_font.h"
 #include "rexx_host.h"
 #include "amconf_core.h"
@@ -134,4 +135,4 @@ static int dtd_outline(void *ud)
     return outline;
 }
 
-const dopus_tb_ops dopustb_dos_ops = { dtd_screen, dtd_recolour, dtd_outline, 0 };
+const dopus_tb_ops dopustb_dos_ops = { dtd_screen, dtd_recolour, dtd_outline, desk_dos_font_exists, 0 };

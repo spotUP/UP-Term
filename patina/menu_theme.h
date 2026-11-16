@@ -82,7 +82,7 @@ void menu_theme_ink(uc_u32 out[MT_ROLES], const uc_u32 rgb[MT_ROLES], const uc_u
  * Workbench screen the palette is Workbench's, see wb_pens_plan). Every line ends in a newline; then a NUL.
  * Returns the length written (without the NUL), or 0 when th is NULL, a colour is above 0xFFFFFF, or cap is too
  * small (out[0] is then 0 when cap is at least 1). */
-unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int palette);
+unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int palette, const char *font);
 
 /* Directory Opus's ARexx port */
 #define DOPUS_PORT "DOPUS.1"
@@ -101,6 +101,7 @@ typedef struct {
     int (*screen)(unsigned *font_h, int *rx, int *ry, void *ud);
     int (*recolour)(const char *set, const unsigned char rgb[8][3], void *ud);
     int (*outline)(void *ud);
+    int (*font_exists)(void *ud, const char *name);   /* 1 when FONTS: holds the font; NULL = the lister font is left alone */
     void *ud;
 } dopus_tb_ops;
 

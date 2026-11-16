@@ -54,7 +54,7 @@ static int dk_write(const char *path, const unsigned char *buf, long len)
     return put == len;
 }
 
-static int dk_font_exists(void *ctx, const char *name)
+int desk_dos_font_exists(void *ctx, const char *name)
 {
     char path[160];
     BPTR l;
@@ -539,14 +539,24 @@ static int dk_pic_ask, dk_pic_answer = -1;
 /* Under Directory Opus as Workbench the desktop picture is DOpus's own, not wbpattern.prefs: the same question covers it. The path is kept in
  * T:patina-revert/dopuspic so Revert (another process) can put it back. */
 #define DK_DOPUSPIC DK_REVERT "/dopuspic"
-static char dk_dopus_pic[160];
+/* B8c: the lister background is a second DOpus picture; the one question and the one revert save cover both. Without a picture a lister
+ * is flat pen 0, which is the theme surface once the palette is written. */
+#define DK_DOPUSLPIC DK_REVERT "/dopuslpic"
+static const struct { const char *name, *file; } dk_dopus_bg[2] = { { "desktop", DK_DOPUSPIC }, { "lister", DK_DOPUSLPIC } };
+static char dk_dopus_pic[2][160];
 static int dk_dopus_has_picture(void)
 {
-    char reply[200];
-    dk_dopus_pic[0] = 0;
-    if (!rexx_port_exists(DOPUS_PORT) || rexx_send(DOPUS_PORT, "dopus query background desktop", reply, sizeof reply) < 0)
+    char reply[200], line[48];
+    int i, found = 0;
+    dk_dopus_pic[0][0] = dk_dopus_pic[1][0] = 0;
+    if (!rexx_port_exists(DOPUS_PORT))
         return 0;
-    return desk_dopus_picture_parse(reply, dk_dopus_pic, sizeof dk_dopus_pic) > 0;
+    for (i = 0; i < 2; i++) {
+        sprintf(line, "dopus query background %s", dk_dopus_bg[i].name);
+        if (rexx_send(DOPUS_PORT, line, reply, sizeof reply) >= 0 && desk_dopus_picture_parse(reply, dk_dopus_pic[i], sizeof dk_dopus_pic[i]) > 0)
+            found = 1;
+    }
+    return found;
 }
 
 static int dk_pic_keep(const unsigned char *prev, long plen)
@@ -680,7 +690,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
             len = dk_read("ENVARC:Sys/font.prefs", buf, sizeof buf);
         if (len <= 0)
             len = desk_font_default(buf, sizeof buf);
-        if (len > 0 && desk_font_pens(buf, len, icon_text) >= 0 && desk_font_name(th, buf, len, dk_font_exists, 0) >= 0) {
+        if (len > 0 && desk_font_pens(buf, len, icon_text) >= 0 && desk_font_name(th, buf, len, desk_dos_font_exists, 0) >= 0) {
             ok &= dk_put("Font", DK_WORK "/font.prefs", buf, len);
             if (reset || old_ws)
                 dk_wait_iprefs(idle); /* the Font editor resets the Workbench screen too (3.1: twice): the windows return after it */
@@ -1387,13 +1397,20 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     dk_live_want = 0;
     dk_pic_ask = 1;
     dk_pic_answer = -1;
-    dk_dopus_pic[0] = 0;
+    dk_dopus_pic[0][0] = dk_dopus_pic[1][0] = 0;
     r = dk_apply(th, why, cap);
     if (!(r > 0 && (r & (1 << DT_PALETTE))) && dk_flat_pens(th) && r >= 0)
         r |= 1 << DT_PALETTE;   /* the theme colours are in the palette and DOpus has them: no wb_pens_apply */
-    if (dk_pic_answer == 0 && dk_dopus_pic[0]) {   /* "Use theme colour": the palette and pattern are written, now DOpus drops its picture */
-        dk_write(DK_DOPUSPIC, (const unsigned char *)dk_dopus_pic, (long)strlen(dk_dopus_pic));
-        rexx_send(DOPUS_PORT, "dopus clear background desktop", 0, 0);
+    if (dk_pic_answer == 0 && (dk_dopus_pic[0][0] || dk_dopus_pic[1][0])) {   /* "Use theme colour": the palette and pattern are written, now DOpus drops its pictures */
+        int i;
+        for (i = 0; i < 2; i++) {
+            char line[48];
+            if (!dk_dopus_pic[i][0])
+                continue;
+            dk_write(dk_dopus_bg[i].file, (const unsigned char *)dk_dopus_pic[i], (long)strlen(dk_dopus_pic[i]));
+            sprintf(line, "dopus clear background %s", dk_dopus_bg[i].name);
+            rexx_send(DOPUS_PORT, line, 0, 0);
+        }
         rexx_send(DOPUS_PORT, "dopus refresh background", 0, 0);
     }
     dk_pic_ask = 0;
@@ -1535,6 +1552,7 @@ void desk_dos_confirmed(void)
     DeleteFile((STRPTR)DK_WBPEND);
     DeleteFile((STRPTR)DK_PREVTHEME);
     DeleteFile((STRPTR)DK_DOPUSPIC);
+    DeleteFile((STRPTR)DK_DOPUSLPIC);
     DeleteFile((STRPTR)DK_WBB_SNAP);
     DeleteFile((STRPTR)DK_WBG_SNAP);
     desk_dos_keeps++;
@@ -1636,21 +1654,26 @@ static int dk_revert_theme_name(char *name, int cap)
     return n > 0 && desk_revert_theme_parse((const char *)b, n, name, cap);
 }
 
-/* Revert of "Use theme colour" under Directory Opus: the saved picture path goes back through the same ARexx commands */
+/* Revert of "Use theme colour" under Directory Opus: the saved picture paths go back through the same ARexx commands */
 static void dk_revert_dopus_picture(void)
 {
-    unsigned char b[sizeof dk_dopus_pic];
-    char line[sizeof dk_dopus_pic + 40];
-    long n = dk_read(DK_DOPUSPIC, b, sizeof b - 1);
-    if (n <= 0)
-        return;
-    b[n] = 0;
-    DeleteFile((STRPTR)DK_DOPUSPIC);
-    if (!rexx_port_exists(DOPUS_PORT))
-        return;
-    sprintf(line, "dopus set background \"%s\" desktop", (char *)b);
-    rexx_send(DOPUS_PORT, line, 0, 0);
-    rexx_send(DOPUS_PORT, "dopus refresh background", 0, 0);
+    unsigned char b[sizeof dk_dopus_pic[0]];
+    char line[sizeof dk_dopus_pic[0] + 40];
+    int i, back = 0;
+    for (i = 0; i < 2; i++) {
+        long n = dk_read(dk_dopus_bg[i].file, b, sizeof b - 1);
+        if (n <= 0)
+            continue;
+        b[n] = 0;
+        DeleteFile((STRPTR)dk_dopus_bg[i].file);
+        if (!rexx_port_exists(DOPUS_PORT))
+            continue;
+        sprintf(line, "dopus set background \"%s\" %s", (char *)b, dk_dopus_bg[i].name);
+        rexx_send(DOPUS_PORT, line, 0, 0);
+        back = 1;
+    }
+    if (back)
+        rexx_send(DOPUS_PORT, "dopus refresh background", 0, 0);
 }
 
 void desk_dos_revert(void)
@@ -1913,7 +1936,7 @@ int desk_dos_start_apply(void)
         flen = dk_read("ENV:Sys/font.prefs", fcur, sizeof fcur);
         if (flen < 0)
             flen = dk_read("ENVARC:Sys/font.prefs", fcur, sizeof fcur);
-        fontlen = desk_start_prefs(DT_FONT, mask, &th, icon_text, dk_font_exists, 0, flen > 0 ? fcur : 0, flen, fnew, sizeof fnew);
+        fontlen = desk_start_prefs(DT_FONT, mask, &th, icon_text, desk_dos_font_exists, 0, flen > 0 ? fcur : 0, flen, fnew, sizeof fnew);
         if (fontlen > 0)
             plan |= DESK_START_FONT;
     }

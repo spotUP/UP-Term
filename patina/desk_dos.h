@@ -42,6 +42,7 @@ extern unsigned long desk_dos_flat_pens_writes; /* FLAT-PENS-LIVE: palette pen w
 extern unsigned long desk_dos_wbborder_writes; /* AM-ICON-NOBORDER: Workbench editor writes of the icon border */
 extern unsigned long desk_dos_wbgauge_writes;  /* WB-VOLUME-GAUGE-OFF: Workbench editor writes that changed the volume gauge */
 extern unsigned long desk_dos_flat_writes; /* FLAT-C9: times desk_dos_apply wrote the flat_state block of a running patina-flat */
+int desk_dos_font_exists(void *ctx, const char *name);   /* 1 when FONTS: holds name (desk_font_exists_fn); also the lister-font check of dopus_theme_send */
 extern unsigned long desk_dos_dopus_sends; /* FLAT-D2: times desk_dos_apply handed the theme to dopus_theme_send */
 /* B7: the commodity tick hook: every DESK_DOPUS_FOLLOW_SECS seconds, the flat toolbar for Opus listers opened since the last pass */
 #define DESK_DOPUS_FOLLOW_SECS 2

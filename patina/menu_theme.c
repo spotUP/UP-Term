@@ -1,4 +1,5 @@
 /* menu_theme -- see menu_theme.h */
+#include <stdio.h>
 #include <string.h>
 #include "menu_theme.h"
 #include "dopustb_core.h"
@@ -80,7 +81,7 @@ void menu_theme_ink(uc_u32 out[MT_ROLES], const uc_u32 rgb[MT_ROLES], const uc_u
 
 /* Directory Opus's lister colours come from the theme directly, not from the menu roles (menu_theme.h). One
  * `set pens` line per key: a line with several keys read the later keys back wrong on the rig (2026-10-29). */
-unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int palette)
+unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int palette, const char *font)
 {
     static const char *const pens[] = { "dopus set pens icons 1 0 0 1 0 0\n", "dopus set pens files 1 0\n",
                                        "dopus set pens dirs 3 0\n", "dopus set pens selfiles 0 3\n",
@@ -90,8 +91,9 @@ unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int pal
     /* `set palette` and `set pens` only write the environment; an own screen loads its palette in display_open, which
      * `refresh all` reruns (dopus5 rexx_dopus.c:948, main_reset.c:40, display.c:267). `refresh lister` only redraws
      * (rexx_dopus.c:960): right for the Workbench screen, where a reopen would flicker every window. */
-    const char *const refresh = palette ? "dopus refresh all\n" : "dopus refresh lister\n";
+    const char *const refresh = palette || font ? "dopus refresh all\n" : "dopus refresh lister\n";
     static const char head[] = "dopus set palette";
+    static const char fhead[] = "dopus set font listers ";
     static const char hex[] = "0123456789abcdef";
     unsigned n = 0, i, k, need = 1;
     uc_u32 col[DOPUS_THEME_COLOURS];
@@ -111,6 +113,8 @@ unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int pal
     for (i = 0; i < sizeof pens / sizeof pens[0]; i++)
         need += (unsigned)strlen(pens[i]);
     need += (unsigned)strlen(refresh);
+    if (font)
+        need += sizeof fhead - 1 + (unsigned)strlen(font) + 1;
     if (palette)
         need += sizeof head - 1 + DOPUS_THEME_COLOURS * 9 + 1;
     if (cap < need)
@@ -128,6 +132,13 @@ unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int pal
         }
         out[n++] = '\n';
     }
+    if (font) {
+        for (k = 0; fhead[k]; k++)
+            out[n++] = fhead[k];
+        for (k = 0; font[k]; k++)
+            out[n++] = font[k];
+        out[n++] = '\n';
+    }
     for (i = 0; i < sizeof pens / sizeof pens[0]; i++)
         for (k = 0; pens[i][k]; k++)
             out[n++] = pens[i][k];
@@ -135,6 +146,28 @@ unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int pal
         out[n++] = refresh[k];
     out[n] = 0;
     return n;
+}
+
+/* The lister font is the icon font Patina writes to font.prefs (WBFONT, desk_font_name), only when the font exists. `set font` and
+ * `set pens` only write the environment (rexx_dopus.c:688), so a changed font needs `refresh all`. DOpus has no font query: the last
+ * font sent in this process stands in, and the first apply counts as changed. Returns "name size" in out, or NULL when there is none
+ * to send (no theme font, font missing, or the same as last time). */
+static const char *dopus_lister_font(const gtheme *th, const dopus_tb_ops *tb, char *out, int cap)
+{
+    static char last[GT_NAME + 12];
+    char name[GT_NAME];
+    int size;
+    if (!tb || !tb->font_exists || !gt_look_font(th, GT_FONT_ICON, name, (int)sizeof name, &size) || !name[0]
+        || strchr(name, ' ') || !tb->font_exists(tb->ud, name) || (int)strlen(name) + 12 > cap)
+        return 0;
+    if (size > 0)
+        snprintf(out, (size_t)cap, "%s %d", name, size);
+    else
+        strcpy(out, name);
+    if (!strcmp(out, last))
+        return 0;
+    strcpy(last, out);
+    return out;
 }
 
 /* does the `dopus screen` reply name the Workbench screen ("Workbench 800 600 4 ...")? */
@@ -348,7 +381,7 @@ int dopus_toolbar_follow(long (*send)(const char *port, const char *line, char *
 int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char *line, char *result, int cap, void *ud),
                      void *ud, const dopus_tb_ops *tb)
 {
-    char cmds[512], line[192], reply[160], bank[96];
+    char cmds[640], line[192], reply[160], bank[96], font[GT_NAME + 12];
     unsigned n, i = 0, k;
     int sent = 1, on_wb, changed = 0;
     char name[DT_SET_NAME_MAX];
@@ -370,7 +403,7 @@ int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char
         changed = tb->recolour(name, (const unsigned char (*)[3])rgb, tb->ud);
     }
     sent += dopus_toolbar_flat(send, ud, bank, changed > 0);   /* before the refresh, the last line of dopus_theme_commands */
-    n = dopus_theme_commands(th, cmds, sizeof cmds, !on_wb);
+    n = dopus_theme_commands(th, cmds, sizeof cmds, !on_wb, dopus_lister_font(th, tb, font, (int)sizeof font));
     while (i < n) {
         for (k = 0; i < n && cmds[i] != '\n'; i++)
             if (k < sizeof line - 1)
