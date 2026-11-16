@@ -2194,7 +2194,6 @@ static void test_gthemes_te4_section4(void)
     CHECK_INT(lf_setting_set_text(&io, radius, "7", &failed), 0); /* SD_INT */
     CHECK_INT(lf_setting_set_text(&io, radius, "999", &failed), LF_SET_INVALID);
     CHECK(gte_row_label(radius, buf, sizeof buf) > 0 && strstr(buf, "7"));
-    CHECK(gte_dirty());
     CHECK_INT(lf_setting_step(&io, ghost, &failed), 0);
     /* SD_SWATCH: the first swatch row takes a colour */
     for (i = 0; i < gte_nrows(); i++)
@@ -2224,7 +2223,6 @@ static void test_gthemes_te4_section4(void)
     CHECK(remove && remove->kind == SD_GACTION);
     /* revert reloads the file's model: the radius edit is gone */
     gte_revert();
-    CHECK(!gte_dirty());
     CHECK(gte_row_label(radius, buf, sizeof buf) > 0 && !strstr(buf, ": 7"));
 }
 
@@ -2235,7 +2233,7 @@ static void test_gthemes_te4_section4(void)
 static void test_gthemes_te4_rows(void)
 {
     static const struct { const char *label; int page; } want[] = {
-        { "Mode", PG_PAGE_THEME }, { "Base Theme", PG_PAGE_THEME }, { "Save", PG_PAGE_THEME }, { "Save As...", PG_PAGE_THEME },
+        { "Mode", PG_PAGE_THEME }, { "Base Theme", PG_PAGE_THEME }, { "Save As...", PG_PAGE_THEME },
         { "Revert", PG_PAGE_THEME }, { "Apply to Desktop", PG_PAGE_THEME }, { "Contrast", PG_PAGE_THEME },
         { "Pen Budget", PG_PAGE_THEME }, { "Add Swatch...", PG_PAGE_THEME_SWATCHES },
         { "Rename Swatch...", PG_PAGE_THEME_SWATCHES }, { "Remove Swatch...", PG_PAGE_THEME_SWATCHES },
@@ -2322,34 +2320,39 @@ static void test_gthemes_te7_no_title_font_row(void)
     CHECK_STR(te_m2.look.font[GT_FONT_TITLE], "topaz.font");
 }
 
-/* TE-4.3: the decision to ask when the menu leaves the editor with unsaved changes, and how the answer reads. */
-static void test_gthemes_te4_leave(void)
+/* Autosave: every edit of the buffer reaches the store hook (the one choke point, ed_touch), and the saved snapshot follows the buffer. */
+static int as_writes;
+static char as_name[GT_NAME];
+static int as_store(const char *name, const gt_model *m)
 {
+    (void)m;
+    as_writes++;
+    strcpy(as_name, name);
+    return 1;
+}
+
+static void test_gthemes_te4_autosave(void)
+{
+    amconf_io io;
+    int failed = 0;
+    const sd_setting *radius;
+    unsigned long w0;
+    memset(&io, 0, sizeof io);
     te4_open_builtin();
-    CHECK(!gte_dirty());
-    CHECK_INT(lf_leave_needed("settings.theme", ""), 0);          /* clean buffer: never asks */
-    gte_edits = 0;
-    gt_ed.m.base[0] = 'X';                                         /* any edit makes the buffer differ from the file */
-    CHECK(gte_dirty());
-    CHECK_INT(lf_leave_needed("settings.theme", "settings"), 1);   /* up out of the editor */
-    CHECK_INT(lf_leave_needed("settings.theme", ""), 1);           /* the menu closes */
-    CHECK_INT(lf_leave_needed("settings.theme.swatches", "settings.theme"), 0);   /* still inside */
-    CHECK_INT(lf_leave_needed("settings.themex", "settings"), 0);  /* a sibling id is not the editor */
-    CHECK_INT(lf_leave_needed("settings", ""), 0);
-    CHECK_INT(lf_leave_decide("Save"), LF_LEAVE_SAVE);
-    CHECK_INT(lf_leave_decide(" d"), LF_LEAVE_DISCARD);
-    CHECK_INT(lf_leave_decide("Cancel"), LF_LEAVE_CANCEL);
-    CHECK_INT(lf_leave_decide(""), LF_LEAVE_CANCEL);
-    CHECK_INT(lf_leave_decide("x"), LF_LEAVE_CANCEL);
-    CHECK_INT(lf_leave_decide(0), LF_LEAVE_CANCEL);
-    /* TE-4.3: Launch and window close end the menu from the node it is on: dirty inside the editor asks, anywhere else never */
-    CHECK_INT(lf_exit_needs_ask("settings.theme"), 1);
-    CHECK_INT(lf_exit_needs_ask("settings.theme.swatches"), 1);
-    CHECK_INT(lf_exit_needs_ask("settings"), 0);
-    CHECK_INT(lf_exit_needs_ask(""), 0);
-    gte_revert();                                                  /* Discard is this call: the prompt no longer fires */
-    CHECK_INT(lf_leave_needed("settings.theme", ""), 0);
-    CHECK_INT(lf_exit_needs_ask("settings.theme"), 0);             /* clean: close and launch go straight through */
+    radius = te4_row("Corner Radius");
+    CHECK(radius != 0);
+    gte_store = as_store;
+    w0 = gte_store_writes;
+    CHECK_INT(lf_setting_set_text(&io, radius, "7", &failed), 0);
+    CHECK_INT(as_writes, 1);
+    CHECK_STR(as_name, "nord");
+    CHECK_INT((int)(gte_store_writes - w0), 1);
+    CHECK(memcmp(&gt_ed.m, &gt_ed.saved, sizeof gt_ed.m) == 0);     /* no dirty state: saved follows the edit */
+    gte_revert();                                                    /* back to the theme as it opened, saved too */
+    CHECK_INT(as_writes, 2);
+    CHECK(memcmp(&gt_ed.m, &gt_ed.saved, sizeof gt_ed.m) == 0);
+    CHECK(gt_ed.m.look.corner_radius != 7);
+    gte_store = 0;
 }
 
 static void test_gthemes_te4_dispatch(void)
@@ -2359,10 +2362,8 @@ static void test_gthemes_te4_dispatch(void)
     int i;
     rc.calls = 0;
     /* theme_action: what each action does before it touches a file */
-    CHECK_INT(gte_action_plan(GTA_OPEN, 0), GTP_LEAVE | GTP_NAME);
-    CHECK_INT(gte_action_plan(GTA_RESET_BASE, 1), GTP_LEAVE);
-    CHECK_INT(gte_action_plan(GTA_SAVE, 0), GTP_SKIP);
-    CHECK_INT(gte_action_plan(GTA_SAVE, 1), 0);
+    CHECK_INT(gte_action_plan(GTA_OPEN, 0), GTP_NAME);
+    CHECK_INT(gte_action_plan(GTA_RESET_BASE, 1), 0);
     CHECK_INT(gte_action_plan(GTA_APPLY, 0), GTP_SKIP);
     CHECK_INT(gte_action_plan(GTA_SAVE_AS, 0), GTP_SKIP);
     CHECK_INT(gte_action_plan(GTA_DUPLICATE, 1), GTP_NAME);
@@ -2377,7 +2378,7 @@ static void test_gthemes_te4_dispatch(void)
     CHECK(!strcmp(gt_ed.name, "before"));
     CHECK_INT(gte_open_from(fake_read, &rc, "solo"), 1);
     CHECK(!strcmp(gt_ed.name, "solo"));
-    CHECK(gt_ed.open && !gte_dirty());
+    CHECK(gt_ed.open);
     CHECK(rc.calls > 0);
     /* lf_setting_enter, picker branch: which choices ask a value */
     te4_open_builtin();
@@ -3060,7 +3061,6 @@ static void test_gthemes_te8_reset_base(void)
     CHECK_STR(gt_ed.m.name, "Mine");                                /* it keeps its own name and base */
     CHECK_STR(gt_ed.m.base, "nord");
     CHECK(gte_edits > e0);                                          /* and goes live like an edit */
-    CHECK(gte_dirty());
     gte_open(&gt_ed.m, "Mine");                                     /* an unedited copy of its base: unchanged */
     {
         gt_model before = gt_ed.m;
@@ -3086,7 +3086,7 @@ static void test_gthemes_te8_rows(void)
         if (s->kind == SD_INFO && !strncmp(s->label, "Pen Share ", 10)) share_all++;
     }
     CHECK_INT(share_all, GTG_COUNT);                                   /* one Pen Share row per group, all built */
-    CHECK_INT(total, 484);                                             /* the true row count counted from the builder: 309 earlier rows + 174 Screens page rows (TE-10.8b) + 1 Restore Original (TE-10.9) */
+    CHECK_INT(total, 483);                                             /* the true row count counted from the builder: 309 earlier rows + 174 Screens page rows (TE-10.8b) + 1 Restore Original (TE-10.9) - the Save row (autosave) */
     gt_ed.depth = 3;
     share_vis = 0;
     for (i = 0; i < total; i++) {
@@ -3506,7 +3506,7 @@ void suite_gthemes(void)
     test_gthemes_te4_pickers();
     test_gthemes_swatch_and_palette_rows_apply();
     test_gthemes_te4_dispatch();
-    test_gthemes_te4_leave();
+    test_gthemes_te4_autosave();
     test_gthemes_te4_rows();
     test_gthemes_te7_no_title_font_row();
     test_gthemes_te4_modes();

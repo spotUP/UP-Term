@@ -14,11 +14,11 @@ if not m:
     sys.exit('FAIL: leaf.c has no theme_action')
 body = m.group(0)
 bad = 0
-for case in ('GTA_SAVE', 'GTA_APPLY'):
+for case in ('GTA_APPLY',):
     cm = re.search(r'case ' + case + r':(.*?)break;', body, re.S)
     if not cm or not re.search(r'am_sentinel\("PATINA_EDIT_APPLIES",\s*\(long\)gt_dos_edit_applies\)', cm.group(1)):
         print('FAIL: theme_action %s does not publish PATINA_EDIT_APPLIES' % case)
         bad = 1
 if not bad:
-    print('[OK] theme_action publishes PATINA_EDIT_APPLIES after Save and Apply')
+    print('[OK] theme_action publishes PATINA_EDIT_APPLIES after Apply')
 sys.exit(bad)

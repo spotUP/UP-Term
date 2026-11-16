@@ -275,34 +275,6 @@ static int list_enter(const mn_item *it, const sd_setting *s, const lf_ui *ui)
     return 0;
 }
 
-/* TE-4.3: the menu leaves the Theme Editor with unsaved changes: ask Save, Discard or Cancel through the style's value prompt (the
- * same ui->ask_value every other menu question uses). Save writes the theme (gt_dos_save); Discard reloads the saved model. */
-int lf_leave_editor(const char *from, const char *to, const lf_ui *ui)
-{
-    char ans[16], why[160];
-    why[0] = 0;
-    if (!lf_leave_needed(from, to))
-        return 1;
-    strcpy(ans, "Save");
-    if (!ui || !ui->ask_value || !ui->ask_value(ui->ctx, "Unsaved theme changes", "Save, Discard or Cancel", ans, sizeof ans))
-        return 0;
-    switch (lf_leave_decide(ans)) {
-    case LF_LEAVE_SAVE:
-        if (gt_dos_save(gt_ed.name, &gt_ed.m, why, sizeof why)) {
-            gte_saved();
-            return 1;
-        }
-        if (ui->refused)
-            ui->refused(ui->ctx, "Save", -1L, why);
-        return 0;
-    case LF_LEAVE_DISCARD:
-        gte_revert();
-        gt_dos_desk_restore();      /* TE-6.2: the previewed colours go back to the saved theme */
-        return 1;
-    }
-    return 0;
-}
-
 /* TE-4: the Theme Editor rows. Text rows ask for a value; cycles step; action rows run the TE-3 file operations on the edit buffer. */
 static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
 {
@@ -313,8 +285,6 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
     name[0] = 0;
     if (plan & GTP_SKIP)
         return 0;
-    if ((plan & GTP_LEAVE) && !lf_leave_editor("settings.theme", "", ui))     /* the action replaces the buffer */
-        return 0;
     switch (s->aux) {
     case GTA_OPEN:
         gt_dos_current(name, sizeof name);
@@ -323,12 +293,6 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
         ok = gt_dos_edit_open(name);
         if (!ok)
             strcpy(why, "that theme has no editable model");
-        break;
-    case GTA_SAVE:
-        ok = gt_dos_save(gt_ed.name, &gt_ed.m, why, sizeof why);
-        if (ok)
-            gte_saved();
-        am_sentinel("PATINA_EDIT_APPLIES", (long)gt_dos_edit_applies);
         break;
     case GTA_SAVE_AS:
     case GTA_DUPLICATE:
@@ -345,9 +309,8 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
         }
         break;
     case GTA_REVERT:
-        if (gt_ed.open && !gt_dos_edit_open(gt_ed.name))
-            gte_revert();
-        gt_dos_desk_restore();      /* TE-6.2: Revert puts the desktop back to the saved theme */
+        if (gt_ed.open)
+            gte_revert();           /* back to the theme as the editor opened it; the edit hook saves and applies it */
         break;
     case GTA_APPLY:
         ok = gt_dos_select(gt_ed.name, why, sizeof why);

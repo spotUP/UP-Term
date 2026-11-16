@@ -342,11 +342,11 @@ struct sd_setting; /* settings_def.h includes this header through prefs_ui.h: th
 
 /* ---- TE-4: the editor's edit buffer and its rows (plan sections 4 and 6) ----
  * The Theme Editor pages edit ONE gt_model copy (gt_ed.m); gt_ed.saved is the file as loaded or last saved, so Revert is a copy back
- * and "unsaved changes" is a compare. The rows are sd_setting entries (kinds SD_SWATCH, SD_SWATCHREF, SD_ELEMENT, SD_GACTION and
+ * and the file always equals the buffer (autosave). The rows are sd_setting entries (kinds SD_SWATCH, SD_SWATCHREF, SD_ELEMENT, SD_GACTION and
  * store SD_GTHEME) numbered SDI_COUNT and up: gte_row(id) is the one lookup for any row id, sd_settings for the old ones. */
 enum { GTR_OK = 0, GTR_BAD = -1, GTR_IN_USE = -2, GTR_FULL = -3, GTR_EXISTS = -4, GTR_NAME = -5 };
 typedef struct gt_edit {
-    gt_model m, saved;
+    gt_model m, saved, orig;    /* orig: the theme as gte_open loaded it (Revert); saved: the file, which autosave keeps equal to m */
     int open;                   /* a theme is loaded into the buffer */
     int advanced;               /* Mode: Advanced (the Elements page is shown) */
     int depth;                  /* TE-8.3: bitplanes of the screen the editor runs on (EHB counts as 5; 15 and up = truecolour); 0 = unknown */
@@ -358,9 +358,12 @@ extern unsigned long gte_edits; /* sentinel: every successful change of the buff
  * (gt_dos_edit_open) to the model preview. gte_live_sends counts the calls (the reachability sentinel). */
 extern void (*gte_live)(const gt_model *m);
 extern unsigned long gte_live_sends;
+/* Autosave: gte_store(name, buffer) is called by every edit of the buffer; 1 = the file was written (gt_ed.saved follows, gte_store_writes
+ * counts). The DOS side (gt_dos_edit_open) sets it to gt_dos_autosave. */
+extern int (*gte_store)(const char *name, const gt_model *m);
+extern unsigned long gte_store_writes;
 void gte_open(const gt_model *m, const char *name);      /* load the buffer; Mode is Advanced when the file has an override */
-int gte_dirty(void);                                      /* the buffer differs from the file */
-void gte_revert(void);                                    /* reload the file's model */
+void gte_revert(void);                                    /* the buffer takes the model gte_open loaded; goes through the edit hook (autosave) */
 void gte_saved(void);                                     /* the buffer is now the file (after a save) */
 int gte_swatch_count(void);
 int gte_swatch_users(int sw, char *out, int cap);         /* refs that use swatch sw (groups, elements, nested); names in out */
@@ -388,13 +391,12 @@ int gte_row_is_theme_name(const struct sd_setting *s); /* 1 for a Screens-page T
 /* A cycle row (Mode, the look cycles) to value index. */
 int gte_row_set_index(const struct sd_setting *s, int index);                    /* cycle rows, ref rows (next swatch) */
 int gte_row_label(const struct sd_setting *s, char *out, int n); /* "Label: value" */
-enum { GTA_OPEN = 1, GTA_SAVE, GTA_SAVE_AS, GTA_REVERT, GTA_APPLY, GTA_ADD_SWATCH, GTA_RENAME_SWATCH, GTA_REMOVE_SWATCH,
+enum { GTA_OPEN = 1, GTA_SAVE_AS, GTA_REVERT, GTA_APPLY, GTA_ADD_SWATCH, GTA_RENAME_SWATCH, GTA_REMOVE_SWATCH,
        GTA_CLEAR_ELEMENT, GTA_DUPLICATE, GTA_IMPORT, GTA_EXPORT, GTA_RESET_BASE, GTA_DELETE,
        GTA_SCR_ALL, GTA_SCR_NONE, GTA_SCR_INVERT, GTA_SCR_ADD, GTA_SCR_SAVE, GTA_SCR_UP, GTA_SCR_DOWN, GTA_SCR_REMOVE, GTA_SCR_RESTORE };
 /* What an editor action does before it touches a file (the menu's theme_action follows this, the host tests assert it):
- * GTP_SKIP nothing to act on (no theme open), GTP_LEAVE ask Save/Discard/Cancel first (the buffer is replaced),
- * GTP_NAME ask for a name. */
-enum { GTP_SKIP = 1, GTP_LEAVE = 2, GTP_NAME = 4 };
+ * GTP_SKIP nothing to act on (no theme open), GTP_NAME ask for a name. */
+enum { GTP_SKIP = 1, GTP_NAME = 4 };
 int gte_action_plan(int aux, int editor_open);
 /* gt_dos_edit_open's decision: read the named theme through rd and open its model in the buffer. 1 opened; 0 when it has none. */
 int gte_open_from(gt_read_fn rd, void *ctx, const char *name);

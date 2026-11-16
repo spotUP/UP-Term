@@ -379,6 +379,13 @@ int gt_dos_save(const char *name, const gt_model *m, char *why, int cap)
     return r;
 }
 
+/* The editor's autosave (gte_store): write the edited theme; when it is the current theme gt_dos_save runs the full apply. */
+static int gt_dos_autosave(const char *name, const gt_model *m)
+{
+    char why[160];
+    return gt_dos_save(name, m, why, sizeof why);
+}
+
 int gt_dos_save_as(const char *name, const gt_model *m, char *why, int cap)
 {
     gt_dos_drawers();
@@ -424,6 +431,7 @@ int gt_dos_reset_base(void)
 /* TE-4: load the named theme's model into the editor's edit buffer (gte_open). 1 opened; 0 when the theme has no model. */
 int gt_dos_edit_open(const char *name)
 {
+    gte_store = gt_dos_autosave;        /* the editor autosaves: every edit writes the theme, and applies it when it is current */
     gte_live = gt_dos_preview_model;    /* TE-6.3: every edit of the buffer shows on the desktop */
     return gte_open_from(gt_dos_read, 0, name);
 }

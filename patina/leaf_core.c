@@ -1041,25 +1041,3 @@ int lf_in_theme_editor(const char *node)
     return node && (strcmp(node, "settings.theme") == 0 || strncmp(node, "settings.theme.", 15) == 0);
 }
 
-int lf_leave_needed(const char *from, const char *to)
-{
-    return gte_dirty() && lf_in_theme_editor(from) && !lf_in_theme_editor(to);
-}
-
-int lf_exit_needs_ask(const char *node)
-{
-    return lf_leave_needed(node, "");
-}
-
-int lf_leave_decide(const char *answer)
-{
-    if (!answer)
-        return LF_LEAVE_CANCEL;
-    while (*answer == ' ')
-        answer++;
-    if (*answer == 's' || *answer == 'S')
-        return LF_LEAVE_SAVE;
-    if (*answer == 'd' || *answer == 'D')
-        return LF_LEAVE_DISCARD;
-    return LF_LEAVE_CANCEL;
-}

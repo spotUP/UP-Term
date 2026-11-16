@@ -1732,10 +1732,18 @@ gt_edit gt_ed;
 unsigned long gte_edits;
 void (*gte_live)(const gt_model *m);
 unsigned long gte_live_sends;
+int (*gte_store)(const char *name, const gt_model *m);
+unsigned long gte_store_writes;
 
+/* The one place every edit of the buffer lands (rows, swatches, revert, reset to base): the editor autosaves, so the file (and the
+ * running desktop when it is the current theme, see gt_dos_autosave) follows each change and saved never lags the buffer. */
 static void ed_touch(void)
 {
     gte_edits++;
+    if (gte_store && gt_ed.open && gte_store(gt_ed.name, &gt_ed.m)) {
+        gte_store_writes++;
+        gt_ed.saved = gt_ed.m;
+    }
     if (gte_live && gt_ed.open) {
         gte_live_sends++;
         gte_live(&gt_ed.m);
@@ -1756,6 +1764,7 @@ void gte_open(const gt_model *m, const char *name)
 {
     gt_ed.m = *m;
     gt_ed.saved = *m;
+    gt_ed.orig = *m;
     gt_ed.open = 1;
     gt_ed.advanced = any_override(m);
     strncpy(gt_ed.name, name ? name : "", GT_NAME - 1);
@@ -1766,10 +1775,7 @@ int gte_action_plan(int aux, int editor_open)
 {
     switch (aux) {
     case GTA_OPEN:
-        return GTP_LEAVE | GTP_NAME;
-    case GTA_RESET_BASE:
-        return GTP_LEAVE;
-    case GTA_SAVE:
+        return GTP_NAME;
     case GTA_APPLY:
         return editor_open ? 0 : GTP_SKIP;
     case GTA_SAVE_AS:
@@ -1975,14 +1981,9 @@ int gt_budget_share_text(const gt_budget *b, int g, char *out, int n)
     return 1;
 }
 
-int gte_dirty(void)
-{
-    return gt_ed.open && memcmp(&gt_ed.m, &gt_ed.saved, sizeof gt_ed.m) != 0;
-}
-
 void gte_revert(void)
 {
-    gt_ed.m = gt_ed.saved;
+    gt_ed.m = gt_ed.orig;
     ed_touch();
 }
 
@@ -2335,7 +2336,6 @@ static void er_build(void)
         er_add(PG_PAGE_THEME, SD_INFO, k, l)->aux = ER_INFO_SHARE + g;
     }
     er_add(PG_PAGE_THEME, SD_GACTION, "open", "Edit Theme...")->aux = GTA_OPEN;
-    er_add(PG_PAGE_THEME, SD_GACTION, "save", "Save")->aux = GTA_SAVE;
     er_add(PG_PAGE_THEME, SD_GACTION, "saveas", "Save As...")->aux = GTA_SAVE_AS;
     er_add(PG_PAGE_THEME, SD_GACTION, "revert", "Revert")->aux = GTA_REVERT;
     er_add(PG_PAGE_THEME, SD_GACTION, "apply", "Apply to Desktop")->aux = GTA_APPLY;
