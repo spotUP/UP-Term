@@ -83,7 +83,7 @@ const char patina_gui_stack_cookie[] = "$STACK: " GUI_STR(GUI_STACK);
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 
-enum { M_LIST, M_INPUT, M_MSG, M_VIEW, M_JOB };
+enum { M_LIST, M_INPUT, M_MSG, M_VIEW, M_JOB, M_PICK };   /* M_PICK: ln[] are names, sel the cursor (gui_pick_value) */
 #define JOB_ROWS 18           /* rows of the job view: the body and, as the last one, the footer */
 enum { K_NONE, K_CHAR, K_ESC, K_ENTER, K_BS, K_UP, K_DOWN, K_LEFT, K_RIGHT, K_PGUP, K_PGDN };
 
@@ -526,7 +526,7 @@ static void draw_row(gui *g, int e)
     bottom = y + mg_row_h_of(q, e) - 1;
     if (bottom > q->list_y + q->list_h - 1)
         bottom = q->list_y + q->list_h - 1;
-    sel = (g->mode == M_LIST && e == g->sel) || g->mode == M_INPUT;
+    sel = ((g->mode == M_LIST || g->mode == M_PICK) && e == g->sel) || g->mode == M_INPUT;
     rbg = sel ? MT_THEME_ACCENT : MT_BG;
     paint_begin(g);
     if (sel)
@@ -891,6 +891,7 @@ static void scroll_lines(gui *g, int d)
 static int gui_ask_value(void *ctx, const char *label, const char *usage, char *out, int n);
 static int gui_run_job(void *ctx, const char *line, const char *title);
 static void gui_refused(void *ctx, const char *label, long rc, const char *answer);
+static int gui_pick_value(void *ctx, const char *label, const char *names, int count, char *out, int n);
 
 static void gui_ui_fill(gui *g, lf_ui *ui)
 {
@@ -900,6 +901,7 @@ static void gui_ui_fill(gui *g, lf_ui *ui)
     ui->self_in_mru = 0;
     ui->win = g->win;
     ui->run_job = gui_run_job;
+    ui->pick_value = gui_pick_value;
 }
 
 /* TE-4.3: every path that ends the menu (Launch, the hotkey toggled again, Workbench closing) asks Save / Discard / Cancel first
@@ -1019,12 +1021,7 @@ static void start_scan(gui *g, const mn_item *it)
     ix_prog p0;
     char keep[MN_LABEL];
     int alive0 = 0, have0 = ixw_snapshot(&p0, &alive0);   /* the run counter before the launch */
-    ui.ask_value = gui_ask_value;
-    ui.refused = gui_refused;
-    ui.ctx = g;
-    ui.self_in_mru = 0;
-    ui.win = g->win;
-    ui.run_job = gui_run_job;
+    gui_ui_fill(g, &ui);
     if (!ix_watcher_adopt_live(&g->wt, have0, &p0, alive0)) {    /* one scanner at a time: show the live one */
         if (lf_run(&km.menu[it->row], &ui) != LF_WATCH)
             return;
@@ -1042,12 +1039,7 @@ static void start_scan(gui *g, const mn_item *it)
 static void activate_setting(gui *g, const mn_item *it, int right)
 {
     lf_ui ui;
-    ui.ask_value = gui_ask_value;
-    ui.refused = gui_refused;
-    ui.ctx = g;
-    ui.self_in_mru = 0;
-    ui.win = g->win;
-    ui.run_job = gui_run_job;
+    gui_ui_fill(g, &ui);
     if (MN_IS_SETTING(it) && (right || SD_HAS_PICKER(gte_row(it->ix)) || SD_HAS_LIST(gte_row(it->ix)))) {
         if (gte_row(it->ix)->kind == SD_CYCLE || SD_HAS_PICKER(gte_row(it->ix)) || SD_HAS_LIST(gte_row(it->ix))) {
             mn_child_node(g->node, it, g->node, sizeof g->node);
@@ -1076,12 +1068,7 @@ static void activate_pkg(gui *g, const mn_item *it)
     lf_ui ui;
     mn_item row = *it;                      /* the rebuilds below overwrite g->it */
     int back = lf_pkg_back_levels(&row), k;
-    ui.ask_value = gui_ask_value;
-    ui.refused = gui_refused;
-    ui.ctx = g;
-    ui.self_in_mru = 0;
-    ui.win = g->win;
-    ui.run_job = gui_run_job;
+    gui_ui_fill(g, &ui);
     if (lf_pkg_search_row(g->node, &row)) {
         if (lf_pkg_search(&ixs, &ui)) {
             mn_child_node(g->node, &row, g->node, sizeof g->node);
@@ -1233,6 +1220,42 @@ static void key_input(gui *g, int k, int ch)
     }
 }
 
+/* the name picker: the cursor moves over the names, Enter takes one, Escape cancels */
+static void pick_sel(gui *g, int s)
+{
+    if (s >= g->nlines)
+        s = g->nlines - 1;
+    if (s < 0)
+        s = 0;
+    g->sel = s;
+    g->top = mg_scroll(&g->g, s, g->top);
+    draw_list(g);
+}
+
+static void key_pick(gui *g, int k)
+{
+    switch (k) {
+    case K_ESC:
+        g->stop = 1;
+        break;
+    case K_ENTER:
+        g->edone = g->stop = 1;
+        break;
+    case K_UP:
+        pick_sel(g, g->sel - 1);
+        break;
+    case K_DOWN:
+        pick_sel(g, g->sel + 1);
+        break;
+    case K_PGUP:
+        pick_sel(g, g->sel - g->g.visible);
+        break;
+    case K_PGDN:
+        pick_sel(g, g->sel + g->g.visible);
+        break;
+    }
+}
+
 static void key_view(gui *g, int k, int ch)
 {
     if (g->welcome == 1) {                 /* the checkbox keys live in hc_welcome_key; this only draws */
@@ -1322,6 +1345,8 @@ static void key(gui *g, int k, int ch, int wheel)
             set_sel(g, g->sel + wheel);
         else if (g->mode == M_VIEW)
             scroll_lines(g, wheel * 3);
+        else if (g->mode == M_PICK)
+            pick_sel(g, g->sel + wheel);
         return;
     }
     switch (g->mode) {
@@ -1336,6 +1361,9 @@ static void key(gui *g, int k, int ch, int wheel)
         break;
     case M_JOB:
         key_job(g, k);
+        break;
+    case M_PICK:
+        key_pick(g, k);
         break;
     default:
         key_view(g, k, ch);
@@ -1406,6 +1434,14 @@ static void mouse_button(gui *g, int code, int mx, int my)
         }
         return;
     }
+    if (g->mode == M_PICK) {
+        h = mg_hit(&g->g, g->top, mx, my);
+        if (h >= 0 && h < g->nlines) {
+            pick_sel(g, h);
+            g->edone = g->stop = 1;
+        }
+        return;
+    }
     if (g->mode != M_LIST)
         return;
     h = mg_hit(&g->g, g->top, mx, my);
@@ -1418,11 +1454,16 @@ static void mouse_button(gui *g, int code, int mx, int my)
 static void mouse_move(gui *g, int mx, int my)
 {
     int h;
-    if (g->await || g->mode != M_LIST)
+    if (g->await || (g->mode != M_LIST && g->mode != M_PICK))
         return;
     h = mg_hit(&g->g, g->top, mx, my);
-    if (h >= 0 && h < g->top + g->g.visible && h != g->sel)
-        set_sel(g, h);
+    if (h >= 0 && h < g->top + g->g.visible && h != g->sel) {
+        if (g->mode == M_PICK) {
+            if (h < g->nlines)
+                pick_sel(g, h);
+        } else
+            set_sel(g, h);
+    }
 }
 
 /* Runs until g->stop (this mode is done) or g->quit (the window goes). */
@@ -1668,6 +1709,52 @@ static int gui_ask_value(void *ctx, const char *label, const char *usage, char *
     return ok;
 }
 
+/* TI-1: pick one of `count` known names (a theme to edit, rename or delete): the header shows the label, the rows the names,
+ * the cursor on out[0]'s name. A nested event loop like gui_ask_value; the list's mode, header, cursor and scroll come back. */
+static int gui_pick_value(void *ctx, const char *label, const char *names, int count, char *out, int n)
+{
+    gui *g = (gui *)ctx;
+    int ok, mode0, top0, sel0, i;
+    const char *head0;
+    if (g->quit || count <= 0)
+        return 0;
+    mode0 = g->mode;
+    head0 = g->head;
+    top0 = g->top;
+    sel0 = g->sel;
+    g->nlines = 0;
+    g->sel = 0;
+    for (i = 0; i < count && i < MAX_LINES; i++, names += strlen(names) + 1) {
+        g->ln[i] = names;
+        g->ll[i] = (int)strlen(names);
+        if (!strcmp(names, out))
+            g->sel = i;
+        g->nlines++;
+    }
+    g->head = label;
+    g->mode = M_PICK;
+    g->edone = g->stop = 0;
+    g->top = 0;
+    do_layout(g, g->nlines);
+    g->top = mg_scroll(&g->g, g->sel, 0);
+    relayout(g, g->nlines);
+    event_loop(g);
+    ok = g->edone && !g->quit && g->sel < g->nlines;
+    if (ok) {
+        strncpy(out, g->ln[g->sel], (size_t)n - 1);
+        out[n - 1] = 0;
+    }
+    g->mode = mode0;
+    g->head = head0;
+    g->top = top0;
+    g->sel = sel0;
+    g->nlines = 0;
+    g->edone = g->stop = 0;
+    if (!g->quit && g->mode == M_LIST)
+        relayout(g, g->count);
+    return ok;
+}
+
 /* A job: row: run the command and show its output; returns when the view closes. Esc/Enter after the end goes back
  * to the menu row; a hotkey or CTRL_C while it runs cancels the job first (no orphan child). A job that cannot start
  * runs as run: (lf_run_line). */
@@ -1678,11 +1765,7 @@ static int gui_run_job(void *ctx, const char *line, const char *title)
     if (g->quit)
         return 0;
     if (!jb_start(&job, line, 0, title)) {
-        ui.ask_value = gui_ask_value;
-        ui.refused = gui_refused;
-        ui.ctx = g;
-        ui.self_in_mru = 0;
-        ui.win = g->win;
+        gui_ui_fill(g, &ui);
         ui.run_job = 0;
         return lf_run_line(line, &ui);
     }
@@ -1992,12 +2075,7 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
             lf_ui ui;
             char keep[MN_LABEL];
             unsigned long asks;
-            ui.ask_value = gui_ask_value;
-            ui.refused = gui_refused;
-            ui.ctx = g;
-            ui.self_in_mru = 0;
-            ui.win = g->win;
-            ui.run_job = gui_run_job;
+            gui_ui_fill(g, &ui);
             g->stop = 0;
             keep[0] = 0;
             if (g->chosen >= 0)

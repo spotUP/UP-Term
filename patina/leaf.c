@@ -223,6 +223,20 @@ static const char *list_why(long r)
     }
 }
 
+/* TI-1: an existing theme (or profile) name, picked from the list when the style has a picker, else typed. out[0] on
+ * entry is the name to start on. 1 with out set, 0 on Escape. */
+static int lf_ask_name(const lf_ui *ui, const char *label, int profile, char *out, int n)
+{
+    char names[1024];
+    int c;
+    if (ui->pick_value) {
+        c = profile ? lf_profile_names(amconf_dos_io(), names, sizeof names) : lf_theme_names(amconf_dos_io(), names, sizeof names);
+        if (c > 0)
+            return ui->pick_value(ui->ctx, label, names, c, out, n);
+    }
+    return ui->ask_value && ui->ask_value(ui->ctx, label, profile ? "name" : "theme name", out, n);
+}
+
 /* Enter on a Theme or Profile list row: a name applies it, New / Rename / Delete ask for the names */
 static int list_enter(const mn_item *it, const sd_setting *s, const lf_ui *ui)
 {
@@ -243,11 +257,10 @@ static int list_enter(const mn_item *it, const sd_setting *s, const lf_ui *ui)
         a[0] = b[0] = 0;
         if (it->seg[0] != 'N' && profile)
             strcpy(a, lf_profile());
-        if (!ui->ask_value)
+        if (it->seg[0] == 'N' ? !ui->ask_value || !ui->ask_value(ui->ctx, "New name", "name", a, sizeof a)
+                              : !lf_ask_name(ui, it->seg[0] == 'R' ? "Rename which" : "Delete which", profile, a, sizeof a))
             return 0;
-        if (!ui->ask_value(ui->ctx, it->seg[0] == 'N' ? "New name" : it->seg[0] == 'R' ? "Rename which" : "Delete which", "name", a, sizeof a))
-            return 0;
-        if (it->seg[0] == 'R' && !ui->ask_value(ui->ctx, "New name", "name", b, sizeof b))
+        if (it->seg[0] == 'R' && (!ui->ask_value || !ui->ask_value(ui->ctx, "New name", "name", b, sizeof b)))
             return 0;
         if (it->seg[0] == 'N')
             r = profile ? lf_profile_new(amconf_dos_io(), a, &failed) : lf_theme_new(amconf_dos_io(), a, &failed);
@@ -305,7 +318,7 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
     switch (s->aux) {
     case GTA_OPEN:
         gt_dos_current(name, sizeof name);
-        if (!ui->ask_value || !ui->ask_value(ui->ctx, label, "theme name", name, sizeof name))
+        if (!lf_ask_name(ui, label, 0, name, sizeof name))
             return 0;
         ok = gt_dos_edit_open(name);
         if (!ok)

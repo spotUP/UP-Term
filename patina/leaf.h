@@ -221,6 +221,9 @@ typedef struct lf_ui {
     /* A style's job view: run `line` and show its output under `title`; returns the action's code. 0 (the
      * default of both styles until their views exist): a job: row runs as run: (lf_job_view). */
     int (*run_job)(void *ctx, const char *line, const char *title);
+    /* TI-1: pick one of `count` known names (NUL-separated in `names`) instead of typing it; out[0] on entry is the
+     * name to start on (empty: the first). 1 with out set, 0 on Escape. 0 (no picker): the menu asks via ask_value. */
+    int (*pick_value)(void *ctx, const char *label, const char *names, int count, char *out, int n);
 } lf_ui;
 
 /* Run the action row `it` (MN_ROW_PKGACT, index_core.c) of a picked package: Install, Remove and Upgrade are the job line

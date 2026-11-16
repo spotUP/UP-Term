@@ -125,7 +125,8 @@ static void say_refused(void *ctx, const char *label, long rc, const char *answe
 }
 
 static int text_run_job(void *ctx, const char *line, const char *title);
-static const lf_ui leaf_ui = { ask_value, say_refused, 0, 1, 0, text_run_job };   /* the text menu is an UP-Term window: self_in_mru */
+static int pick_value(void *ctx, const char *label, const char *names, int count, char *out, int n);
+static const lf_ui leaf_ui = { ask_value, say_refused, 0, 1, 0, text_run_job, pick_value };   /* the text menu is an UP-Term window: self_in_mru */
 static int job_ran;             /* a job view ran: the menu stays open on the same row */
 
 /* One level's items, sized by ix_level_cap once the index is loaded (menu_loop) */
@@ -273,6 +274,41 @@ static int text_run_job(void *ctx, const char *line, const char *title)
     ui_on_move(on_move, 0);
     job_ran = 1;
     return 0;
+}
+
+/* TI-1: pick one of the known names (a theme to edit, rename or delete) from a menu of them, the cursor on out[0]'s
+ * name. 1 with out set, 0 on Escape. The level's preview hooks are off meanwhile (their rows are not these). */
+static int pick_value(void *ctx, const char *label, const char *names, int count, char *out, int n)
+{
+    static entry pent[64];
+    int c, rc, s;
+    (void)ctx;
+    for (c = 0; c < count && c < (int)(sizeof pent / sizeof pent[0]); c++, names += strlen(names) + 1) {
+        pent[c].tag = names;
+        pent[c].item = "";
+    }
+    ui_opt.kind = K_MENU;
+    ui_opt.title = label;
+    ui_opt.prompt = label;
+    ui_opt.hotkeys = 0;
+    ui_opt.entries = pent;
+    ui_opt.nentries = c;
+    ui_opt.default_item = pent[0].tag;
+    for (s = 0; s < c; s++)
+        if (!strcmp(pent[s].tag, out))
+            ui_opt.default_item = pent[s].tag;
+    ui_on_tick(0, 0);
+    ui_on_move(0, 0);
+    ui_prepare();
+    rc = ui_run();
+    s = ui_selected();
+    ui_on_tick(on_tick, 0);
+    ui_on_move(on_move, 0);
+    if (rc != 0 || s < 0 || s >= c)
+        return 0;
+    strncpy(out, pent[s].tag, (size_t)n - 1);
+    out[n - 1] = 0;
+    return 1;
 }
 
 static void free_level(void)
