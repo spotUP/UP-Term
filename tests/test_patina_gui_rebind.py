@@ -26,7 +26,8 @@ def body(name):
 NEED = [
     ('gui_open', r'\bscreen_bind\(g\)'),
     ('gui_show', r'\bscreen_bind\(g\)'),
-    ('gui_show', r'\bmg_layout\('),          # the window box comes from the new screen's font and size
+    ('gui_show', r'\bdo_layout\('),          # the window box comes from the new screen's font and size
+    ('do_layout', r'\bmg_layout\('),
     ('gui_hide', r'\bscreen_unbind\(g\)'),
     ('cleanup', r'\bscreen_unbind\(g\)'),
     ('screen_bind', r'\bpick_font\(g\)'),
@@ -37,6 +38,11 @@ NEED = [
     ('screen_unbind', r'\bpens_release\(g\)'),
     ('screen_unbind', r'\big_close\(\)'),
     ('screen_unbind', r'\bUnlockPubScreen\(0, g->scr\)'),
+    # S85l+: the reopened window keeps the opening width. gui_open measures from the node it opened at over every
+    # level below; gui_show measured from g->node, the level shown at the theme pick (Style > Patina theme), so a
+    # Keep after an apply reopened the menu 360 wide instead of 575 and cut its rows.
+    ('gui_open', r'strcpy\(g->open_node, node\)'),
+    ('gui_show', r'\bmg_width_t\(&km, g->open_node,'),
 ]
 # taken or dropped anywhere else, a resource can outlive the screen it was made for
 ONLY_IN_PAIR = [r'\bpick_font\(g\)', r'\bmt_close\(', r'\big_open\(', r'\big_close\(', r'\bUnlockPubScreen\(0, g->scr\)',

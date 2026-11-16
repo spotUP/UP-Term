@@ -127,6 +127,7 @@ typedef struct gui {
     long late;                   /* blits that took longer than estimated */
     /* list */
     char node[KM_ID * 2], filter[KM_LABEL];
+    char open_node[KM_ID * 2];          /* the node the menu opened at: the window width measures from it (gui_show) */
     int key_repeat;                      /* MENU-BS-REPEAT: the key being handled is an auto-repeat (IEQUALIFIER_REPEAT) */
     mn_item *it;                 /* one level's items, ix_level_cap(&ixs) of them */
     int *idx, cap, count;
@@ -1747,8 +1748,8 @@ static void gui_show(void)
     hidden = 0;
     if (screen_bind(g))
         return;
-    if (g->mode == M_LIST)
-        g->w = mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, g->mt, &g->ms, menu_cond);
+    if (g->mode == M_LIST)   /* the opening measure, as gui_open took it: g->node may be a deeper, narrower level */
+        g->w = mg_width_t(&km, g->open_node, &g->mf, g->icon_w, g->chev_w, text_len, g->mt, &g->ms, menu_cond);
     do_layout(g, g->mode == M_LIST ? g->count : g->nlines);
     g->win = window_open(g);
     wbr_report(SIGBREAKF_CTRL_F, WBR_DISMISS, g->win != 0);
@@ -1916,6 +1917,7 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
     g->chosen = -1;
     g->ixpath[0] = g->ixlabel[0] = 0;
     strcpy(g->node, node);
+    strcpy(g->open_node, node);
     if (viewer) {
         int i, w = 0;
         mg_metrics m;
