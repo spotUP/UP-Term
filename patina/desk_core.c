@@ -220,8 +220,11 @@ int desk_pens_reset(const unsigned short *cur, int ncur, int flat, int depth)
         int pen = desk_pen_fold(want[i], ncolors); /* FILENAME-PEN: the live pens of a 4-colour screen are the folded map */
         /* BLOCKPEN-IGNORED: OS 3.2 keeps BLOCKPEN at 1 whatever palette.prefs holds (rig 8, depth 8: 5, 0, 1, 253 all read back 1), so
          * the slot never says whether the map is in force. On a screen of 4+ planes IPrefs puts pens 4-7 on the last four screen pens
-         * (WB-TITLE-GREEN: pen 5 reads back 253, the same rule as the palette entries). */
-        if (i == DK_BLOCK)
+         * (WB-TITLE-GREEN: pen 5 reads back 253, the same rule as the palette entries).
+         * S85-RESET-BARTRIM: Palette 40.2 (3.1) USE writes BARTRIMPEN 2 to ENV: whatever its input holds (rig 84: work file 0, ENV: 2), so the
+         * flat map's 0 never came live and every 3.1 pick waited the full DK_RESET_SECS before Keep. Patina's maps never differ in that slot
+         * alone (flat and stock also differ in SHINE and SHADOW), so it carries no verdict. */
+        if (i == DK_BLOCK || i == DK_BARTRIM)
             continue;
         if (depth > 3 && pen >= 4 && pen < 8)
             pen = desk_palette_pen(pen, depth);

@@ -601,13 +601,32 @@ static void test_desk_pens_reset(void)
     CHECK_INT(desk_pens_reset(cur, DK_SLOTS + 2, 0, 3), 0);
     for (i = 0; i < DK_SLOTS; i++) {                /* knob: every slot moves the verdict */
         cur[i] ^= 1;
-        CHECK_INT(desk_pens_reset(cur, DK_SLOTS, 0, 3), i != DK_BLOCK); /* BLOCKPEN-IGNORED: the OS never adopts slot 1 */
+        CHECK_INT(desk_pens_reset(cur, DK_SLOTS, 0, 3), i != DK_BLOCK && i != DK_BARTRIM); /* BLOCKPEN-IGNORED, S85-RESET-BARTRIM */
         if (i > 0)
             CHECK_INT(desk_pens_reset(cur, i, 0, 3), 0);  /* slots beyond dri_NumPens are not compared */
         cur[i] ^= 1;
     }
     CHECK_INT(desk_pens_reset(cur, 0, 0, 3), 1);          /* no DrawInfo: unknown, assume a reset */
     CHECK_INT(desk_pens_reset(0, DK_SLOTS, 0, 3), 1);
+}
+
+/* S85-RESET-BARTRIM (rig 84, Palette 40.2): the flat map in force but BARTRIMPEN 2, the value the 3.1 editor always writes; the wait for
+ * the reset must end at once, not after DK_RESET_SECS */
+static void test_desk_reset_bartrim(void)
+{
+    unsigned char want[DK_SLOTS];
+    unsigned short live[DK_SLOTS];
+    int i;
+    char a;
+    desk_pens_for(1, want);
+    for (i = 0; i < DK_SLOTS; i++)
+        live[i] = want[i];
+    live[DK_BARTRIM] = 2;
+    CHECK_INT(want[DK_BARTRIM] != 2, 1);
+    CHECK_INT(desk_pens_reset(live, DK_SLOTS, 1, 3), 0);
+    CHECK_INT(desk_reset_done(&a, &a, live, DK_SLOTS, 1, 3), 1);
+    live[DK_BARBLOCK] ^= 1;                                 /* the bar fill is still compared */
+    CHECK_INT(desk_pens_reset(live, DK_SLOTS, 1, 3), 1);
 }
 
 /* BLOCKPEN-IGNORED (rig 8, OS 3.2, depth 8): a Workbench that holds the map reads back "0 1 2 2 253 3 0 0 2 2 0 253" (BLOCKPEN 1, pen 5
@@ -2292,6 +2311,7 @@ void suite_desk(void)
     test_desk_pens_reset();
     test_desk_pens_reset_folded();
     test_desk_pens_reset_deep();
+    test_desk_reset_bartrim();
     test_desk_defer_map();
     test_desk_window_foreign();
     test_desk_task_dopus();
