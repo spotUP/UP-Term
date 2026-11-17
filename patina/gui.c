@@ -497,10 +497,19 @@ static void draw_welcome_row(gui *g, int r, int tx, int y, int rbg)
         int side = flat_side_px(g->ms.rx, g->ms.ry);     /* WELCOME-CHECK-SQUARE: columns per row of visual height */
         int s = hc_check_h(mt_height(g->mt), rh), bx = tx, by = y + (rh - s) / 2, w = hc_check_w(s, side);
         const char *t = "Don't show this again";
-        fill(g, MT_TEXT, bx, by, bx + w - 1, by + s - 1);
-        fill(g, MT_BG, bx + side, by + 1, bx + w - side - 1, by + s - 2);
-        if (g->wticked)
-            fill(g, hc_tick_role(g->wticked), bx + 3 * side, by + 3, bx + w - 3 * side - 1, by + s - 4);
+        /* no outline: a rounded box in the scroller knob grey (flat_knob_colour), like the flat theme's scrollbars */
+        ULONG kc = (ULONG)flat_knob_colour(role_rgb(g, MT_BG), role_rgb(g, MT_DIM));
+        if (!mt_fill(g->mt, g->rp, bx, by, bx + w - 1, by + s - 1, kc)) {
+            SetAPen(g->rp, (ULONG)raa_nearest(rich_pen_rgb, g, g->npens, kc));
+            RectFill(g->rp, bx, by, bx + w - 1, by + s - 1);
+        }
+        rich_corners(g->depth, bx, by, w, s, kc, role_rgb(g, rbg), rich_put, g);
+        if (g->wticked) {
+            int tr = hc_tick_role(g->wticked), x0 = bx + 3 * side, y0 = by + 3, x1 = bx + w - 3 * side - 1, y1 = by + s - 4;
+            fill(g, tr, x0, y0, x1, y1);
+            if (x1 >= x0 && y1 >= y0)
+                rich_corners(g->depth, x0, y0, x1 - x0 + 1, y1 - y0 + 1, role_rgb(g, tr), kc, rich_put, g);
+        }
         put(g, MT_TEXT, rbg, bx + w + q->m.row_pad, y, rh, t, (int)strlen(t), q->list_w - 2 * q->m.row_pad - w);
     } else {
         static const char *const name[2] = { "Close", "Open Help" };
