@@ -1515,6 +1515,16 @@ static void event_loop(gui *g)
             ReplyMsg((struct Message *)im);
             switch (cls) {
             case IDCMP_VANILLAKEY:
+                /* Intuition sends Amiga+letter as VANILLAKEY (the char), not RAWKEY: map it back to the key code.
+                 * shortcut: letters and digits only (keymap_key_code names), punctuation chords stay unmapped. */
+                if (qual & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND)) {
+                    char kn[2];
+                    int rc;
+                    kn[0] = (char)code;
+                    kn[1] = 0;
+                    if ((rc = keymap_key_code(kn)) >= 0)
+                        super_key(g, rc, qual);
+                }
                 vanilla_key(g, code, (qual & IEQUALIFIER_REPEAT) != 0, qual);
                 break;
             case IDCMP_RAWKEY:
