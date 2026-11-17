@@ -1592,10 +1592,8 @@ int gt_save(const prefs_fs *fs, const char *name, const gt_model *m, char *why, 
         why_put(why, cap, GT_SAVE_NAME);
         return 0;
     }
-    if (shipped_has(fs, name) && !user_has(fs, name)) {
-        why_put(why, cap, GT_SAVE_SHIPPED);
-        return 0;
-    }
+    /* S87: the editor autosaves, so an edit of a shipped theme writes a user copy of the same name over it (the shipped file stays;
+     * Delete User Theme brings it back). Save As still refuses a shipped name (gt_save_as). */
     n = model_save_named(m, name, g_save, (long)sizeof g_save);
     if (n < 0) {
         why_put(why, cap, GT_SAVE_WRITE);

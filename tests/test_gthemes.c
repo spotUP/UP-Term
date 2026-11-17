@@ -2091,12 +2091,16 @@ static void test_gthemes_te3_save(void)
     CHECK(!gt_save(&fs, "bad/name", &mod, why, sizeof why));        /* name refusal */
     CHECK(strstr(why, "name") != 0);
     CHECK(!gt_save(&fs, "", &mod, why, sizeof why));
-    /* D2: a shipped theme's name is never saved over, not even as a user copy */
+    /* S87 (owner 17 Nov, replaces D2): the editor autosaves, so an edit of a shipped theme writes a user copy over it; the shipped
+     * file is untouched. Save As still refuses a shipped name. */
     tm_write(&m, "UP-Term:Patina/Themes/Nord.theme", tm_theme, (long)strlen(tm_theme));
-    CHECK(!gt_save(&fs, "Nord", &mod, why, sizeof why));
-    CHECK(tm_find(&m, "ENVARC:Patina/themes/Nord.theme") == 0);
-    CHECK(!gt_save_as(&fs, "Mine", &mod, why, sizeof why));         /* taken */
     CHECK(!gt_save_as(&fs, "Nord", &mod, why, sizeof why));
+    CHECK(tm_find(&m, "ENVARC:Patina/themes/Nord.theme") == 0);
+    CHECK(gt_save(&fs, "Nord", &mod, why, sizeof why));
+    CHECK(tm_find(&m, "ENVARC:Patina/themes/Nord.theme") != 0);
+    u = tm_find(&m, "UP-Term:Patina/Themes/Nord.theme");
+    CHECK(u && u->len == (long)strlen(tm_theme) && !memcmp(u->data, tm_theme, strlen(tm_theme)));
+    CHECK(!gt_save_as(&fs, "Mine", &mod, why, sizeof why));         /* taken */
     CHECK(gt_save_as(&fs, "Nord Custom", &mod, why, sizeof why));
     tm_free(&m);
 }
@@ -2140,6 +2144,11 @@ static void test_gthemes_te3_edit_applies(void)
     CHECK_INT(tm_applied, 1);
     CHECK(!gt_save_edit(&fs, "bad/n", &mod, "bad/n", tm_apply, why, sizeof why));
     CHECK_INT(tm_applied, 1);                                        /* a refused save applies nothing */
+    /* S87: an edit of the current shipped theme (the default) autosaves a user copy and applies it */
+    tm_write(&m, "UP-Term:Patina/Themes/Tokyo Night.theme", tm_theme, (long)strlen(tm_theme));
+    CHECK(gt_save_edit(&fs, "Tokyo Night", &mod, "tokyo night", tm_apply, why, sizeof why));
+    CHECK(tm_find(&m, "ENVARC:Patina/themes/Tokyo Night.theme") != 0);
+    CHECK_INT(tm_applied, 2);
     tm_free(&m);
 }
 
