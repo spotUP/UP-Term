@@ -484,20 +484,40 @@ void lf_colour_current(const amconf_io *io, const sd_setting *s, int entry, char
         lf_setting_text_raw(io, s, out, 8);
 }
 
-/* S88 bars: the channel (0 red, 1 green, 2 blue) of a bar entry of a theme swatch row, else -1 */
+/* S88 bars: the channel (0 red, 1 green, 2 blue) of a bar entry, else -1. A theme swatch row, a terminal colour row
+ * (fg, bg, selection, cursor) take entries SD_PICK_BAR..+2; the terminal palette row takes SD_PICK_PALBAR + 3 * n + channel
+ * for its entry n, so each of the 16 entries has its own three bars */
 static int bar_channel(const sd_setting *s, int entry)
 {
-    return s->kind == SD_SWATCH && s->store == SD_GTHEME && entry >= SD_PICK_BAR && entry < SD_PICK_BAR + SD_PICK_BARS
-               ? entry - SD_PICK_BAR : -1;
+    if (s->kind == SD_PALETTE)
+        return entry >= SD_PICK_PALBAR && entry < SD_PICK_PALBAR + 3 * 16 ? (entry - SD_PICK_PALBAR) % 3 : -1;
+    if ((s->kind == SD_SWATCH && s->store == SD_GTHEME) || (s->kind == SD_COLOUR && s->store == SD_UPTERM))
+        return entry >= SD_PICK_BAR && entry < SD_PICK_BAR + SD_PICK_BARS ? entry - SD_PICK_BAR : -1;
+    return -1;
+}
+
+int lf_bar_entry(const sd_setting *s, int entry)
+{
+    return bar_channel(s, entry) >= 0;
+}
+
+/* the current colour of the bars' target; an unset terminal colour reads as 000000 (the bars then set it) */
+static void bar_rgb(const amconf_io *io, const sd_setting *s, int entry, uc_u32 *rgb)
+{
+    char hex[16];
+    lf_colour_current(io, s, s->kind == SD_PALETTE ? (entry - SD_PICK_PALBAR) / 3 : 0, hex);
+    if (!prefs_hex_parse(hex, rgb))
+        *rgb = 0;
 }
 
 int lf_bar_value(const amconf_io *io, const sd_setting *s, int entry)
 {
-    char hex[16];
     uc_u32 rgb;
     int c = bar_channel(s, entry);
-    lf_colour_current(io, s, 0, hex);
-    return c < 0 || !prefs_hex_parse(hex, &rgb) ? -1 : (int)((rgb >> (16 - 8 * c)) & 0xFF);
+    if (c < 0)
+        return -1;
+    bar_rgb(io, s, entry, &rgb);
+    return (int)((rgb >> (16 - 8 * c)) & 0xFF);
 }
 
 int lf_bar_set(const amconf_io *io, const sd_setting *s, int entry, int v)
@@ -505,19 +525,25 @@ int lf_bar_set(const amconf_io *io, const sd_setting *s, int entry, int v)
     char hex[16];
     uc_u32 rgb;
     int c = bar_channel(s, entry), failed;
-    lf_colour_current(io, s, 0, hex);
-    if (c < 0 || !prefs_hex_parse(hex, &rgb))
+    if (c < 0)
         return LF_SET_KIND;
+    bar_rgb(io, s, entry, &rgb);
     v = v < 0 ? 0 : v > 255 ? 255 : v;
     rgb = (rgb & ~((uc_u32)0xFF << (16 - 8 * c))) | ((uc_u32)v << (16 - 8 * c));
     prefs_hex_format(rgb, hex);
-    return lf_setting_set_colour(io, s, SD_PICK_CUSTOM, hex, &failed);
+    return lf_setting_set_colour(io, s, s->kind == SD_PALETTE ? (entry - SD_PICK_PALBAR) / 3 : SD_PICK_CUSTOM, hex, &failed);
 }
 
 int lf_bar_step(const amconf_io *io, const sd_setting *s, int entry, int delta)
 {
     int v = lf_bar_value(io, s, entry);
     return v < 0 ? LF_SET_KIND : lf_bar_set(io, s, entry, v + delta);
+}
+
+static void bar_label(const amconf_io *io, const sd_setting *s, int entry, char *label)
+{
+    int c = bar_channel(s, entry);
+    snprintf(label, MN_LABEL, "%s: %d", c == 0 ? "Red" : c == 1 ? "Green" : "Blue", lf_bar_value(io, s, entry));
 }
 
 int lf_row_bar(const mn_item *it)
@@ -783,8 +809,7 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
             if (SD_HAS_PICKER(s)) {
                 int v = atoi(it[i].seg);
                 if (bar_channel(s, v) >= 0)
-                    snprintf(it[i].label, MN_LABEL, "%s: %d", v == SD_PICK_BAR ? "Red" : v == SD_PICK_BAR + 1 ? "Green" : "Blue",
-                             lf_bar_value(io, s, v));
+                    bar_label(io, s, v, it[i].label);
                 else if (v == SD_PICK_CUSTOM)
                     strcpy(it[i].label, SD_IS_REFROW(s) ? "Expression..." : "Custom...");
                 else if (v == SD_PICK_DEFAULT)
@@ -816,7 +841,9 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
             /* the names and actions come labelled from the tree */
         } else if (SD_HAS_PICKER(s)) {
             int v = atoi(it[i].seg);
-            if (v == SD_PICK_CUSTOM)
+            if (bar_channel(s, v) >= 0)
+                bar_label(io, s, v, it[i].label);
+            else if (v == SD_PICK_CUSTOM)
                 strcpy(it[i].label, "Custom...");
             else if (v == SD_PICK_DEFAULT)
                 strcpy(it[i].label, "Default");

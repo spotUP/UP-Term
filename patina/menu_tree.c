@@ -161,6 +161,25 @@ static int list_rows(const sd_setting *s, mn_item *out, int max)
     return n;
 }
 
+/* one picker choice row of setting s for entry e (seg: the entry in decimal) */
+static int bar_choice_row(mn_item *o, const sd_setting *s, int e)
+{
+    o->row = MN_ROW_CHOICE;
+    o->ix = s->id;
+    if (e >= 100) {
+        o->seg[0] = (char)('0' + e / 100);
+        o->seg[1] = (char)('0' + e / 10 % 10);
+        o->seg[2] = (char)('0' + e % 10);
+        o->seg[3] = 0;
+    } else {
+        o->seg[0] = (char)(e >= 10 ? '0' + e / 10 : '0' + e);
+        o->seg[1] = (char)(e >= 10 ? '0' + e % 10 : 0);
+        o->seg[2] = 0;
+    }
+    cpy(o->label, "", KM_LABEL);
+    return 1;
+}
+
 /* the values of a cycle setting, one MN_ROW_CHOICE row each */
 static int choice_rows(const sd_setting *s, mn_item *out, int max)
 {
@@ -183,15 +202,18 @@ static int choice_rows(const sd_setting *s, mn_item *out, int max)
         }
         return n;
     }
-    if (s->kind == SD_SWATCH && s->store == SD_GTHEME)      /* S88: Red, Green, Blue bars above the palette */
-        for (v = 0; v < SD_PICK_BARS && n < max; v++, n++) {
-            out[n].row = MN_ROW_CHOICE;
-            out[n].ix = s->id;
-            out[n].seg[0] = (char)('0' + (SD_PICK_BAR + v) / 10);
-            out[n].seg[1] = (char)('0' + (SD_PICK_BAR + v) % 10);
-            out[n].seg[2] = 0;
-            cpy(out[n].label, "", KM_LABEL);
+    if (s->kind == SD_PALETTE) {    /* S89: each palette entry, then its Red, Green, Blue bars */
+        for (v = 0; v < 16 && n < max; v++) {
+            int k;
+            n += bar_choice_row(out + n, s, v);
+            for (k = 0; k < 3 && n < max; k++)
+                n += bar_choice_row(out + n, s, SD_PICK_PALBAR + 3 * v + k);
         }
+        return n;
+    }
+    if ((s->kind == SD_SWATCH && s->store == SD_GTHEME) || s->kind == SD_COLOUR)   /* S88/S89: Red, Green, Blue bars above the palette */
+        for (v = 0; v < SD_PICK_BARS && n < max; v++)
+            n += bar_choice_row(out + n, s, SD_PICK_BAR + v);
     for (v = 0; v < nv && n < max; v++, n++) {
         out[n].row = MN_ROW_CHOICE;
         out[n].ix = s->id;

@@ -171,6 +171,9 @@ const char *sd_shown_string(const sd_setting *s, const char *t);
 /* S88: a theme swatch picker lists three bar rows first, entries SD_PICK_BAR + 0..2 (Red, Green, Blue, 0..255 each) */
 #define SD_PICK_BAR 90
 #define SD_PICK_BARS 3
+/* S89: the terminal colour rows (fg, bg, selection, cursor) use entries SD_PICK_BAR..+2 the same way; the palette row lists,
+ * per palette entry n, its row then three bars, entries SD_PICK_PALBAR + 3 * n + channel */
+#define SD_PICK_PALBAR 100
 #define SD_IS_REFROW(s) ((s)->kind == SD_SWATCHREF || (s)->kind == SD_ELEMENT)
 
 /* The menu's page groups: `settings:<name>` in the keymap [menu] names a page of Prefs. The PG_PAGE_* of a
