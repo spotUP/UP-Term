@@ -106,6 +106,7 @@ struct Library *UtilityBase;
 #define NNOTIFY 4 /* the profile file and Patina's file, in ENV: and ENVARC: */
 
 struct app {
+    int themed;               /* a Patina theme is in force: the colour rows are the theme's (am_fields) */
     struct Window *win;
     struct Screen *scr;
     struct DrawInfo *dri;
@@ -774,6 +775,16 @@ static void install_error(struct app *a, int t, int r)
     set_status(a, msg);
 }
 
+/* S90: the Patina fields over *f, and with a Patina theme in force its effective terminal colours (the handler takes
+ * the colours from the theme, not the profile): the colour rows show what the terminal wears. Save and Use write them
+ * back to the theme (save_theme_colours), the profile keeps its own. */
+static void am_fields(struct app *a, prefs_fields *f)
+{
+    const amconf_io *io = amconf_dos_io();
+    amconf_to_fields(&a->am, f);
+    a->themed = gt_term_fields(io->read, io->fs->ctx, a->am.val[AM_GTHEME], f);
+}
+
 /* The profile named in the fields: its values from the table (or the built-in
  * ones for a name the table lacks), and what "unchanged" means from here. */
 static void load_profile(struct app *a, const char *name)
@@ -786,7 +797,7 @@ static void load_profile(struct app *a, const char *name)
         prefs_defaults(&a->f);
         a->prof_new = 1;
     }
-    amconf_to_fields(&a->am, &a->f); /* the Patina page is the same in every profile */
+    am_fields(a, &a->f); /* the Patina page is the same in every profile */
     a->orig = a->f;
     sb_load(a);
     a->colors = prefs_colors_index(a->f.colors);
@@ -839,7 +850,7 @@ static void files_changed(struct app *a)
         return;
     prefs_from_conf(&file, &a->conf, a->prof);
     a->am_src = amconf_load(&a->am);
-    amconf_to_fields(&a->am, &file);
+    am_fields(a, &file);
     changed = prefs_merge_external(&a->f, &a->orig, &file, &merged, &orig);
     a->f = merged;
     a->orig = orig;
@@ -907,6 +918,7 @@ static int commit(struct app *a, int keep)
     char msg[STATUS_MAX];
     long len;
     int bad, t, r;
+    const prefs_fields *sf;
     if (!a->writable) {
         set_status(a, "Read only: the file was not loaded whole.");
         return 0;
@@ -928,7 +940,23 @@ static int commit(struct app *a, int keep)
         goto_gadget(a, bad_gadget(bad));
         return 0;
     }
-    len = prefs_stage(&a->work, &a->conf, name, &a->f, a->buf, CONF_MAX + 1);
+    sf = &a->f;
+    if (a->themed) {              /* the profile's colours stay as they were in the file */
+        static prefs_fields pf, pc;
+        pf = a->f;
+        if (prefs_profile_exists(&a->conf, name))
+            prefs_from_conf(&pc, &a->conf, name);
+        else
+            prefs_defaults(&pc);
+        memcpy(pf.fg, pc.fg, sizeof pf.fg);
+        memcpy(pf.bg, pc.bg, sizeof pf.bg);
+        memcpy(pf.selfg, pc.selfg, sizeof pf.selfg);
+        memcpy(pf.selbg, pc.selbg, sizeof pf.selbg);
+        memcpy(pf.curcol, pc.curcol, sizeof pf.curcol);
+        memcpy(pf.pal, pc.pal, sizeof pf.pal);
+        sf = &pf;
+    }
+    len = prefs_stage(&a->work, &a->conf, name, sf, a->buf, CONF_MAX + 1);
     if (len == PREFS_STAGE_LOSSY) {
         set_status(a, "Read only: the file was not loaded whole.");
         return 0;
@@ -944,6 +972,10 @@ static int commit(struct app *a, int keep)
     if (len < 0) {
         puts_(msg, puts_(msg, 0, "The file would be over ", CONF_MAX), " bytes.", -1);
         set_status(a, msg);
+        return 0;
+    }
+    if (a->themed && gt_term_store(amconf_dos_io()->read, &prefs_dos_fs, a->am.val[AM_GTHEME], &a->f) == GT_TERM_FAIL) {
+        set_status(a, "The theme's terminal colours could not be written.");
         return 0;
     }
     /* Patina's file first: the profile's save below drops the Patina keys an older version left in it, so
@@ -2096,7 +2128,7 @@ int main(void)
     else
         prefs_defaults(&a->f);
     a->am_src = amconf_load(&a->am);
-    amconf_to_fields(&a->am, &a->f);
+    am_fields(a, &a->f);
     {
         gt_list found;
         gt_dos_scan(&found);

@@ -411,6 +411,16 @@ int gte_action_plan(int aux, int editor_open);
 int gte_open_from(gt_read_fn rd, void *ctx, const char *name);
 
 /* ---- TE-8: presets, contrast warning, pen budget (plan 2026-11-05-patina-theme-editor.md sections 6, 7, D8) ---- */
+/* S90: the terminal colours of the Patina theme in force (gtheme = AM_GTHEME, "" = GT_DEFAULT), shared by the Patina menu leaves and UP-Term
+ * Prefs. gt_term_fields: f's fg, bg, selection, cursor and palette replaced by the theme's effective ones; 1 when applied, 0 (f untouched)
+ * when no theme loads. gt_term_set: one term_* key (palette: entry 0-15, else -1; hex "" removes it) into the theme's user copy
+ * (a shipped theme gets a same-name copy; gt_save) and GT_TERM_FILE rewritten, which every open tab watches; GT_TERM_NONE: no theme,
+ * the caller writes the profile; GT_TERM_FAIL: palette text full or a write failed. gt_term_store: gt_term_set for every colour of f that
+ * differs from the theme's effective one (one edit freezes one entry); GT_TERM_NONE without a theme. */
+enum { GT_TERM_OK = 0, GT_TERM_NONE = -1, GT_TERM_FAIL = 1 };
+int gt_term_fields(gt_read_fn rd, void *ctx, const char *gtheme, prefs_fields *f);
+int gt_term_set(gt_read_fn rd, const prefs_fs *fs, const char *gtheme, const char *key, int entry, const char *hex);
+int gt_term_store(gt_read_fn rd, const prefs_fs *fs, const char *gtheme, const prefs_fields *f);
 /* TE-8.1: a theme as a starting point: the user file, else the shipped file, else (the name is GT_DEFAULT) the built-in tokyo-night.
  * Parsed into out with out->name = name. 1 found; 0 when no such theme. */
 int gt_preset_model(gt_read_fn rd, void *ctx, const char *name, gt_model *out);
