@@ -143,8 +143,14 @@ static int act_menu_kind(int kind, const char *node)
 {
     char line[KM_ID + 160];
     int text = 0, cols = VIEWER_COLS, rows = VIEWER_ROWS, in_term = 0, full = 0;
-    if (mo_close_open())
-        return 1;   /* MENU-TOGGLE: a menu or viewer hotkey closes whichever menu is open */
+    static int open_kind = -1;
+    static char open_node[KM_ID];
+    /* MENU-TOGGLE: the hotkey of the open menu closes it; another menu's hotkey (super+p over Apps) closes
+     * the open one and opens its own */
+    if (mo_close_open() && open_kind == kind && !strcmp(open_node, node))
+        return 1;
+    open_kind = kind;
+    strncpy(open_node, node, sizeof open_node - 1);
     win_active_terminal(&in_term, &full);
     if (!cx_menu_cmd(line, sizeof(line), g_dir, kind, node, cx_menu_style(g_style, g_term_menu, in_term, full), &text))
         return 0;
