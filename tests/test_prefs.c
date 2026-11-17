@@ -1604,6 +1604,21 @@ static void a_file_change_while_open_reloads_only_the_unedited_pages(void)
     CHECK_STR(am_saved.val[AM_STYLE], "minimal");           /* the menu's change in Patina's file */
 }
 
+
+static void drawer_list_helpers_add_remove_and_find_the_last_entry(void)
+{
+    char out[64];
+    CHECK_STR(prefs_list_last(""), "");
+    CHECK_STR(prefs_list_last("Work:A,Work:B"), "Work:B");
+    CHECK_INT(prefs_list_toggle("", "Work:A", out, sizeof(out)), 1);
+    CHECK_STR(out, "Work:A");
+    CHECK_INT(prefs_list_toggle("Work:A", "Work:B", out, sizeof(out)), 1);
+    CHECK_STR(out, "Work:A,Work:B");
+    CHECK_INT(prefs_list_toggle("Work:A,Work:B", "Work:A", out, sizeof(out)), 1);
+    CHECK_STR(out, "Work:B");
+    CHECK_INT(prefs_list_toggle("Work:A", "Work:LongerThanFits", out, 12), 0);
+}
+
 void suite_prefs(void)
 {
     meta_defaults_to_alt();
@@ -1637,4 +1652,5 @@ void suite_prefs(void)
     file_text_is_byte_identical_for_defaults_the_a1200_file_and_every_key();
     the_menu_theme_row_is_a_select_over_the_scanned_themes();
     a_file_change_while_open_reloads_only_the_unedited_pages();
+    drawer_list_helpers_add_remove_and_find_the_last_entry();
 }

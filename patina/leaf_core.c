@@ -536,46 +536,6 @@ int lf_is_drawer_row(const sd_setting *s)
     return s->id == SDI_AM_MUSIC || s->id == SDI_AM_DEMO || s->id == SDI_AM_HIDE;
 }
 
-/* the last entry of a comma list ("" when empty) */
-static const char *lf_list_last(const char *list)
-{
-    const char *c = strrchr(list, ',');
-    return c ? c + 1 : list;
-}
-
-/* list = comma list; toggle path: drop the entry when present, else append. 0: does not fit. */
-static int lf_list_toggle(const char *list, const char *path, char *out, int cap)
-{
-    int n = 0, found = 0;
-    const char *p = list;
-    size_t pl = strlen(path);
-    out[0] = 0;
-    while (*p) {
-        const char *e = strchr(p, ',');
-        size_t l = e ? (size_t)(e - p) : strlen(p);
-        if (l == pl && !strncmp(p, path, l)) {
-            found = 1;
-        } else if (l) {
-            if (n + (int)l + 2 > cap)
-                return 0;
-            if (n)
-                out[n++] = ',';
-            memcpy(out + n, p, l);
-            n += (int)l;
-            out[n] = 0;
-        }
-        p += l + (e ? 1 : 0);
-    }
-    if (!found) {
-        if (n + (int)pl + 2 > cap)
-            return 0;
-        if (n)
-            out[n++] = ',';
-        memcpy(out + n, path, pl + 1);
-    }
-    return 1;
-}
-
 int lf_setting_pick(const amconf_io *io, const sd_setting *s, const lf_asl *asl, int *failed)
 {
     char cur[UC_MAX_VALUE], depth[UC_MAX_VALUE], spec[UC_MAX_VALUE];
@@ -584,9 +544,9 @@ int lf_setting_pick(const amconf_io *io, const sd_setting *s, const lf_asl *asl,
         char path[300], list[UC_MAX_VALUE], next[UC_MAX_VALUE];
         if (!asl->drawer || !lf_setting_text(io, s, list, sizeof list))
             return LF_SET_INVALID;
-        if (!asl->drawer(asl->ctx, lf_list_last(list), path, sizeof path))
+        if (!asl->drawer(asl->ctx, prefs_list_last(list), path, sizeof path))
             return LF_SET_CANCELLED;
-        if ( strchr(path, ',') || !lf_list_toggle(list, path, next, sizeof next))
+        if ( strchr(path, ',') || !prefs_list_toggle(list, path, next, sizeof next))
             return LF_SET_INVALID;
         return lf_setting_set_text(io, s, next, failed);
     }

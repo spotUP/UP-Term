@@ -1635,6 +1635,27 @@ static void pick_fallback(struct app *a)
     set_status(a, "Fallback font chosen: Save or Use writes it.");
 }
 
+/* Music, Demo and Hidden drawers: the typed list stays, the picked drawer is added to it or removed when listed (the menu's rule) */
+static void pick_drawer(struct app *a, int id)
+{
+    char path[300], next[UC_MAX_VALUE];
+    int cap;
+    char *list;
+    collect(a);
+    list = text_field(a, id, &cap);
+    if (!list)
+        return;
+    if (!asl_pick_drawer(0, a->win, "Choose a drawer", prefs_list_last(list), path, sizeof(path)))
+        return;
+    if (strchr(path, ',') || !prefs_list_toggle(list, path, next, sizeof(next))) {
+        set_status(a, "That drawer does not fit in the list.");
+        return;
+    }
+    strcpy(list, next);
+    set_attr(a, id, GTST_String, (ULONG)list);
+    set_status(a, "Drawer list changed: Save or Use writes it.");
+}
+
 static void pick_mode(struct app *a)
 {
     unsigned long id = 0, nid;
@@ -1853,6 +1874,15 @@ static int act(struct app *a, int id, int val)
     case PG_THEME:
         collect(a); /* what was typed stays, the theme replaces only colours */
         pick_theme(a);
+        return 0;
+    case PG_AM_MUSIC_CHOOSE:
+        pick_drawer(a, PG_AM_MUSIC);
+        return 0;
+    case PG_AM_DEMO_CHOOSE:
+        pick_drawer(a, PG_AM_DEMO);
+        return 0;
+    case PG_AM_HIDE_CHOOSE:
+        pick_drawer(a, PG_AM_HIDE);
         return 0;
     case PG_LINK_DEFAULT:
         a->f.linkopen[0] = 0;

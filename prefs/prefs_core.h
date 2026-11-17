@@ -178,6 +178,11 @@ int prefs_font_parse(const char *spec, char *name, int cap, long *size);
  * file) as the font-fallback value: the file name without drawer and
  * ".otag". 0 and out "" when the file is not an .otag. */
 int prefs_otag_basename(const char *path, char *out, int cap);
+/* a comma list of drawers (Music, Demo, Hidden drawers): the last entry ("" when empty) */
+const char *prefs_list_last(const char *list);
+/* toggle path in the comma list: drop the entry when present, else append it. out gets the result (cap bytes);
+ * 0 when it does not fit. */
+int prefs_list_toggle(const char *list, const char *path, char *out, int cap);
 
 /* ---- scrollback, screen mode and depth ---------------------------------- */
 #define PREFS_SB_DEFAULT 500   /* the lines of a window with no scrollback key */

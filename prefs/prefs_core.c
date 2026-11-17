@@ -1027,3 +1027,41 @@ int prefs_grad_pens(unsigned short out[3], long p0, long p1)
     out[1] = (unsigned short)p1;
     return 1;
 }
+
+const char *prefs_list_last(const char *list)
+{
+    const char *c = strrchr(list, ',');
+    return c ? c + 1 : list;
+}
+
+int prefs_list_toggle(const char *list, const char *path, char *out, int cap)
+{
+    int n = 0, found = 0;
+    const char *p = list;
+    size_t pl = strlen(path);
+    out[0] = 0;
+    while (*p) {
+        const char *e = strchr(p, ',');
+        size_t l = e ? (size_t)(e - p) : strlen(p);
+        if (l == pl && !strncmp(p, path, l)) {
+            found = 1;
+        } else if (l) {
+            if (n + (int)l + 2 > cap)
+                return 0;
+            if (n)
+                out[n++] = ',';
+            memcpy(out + n, p, l);
+            n += (int)l;
+            out[n] = 0;
+        }
+        p += l + (e ? 1 : 0);
+    }
+    if (!found) {
+        if (n + (int)pl + 2 > cap)
+            return 0;
+        if (n)
+            out[n++] = ',';
+        memcpy(out + n, path, pl + 1);
+    }
+    return 1;
+}
