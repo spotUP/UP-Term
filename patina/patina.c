@@ -36,6 +36,8 @@
 #include "amconf_dos.h"
 #include "help_core.h"
 #include "../handler/upactive.h"
+#include "../handler/keymap_act.h"
+#include "../handler/tabprog.h"
 #include "../tty/qmark.h"
 #include "menu_open.h"
 #include "bar.h"
@@ -432,7 +434,15 @@ static int do_row(int row)
     case KA_CAP:   ok = cap_run(b->arg) == 0; break;
     case KA_OPEN:  ok = act_open_uterm(); break;
     case KA_TAB:   ok = act_open_uterm(); break;   /* tab:new, installed: no terminal has focus */
-    case KA_MENUID: ok = act_menu_kind(KA_MENU, "settings"); break;   /* menuid:MENU_PREFS, installed: no terminal has focus */
+    case KA_MENUID:   /* installed: no terminal has focus */
+        if (kact_menu_id(b->arg) == MENU_AGENT) {   /* super+l: a new UP-Term running the ai-agent preference */
+            am_prefs *ap = amconf_borrow();
+            ok = act_open_uterm_prog(lf_menu_program(KA_MENUID, 0, MENU_AGENT, ap ? amconf_agent(ap) : 0));
+            if (ap)
+                amconf_return(ap);
+        } else
+            ok = act_menu_kind(KA_MENU, "settings");   /* menuid:MENU_PREFS */
+        break;
     case KA_BAR: {
         char scratch[REXX_HOST_OUT];
         ok = bar_port(b->arg, scratch) == 0;

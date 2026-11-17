@@ -23,5 +23,6 @@ int act_menu_server_start(const char *dir);
 void act_menu_server_quit(void);
 /* open:uterm: a new UP-Term window (the README's NewShell XCON: line). */
 int act_open_uterm(void);
+int act_open_uterm_prog(int prog);
 
 #endif

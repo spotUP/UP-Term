@@ -98,7 +98,8 @@ unsigned cx_qual_mask(unsigned q)
 int cx_row_installed(const km_bind *b)
 {
     /* tab:new too: with no terminal open the gate keeps it and Patina opens one; with one open the gate passes it on.
-     * menuid:MENU_PREFS the same way: a terminal with focus shows its own Preferences, anywhere else the rich Settings. */
+     * menuid:MENU_PREFS the same way: a terminal with focus shows its own Preferences, anywhere else the rich Settings.
+     * menuid:MENU_AGENT likewise: a terminal with focus opens an agent tab, anywhere else a new UP-Term running the agent. */
     return keymap_action_scope(b->kind) != KS_TERMINAL || (b->kind == KA_TAB && !strcmp(b->arg, "new"))
-        || (b->kind == KA_MENUID && !strcmp(b->arg, "MENU_PREFS"));
+        || (b->kind == KA_MENUID && (!strcmp(b->arg, "MENU_PREFS") || !strcmp(b->arg, "MENU_AGENT")));
 }

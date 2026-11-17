@@ -252,9 +252,15 @@ int act_rexx(const char *arg)
  * AmigaDOS Shell, with no vsh banner or logo (s77). */
 int act_open_uterm(void)
 {
+    return act_open_uterm_prog(TAB_SHELL);
+}
+
+/* The same window with `prog` (tabprog.h) as its first program, as menu_program in leaf.c picks it. */
+int act_open_uterm_prog(int prog)
+{
     char spec[128], line[256];
     spec_on_front(spec, sizeof spec, LF_UTERM_SPEC);
-    if (uterm_line(line, sizeof line, spec, TAB_SHELL, 0) != 1)
+    if (uterm_line(line, sizeof line, spec, prog, 0) != 1)
         return 0;
     return act_run(line);
 }

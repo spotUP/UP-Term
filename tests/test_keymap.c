@@ -1425,7 +1425,7 @@ static void cx_installs_only_the_commodity_rows(void)
     for (i = 0; i < km.nbind; i++) {
         int sc = keymap_action_scope(km.bind[i].kind);
         CHECK(cx_row_installed(&km.bind[i]) == (sc != KS_TERMINAL || (km.bind[i].kind == KA_TAB && !strcmp(km.bind[i].arg, "new"))
-                                                || (km.bind[i].kind == KA_MENUID && !strcmp(km.bind[i].arg, "MENU_PREFS"))));
+                                                || (km.bind[i].kind == KA_MENUID && (!strcmp(km.bind[i].arg, "MENU_PREFS") || !strcmp(km.bind[i].arg, "MENU_AGENT")))));
         if (sc == KS_TERMINAL)
             term++;
         else
