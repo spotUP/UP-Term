@@ -1,0 +1,32 @@
+--- biginteger.orig.cpp	2026-11-12 07:02:44
++++ /private/tmp/claude-501/-Users-spot-Code-UP-Term/e384575c-7007-454b-9b66-cd8997e246e4/scratchpad/bebbofix/bebboget-1.11/src/biginteger.cpp	2026-11-12 07:02:44
+@@ -332,6 +332,8 @@
+ void fastSecp384Mod(uint32_t* c, uint32_t* t, uint32_t* P) {
+     int64_t carry = 0;
+ 
++    // NIST P-384 (FIPS 186-4 D.2.4 / Guide to ECC alg. 2.30):
++    // T + 2*S1 + S2 + S3 + S4 + S5 + S6 - D1 - D2 - D3; S5 = (A23,A22,A21,A20) into words 7..4
+     // Each step accumulates contributions from high words (c[12..23])
+     // into low words (c[0..11]) with signed adjustments.
+     // This exploits the pseudo-Mersenne prime structure of P-384.
+@@ -348,16 +350,16 @@
+     carry += (int64_t)c[3] + c[15] + c[12] + c[20] + c[21] - c[14] - c[22] - c[23];
+     t[3] = carry; carry >>= 32;
+ 
+-    carry += (int64_t)c[4] + c[21] + c[21] + c[16] + c[13] + c[12] + c[22] - c[15] - c[23] - c[23];
++    carry += (int64_t)c[4] + c[21] + c[21] + c[16] + c[13] + c[12] + c[20] + c[22] - c[15] - c[23] - c[23];
+     t[4] = carry; carry >>= 32;
+ 
+-    carry += (int64_t)c[5] + c[22] + c[22] + c[17] + c[14] + c[13] + c[23] - c[16];
++    carry += (int64_t)c[5] + c[22] + c[22] + c[17] + c[14] + c[13] + c[21] + c[23] - c[16];
+     t[5] = carry; carry >>= 32;
+ 
+-    carry += (int64_t)c[6] + c[23] + c[23] + c[18] + c[15] + c[14] - c[17];
++    carry += (int64_t)c[6] + c[23] + c[23] + c[18] + c[15] + c[14] + c[22] - c[17];
+     t[6] = carry; carry >>= 32;
+ 
+-    carry += (int64_t)c[7] + c[19] + c[16] + c[15] - c[18];
++    carry += (int64_t)c[7] + c[19] + c[16] + c[15] + c[23] - c[18];
+     t[7] = carry; carry >>= 32;
+ 
+     carry += (int64_t)c[8] + c[20] + c[17] + c[16] - c[19];

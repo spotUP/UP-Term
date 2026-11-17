@@ -1,0 +1,297 @@
+diff --git a/amarchy/strut_patch.c b/amarchy/strut_patch.c
+index 571a25fc..5322406a 100644
+--- a/amarchy/strut_patch.c
++++ b/amarchy/strut_patch.c
+@@ -5,6 +5,7 @@
+ #include <exec/semaphores.h>
+ #include <proto/exec.h>
+ #include <proto/dos.h>
++#include <dos/dosextens.h>
+ #include <intuition/intuition.h>
+ #include <intuition/intuitionbase.h>
+ #include <intuition/screens.h>
+@@ -30,7 +31,7 @@ typedef struct strut_pub {
+     char name[20];
+     const struct Screen *scr;   /* only compared, never dereferenced */
+     int sw, sh, title, strip;   /* screen size, title bar height, strip height; strip 0 = nothing published */
+-    long opens, clamped, zoom_set;
++    long opens, clamped, zoom_set, grown;
+     int nd;
+     struct { struct Window *w; int h; } d[DESK_MAX];
+     int nr;
+@@ -49,6 +50,7 @@ typedef struct req {
+     long flags;
+     int inner;                  /* height is WA_InnerHeight */
+     WORD *zoom;
++    int grew;                   /* INSTALLER-WINDOW-GROW: height and top already carry the Installer growth */
+ } req;
+ 
+ typedef struct Window *(*openfn)(__reg("a0") struct NewWindow *, __reg("a1") struct TagItem *, __reg("a6") struct Library *);
+@@ -130,6 +132,61 @@ static int on_bar_screen(const strut_pub *p, const req *r)
+     return same;
+ }
+ 
++/* INSTALLER-WINDOW-GROW: is the calling task Installer? The process name (Workbench start) or the CLI's command name
++ * (Shell start, a BSTR); memory reads only, no DOS call. */
++static int caller_is_installer(void)
++{
++    struct Task *t = FindTask(0);
++    struct Process *pr = (struct Process *)t;
++    char buf[40];
++    if (t->tc_Node.ln_Name && win_is_installer_name(t->tc_Node.ln_Name))
++        return 1;
++    if (t->tc_Node.ln_Type == NT_PROCESS && pr->pr_CLI) {
++        struct CommandLineInterface *cli = (struct CommandLineInterface *)BADDR(pr->pr_CLI);
++        UBYTE *bs = cli->cli_CommandName ? (UBYTE *)BADDR(cli->cli_CommandName) : 0;
++        int n;
++        if (bs) {
++            n = bs[0] < sizeof buf - 1 ? bs[0] : (int)sizeof buf - 1;
++            memcpy(buf, bs + 1, (size_t)n);
++            buf[n] = 0;
++            return win_is_installer_name(buf);
++        }
++    }
++    return 0;
++}
++
++/* Installer's growth, applied to the request before the bar-strip plan sees it. The screen is the custom one given or the
++ * default public screen (Installer asks for that, 0x42c4); it is looked up, never opened. */
++static void installer_grow(strut_pub *p, req *r)
++{
++    struct Screen *s;
++    win_screen ws;
++    win_box b;
++    int ys, locked = 0;
++    if (r->inner || !caller_is_installer())
++        return;
++    if (r->scr)
++        s = (struct Screen *)r->scr;
++    else if (r->wbench)
++        s = ipd_lock_wb_screen(), locked = 1;
++    else if (r->name && *r->name)
++        s = ipd_lock_pub_screen(r->name), locked = 1;
++    else
++        s = ipd_lock_default_pub_screen(), locked = 1;
++    if (!s)
++        return;
++    ws.width = s->Width; ws.height = s->Height; ws.title = s->BarHeight + 1;
++    ws.bottom = (p->strip > 0 && s == p->scr) ? p->strip : 0;
++    ys = s->RastPort.Font ? s->RastPort.Font->tf_YSize : 8;
++    if (locked)
++        UnlockPubScreen(0, s);
++    memset(&b, 0, sizeof b);
++    b.top = (int)r->top; b.height = (int)r->height;
++    if (win_installer_grow(&b, ys, &ws)) {
++        r->top = b.top; r->height = b.height; r->grew = 1;
++    }
++}
++
+ typedef struct plan {
+     win_strut_cls cls;
+     win_box box;
+@@ -156,6 +213,8 @@ static int make_plan(const strut_pub *p, const req *r, plan *pl)
+     pl->cls = win_strut_class(&q, &pl->scr);
+     pl->change = win_strut_clamp(pl->cls, &pl->box, &pl->scr);
+     pl->zoom = 0;
++    if (r->grew)
++        pl->change = 1;
+     if (pl->cls == WSC_BORDERED && (q.sizegad || r->zoom)) {
+         win_box z;
+         if (r->zoom) {
+@@ -223,18 +282,21 @@ static struct Window *tags_hook(__reg("a0") struct NewWindow *nw, __reg("a1") st
+     struct TagItem *mine = 0;
+     int act = 0, planned = 0;
+     parse(&r, nw, tags);
++    installer_grow(p, &r);
+     if (p->strip > 0 && on_bar_screen(p, &r)) {
+         p->opens++;
+         act = make_plan(p, &r, &pl);
+         planned = 1;
+-        if (act)
+-            mine = edited_tags(tags, &pl, &r);
+-    }
++    } else if (r.grew)
++        act = make_plan(p, &r, &pl);
++    if (act)
++        mine = edited_tags(tags, &pl, &r);
+     w = ((openfn)ipatch_saved(&g_pt))(nw, mine ? mine : tags, ib);
+     if (mine) {
+         FreeVec(mine);
+         p->clamped += pl.change != 0;
+         p->zoom_set += pl.zoom != 0;
++        p->grown += r.grew;
+     }
+     if (planned && w && r.inner)
+         after_open(p, &pl, w);
+@@ -249,14 +311,19 @@ static struct Window *plain_hook(__reg("a0") struct NewWindow *nw, __reg("a1") s
+     struct NewWindow copy;
+     req r;
+     plan pl;
++    int bar;
+     parse(&r, nw, 0);
+-    if (nw && p->strip > 0 && on_bar_screen(p, &r)) {
+-        p->opens++;
++    if (nw)
++        installer_grow(p, &r);
++    bar = nw && p->strip > 0 && on_bar_screen(p, &r);
++    if (bar || (nw && r.grew)) {
++        p->opens += bar;
+         if (make_plan(p, &r, &pl) && pl.change) {
+             copy = *nw;
+             copy.TopEdge = (WORD)pl.box.top;
+             copy.Height = (WORD)pl.box.height;
+-            p->clamped++;
++            p->clamped += bar;
++            p->grown += r.grew;
+             nw = &copy;
+         }
+     }
+@@ -304,6 +371,7 @@ int strut_patch_install(void)
+     am_sentinel("AMARCHY_STRUT_CLAMPED", 0);
+     am_sentinel("AMARCHY_STRUT_ZOOM", 0);
+     am_sentinel("AMARCHY_STRUT_DESK", 0);
++    am_sentinel("AMARCHY_STRUT_GROWN", 0);
+     return 0;
+ }
+ 
+@@ -461,10 +529,11 @@ void strut_sentinels(void)
+     long v[5];
+     if (!g_pub)
+         return;
+-    v[0] = g_pub->opens; v[1] = g_pub->clamped; v[2] = g_pub->zoom_set; v[3] = g_pub->nd; v[4] = 0;
++    v[0] = g_pub->opens; v[1] = g_pub->clamped; v[2] = g_pub->zoom_set; v[3] = g_pub->nd; v[4] = g_pub->grown;
+     if (v[0] != g_last[0]) am_sentinel("AMARCHY_STRUT_OPENS", v[0]);
+     if (v[1] != g_last[1]) am_sentinel("AMARCHY_STRUT_CLAMPED", v[1]);
+     if (v[2] != g_last[2]) am_sentinel("AMARCHY_STRUT_ZOOM", v[2]);
+     if (v[3] != g_last[3]) am_sentinel("AMARCHY_STRUT_DESK", v[3]);
++    if (v[4] != g_last[4]) am_sentinel("AMARCHY_STRUT_GROWN", v[4]);
+     memcpy(g_last, v, sizeof v);
+ }
+diff --git a/amarchy/win_core.c b/amarchy/win_core.c
+index 64ec799c..89a97df3 100644
+--- a/amarchy/win_core.c
++++ b/amarchy/win_core.c
+@@ -194,6 +194,42 @@ int win_is_amarchy(const char *title)
+     return title && (!strcmp(title, "Amarchy") || !strcmp(title, "Amarchy bar"));
+ }
+ 
++int win_is_installer_name(const char *name)
++{
++    const char *base = name, *p, *w = "installer";
++    if (!name)
++        return 0;
++    for (p = name; *p; p++)
++        if (*p == '/' || *p == ':')
++            base = p + 1;
++    for (p = base; *w && *p; p++, w++)
++        if ((*p | 0x20) != *w)
++            return 0;
++    return *w == 0 && *p == 0;
++}
++
++int win_installer_grow(win_box *b, int ysize, const win_screen *s)
++{
++    int y = ysize < 8 ? 8 : ysize > 100 ? 100 : ysize;
++    int extra, up, room;
++    if (b->height != 17 * y + 23)
++        return 0;
++    extra = y / 2;
++    up = extra / 2;
++    if (b->top - up < s->title)
++        up = b->top > s->title ? b->top - s->title : 0;
++    room = s->height - s->bottom - (b->top - up + b->height);
++    if (extra > room)
++        extra = room;
++    if (extra <= 0)
++        return 0;
++    if (up > extra)
++        up = extra;
++    b->top -= up;
++    b->height += extra;
++    return 1;
++}
++
+ int win_snap(win_box *b, win_arg arg, int gap, const win_screen *s)
+ {
+     int x0, y0, w, h, cw, ch, x, y, nw, nh;
+diff --git a/amarchy/win_core.h b/amarchy/win_core.h
+index 63b55f89..273aacf8 100644
+--- a/amarchy/win_core.h
++++ b/amarchy/win_core.h
+@@ -90,6 +90,17 @@ int win_strut_reflow(const win_strut_req *r, win_box *b, const win_screen *s);
+  * is restored: 1 and *out = old, else 0 and *out untouched. */
+ int win_strut_restore(const win_box *now, const win_box *set, const win_box *old, win_box *out);
+ 
++/* INSTALLER-WINDOW-GROW (A5): Installer 43.3 opens a window of Height 17 * YSize + 23 (YSize = the screen font's height, clamped
++ * 8..100; routine 0x2b4, s66 a5-installer.md) and lays its two button rows out from the bottom with a 1 px margin. The patch
++ * recognises the program by name (win_is_installer_name: the task or CLI command name's last path part is "Installer",
++ * any case) and by that formula (win_installer_grow: the requested height is exactly the stock one, so an Installer with
++ * another sizing, e.g. 47.x, or any other window of that name is left alone). The window gets YSize / 2 more rows (5 at
++ * helvetica 11: a 6 px bottom margin), its top moves up half of that (it stays centred), never above the screen's title
++ * bar, and its bottom never below the usable bottom (the screen's height minus the bar strip): the growth shrinks to what
++ * fits. 1 when b changed. */
++int win_is_installer_name(const char *name);
++int win_installer_grow(win_box *b, int ysize, const win_screen *s);
++
+ /* win:snap: the box of one zone of the work area. WA_LEFT / WA_RIGHT / WA_UP / WA_DOWN halves, WA_TL / WA_TR / WA_BL /
+  * WA_BR quarters (cells split at (size - gap) / 2, the remainder pixel to the right / bottom cell), WA_CENTER keeps the
+  * window's size and centres it. Every size goes through win_fit. 1 when the box changed, 0 when not or arg is no zone. */
+diff --git a/tests/test_win.c b/tests/test_win.c
+index 84982877..8dd00765 100644
+--- a/tests/test_win.c
++++ b/tests/test_win.c
+@@ -335,6 +335,46 @@ static win_strut_req req(int l, int t, int w, int h, int drag, int size)
+     return r;
+ }
+ 
++/* INSTALLER-WINDOW-GROW (A5): Installer 43.3's 17 * YSize + 23 window grows YSize / 2 rows, centred, inside the usable area. */
++static void installer_grow(void)
++{
++    const win_screen big = { 800, 600, 14, 0 };
++    const win_screen bar = { 800, 600, 14, 16 };
++    const win_screen low = { 640, 256, 11, 0 };
++    win_box b;
++    CHECK_INT(win_is_installer_name("Installer"), 1);
++    CHECK_INT(win_is_installer_name("C:Installer"), 1);
++    CHECK_INT(win_is_installer_name("SYS:Utilities/installer"), 1);
++    CHECK_INT(win_is_installer_name("Installer2"), 0);
++    CHECK_INT(win_is_installer_name("MyInstaller"), 0);
++    CHECK_INT(win_is_installer_name("Shell Process"), 0);
++    CHECK_INT(win_is_installer_name(0), 0);
++    /* the rig's window: helvetica 11, 496x210 at y 195 -> 5 rows more, top 2 up */
++    b = box(152, 195, 496, 210);
++    CHECK_INT(win_installer_grow(&b, 11, &big), 1);
++    CHECK_INT(b.height, 215);
++    CHECK_INT(b.top, 193);
++    /* topaz 8 on 640x256: 159 -> 163 */
++    b = box(96, 40, 448, 159);
++    CHECK_INT(win_installer_grow(&b, 8, &low), 1);
++    CHECK_INT(b.height, 163);
++    /* another height (Installer 47.x or any other window): untouched */
++    b = box(152, 195, 496, 230);
++    CHECK_INT(win_installer_grow(&b, 11, &big), 0);
++    CHECK_INT(b.height, 230);
++    /* no room above the bar strip: grows only as far as fits, never into it */
++    b = box(152, 370, 496, 210);
++    CHECK_INT(win_installer_grow(&b, 11, &bar), 1);
++    CHECK_INT(b.top + b.height <= 600 - 16, 1);
++    b = box(152, 380, 496, 210);
++    CHECK_INT(win_installer_grow(&b, 11, &bar), 0);
++    /* never above the title bar */
++    b = box(152, 14, 496, 210);
++    CHECK_INT(win_installer_grow(&b, 11, &big), 1);
++    CHECK_INT(b.top, 14);
++    CHECK_INT(b.height, 215);
++}
++
+ static void strip_reserve(void)
+ {
+     const win_screen bar = { 640, 256, 11, 16 };
+@@ -458,6 +498,7 @@ void suite_win(void)
+     ticket_needs_unchanged_box();
+     work_area_and_fullscreen();
+     strut_and_ours();
++    installer_grow();
+     strip_reflow_existing();
+     strip_restore_unchanged_only();
+     move_stops_at_bar();

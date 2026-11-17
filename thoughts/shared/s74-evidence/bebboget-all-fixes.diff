@@ -1,0 +1,109 @@
+diff -ruN -x Release -x *.o -x *.a bebboget-1.11/src/bebboget.cpp ../bebbofix/bebboget-1.11/src/bebboget.cpp
+--- bebboget-1.11/src/bebboget.cpp	2025-11-26 11:53:24
++++ ../bebbofix/bebboget-1.11/src/bebboget.cpp	2026-11-12 02:38:55
+@@ -579,12 +579,15 @@
+     return r;
+ }
+ 
++static int exitCode = 0; // RETURN_OK, set to RETURN_ERROR (10) on failure
++
+ char* download() {
+     int isHttp = strncmp(url, "http://", 7) == 0;
+     int isHttps = strncmp(url, "https://", 8) == 0;
+ 
+     if (!isHttp && !isHttps) {
+         printf("unsupported protocol: %s\n", url);
++        exitCode = 10;
+         return 0;
+     }
+ 
+@@ -643,11 +646,13 @@
+ 
+         if (r) {
+             printf("error %ld\n", r);
++            exitCode = 10;
+             return 0;
+         }
+ 
+         if (!sloppy && !checkCertificates(host, s3.getCerts(), installCertificates)) {
+             printf("error: certificate not accepted\n");
++            exitCode = 10;
+             return 0;
+         }
+ 
+@@ -686,6 +691,7 @@
+         int read = is->read(rest.begin() + start, 2048);
+         if (read <= 0) {
+             puts("unexpected connection close");
++            exitCode = 10;
+             return 0;
+         }
+ 
+@@ -787,6 +793,7 @@
+ #endif
+     } else {
+         printf("can't open '%s' for writing\n", src);
++        exitCode = 10;
+     }
+ 
+     if (size == 0) {
+@@ -825,5 +832,5 @@
+         --nredir;
+     }
+ 
+-    return 0;
++    return exitCode;
+ }}
+diff -ruN -x Release -x *.o -x *.a bebboget-1.11/src/biginteger.cpp ../bebbofix/bebboget-1.11/src/biginteger.cpp
+--- bebboget-1.11/src/biginteger.cpp	2025-11-26 11:53:24
++++ ../bebbofix/bebboget-1.11/src/biginteger.cpp	2026-11-12 07:02:44
+@@ -332,6 +332,8 @@
+ void fastSecp384Mod(uint32_t* c, uint32_t* t, uint32_t* P) {
+     int64_t carry = 0;
+ 
++    // NIST P-384 (FIPS 186-4 D.2.4 / Guide to ECC alg. 2.30):
++    // T + 2*S1 + S2 + S3 + S4 + S5 + S6 - D1 - D2 - D3; S5 = (A23,A22,A21,A20) into words 7..4
+     // Each step accumulates contributions from high words (c[12..23])
+     // into low words (c[0..11]) with signed adjustments.
+     // This exploits the pseudo-Mersenne prime structure of P-384.
+@@ -348,16 +350,16 @@
+     carry += (int64_t)c[3] + c[15] + c[12] + c[20] + c[21] - c[14] - c[22] - c[23];
+     t[3] = carry; carry >>= 32;
+ 
+-    carry += (int64_t)c[4] + c[21] + c[21] + c[16] + c[13] + c[12] + c[22] - c[15] - c[23] - c[23];
++    carry += (int64_t)c[4] + c[21] + c[21] + c[16] + c[13] + c[12] + c[20] + c[22] - c[15] - c[23] - c[23];
+     t[4] = carry; carry >>= 32;
+ 
+-    carry += (int64_t)c[5] + c[22] + c[22] + c[17] + c[14] + c[13] + c[23] - c[16];
++    carry += (int64_t)c[5] + c[22] + c[22] + c[17] + c[14] + c[13] + c[21] + c[23] - c[16];
+     t[5] = carry; carry >>= 32;
+ 
+-    carry += (int64_t)c[6] + c[23] + c[23] + c[18] + c[15] + c[14] - c[17];
++    carry += (int64_t)c[6] + c[23] + c[23] + c[18] + c[15] + c[14] + c[22] - c[17];
+     t[6] = carry; carry >>= 32;
+ 
+-    carry += (int64_t)c[7] + c[19] + c[16] + c[15] - c[18];
++    carry += (int64_t)c[7] + c[19] + c[16] + c[15] + c[23] - c[18];
+     t[7] = carry; carry >>= 32;
+ 
+     carry += (int64_t)c[8] + c[20] + c[17] + c[16] - c[19];
+diff -ruN -x Release -x *.o -x *.a bebboget-1.11/src/pkcs6.cpp ../bebbofix/bebboget-1.11/src/pkcs6.cpp
+--- bebboget-1.11/src/pkcs6.cpp	2025-11-26 11:53:24
++++ ../bebbofix/bebboget-1.11/src/pkcs6.cpp	2026-11-12 02:38:55
+@@ -279,6 +279,7 @@
+ void readTimes(CertificateInfo &ci, bytea const &times) {
+     const uint8_t *p   = times.begin();
+     const uint8_t *end = times.begin() + times.size();
++    int n = 0; // verifyCertificates runs more than once on the same CertificateInfo
+ 
+     while (p < end) {
+         if (*p != 0x17 && *p != 0x18) { // skip until UTCTime (0x17) or GeneralizedTime (0x18)
+@@ -312,7 +313,7 @@
+         timeval.tm_mon -= 1;
+         time_t tval = mktime(&timeval);
+ 
+-        if (!ci.validFrom) {
++        if (n++ == 0) {
+             ci.validFrom = tval;
+         } else {
+             ci.validTo = tval;

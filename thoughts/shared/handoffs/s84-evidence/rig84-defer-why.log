@@ -1,0 +1,92 @@
+  env: PATINA_DEFERRED=- PATINA_DOPUS_HIDES=- PATINA_DOPUS_HIDE_POLLS=- PATINA_DOPUS_HIDE_LEFT=- PATINA_DESK_APPLY_R=-
+open listers: '272573220' '272612628'
+=== windows BEFORE pick
+  S | 0x100298c8 | 0 | 0 | 800 | 600 | 24 | Directory Opus  2045320 graphics mem  1072315280 other mem | 0 | 0
+  W | 0x1027e114 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | a | dopus_lister | 
+  W | 0x101027c4 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x100329cc | 0 | 587 | 800 | 13 | 0 | 0 | 0 | 0 | - | VTC:Apps/bin/Patina | Patina bar
+  W | 0x1003022c | 12 | 456 | 39 | 15 | 0 | 0 | 0 | 0 | - | dopus_start_menu | 
+  W | 0x1002dfec | 0 | 14 | 800 | 573 | 0 | 0 | 0 | 0 | b | DOpus5:DirectoryOpus | 
+### select 1 ok=False no menu window after the pick: open menu: no stable state within 60s (last None) | theme=
+  env: PATINA_DEFERRED=- PATINA_DOPUS_HIDES=- PATINA_DOPUS_HIDE_POLLS=- PATINA_DOPUS_HIDE_LEFT=- PATINA_DESK_APPLY_R=-
+=== windows AFTER pick
+  S | 0x100298c8 | 0 | 0 | 800 | 600 | 24 | Directory Opus  2045320 graphics mem  1072298320 other mem | 500 | 525
+  W | 0x1027e114 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x101027c4 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x100329cc | 0 | 587 | 800 | 13 | 0 | 0 | 0 | 0 | - | VTC:Apps/bin/Patina | Patina bar
+  W | 0x1003022c | 12 | 456 | 39 | 15 | 0 | 0 | 0 | 0 | - | dopus_start_menu | 
+  W | 0x1002dfec | 0 | 14 | 800 | 573 | 0 | 0 | 0 | 0 | ab | DOpus5:DirectoryOpus | 
+  env: PATINA_DEFERRED=- PATINA_DOPUS_HIDES=- PATINA_DOPUS_HIDE_POLLS=- PATINA_DOPUS_HIDE_LEFT=- PATINA_DESK_APPLY_R=-
+open listers: '273769748' '273801236'
+=== windows BEFORE pick
+  S | 0x100298c8 | 0 | 0 | 800 | 600 | 24 | Directory Opus  2042056 graphics mem  1072065080 other mem | 500 | 525
+  W | 0x10517ea4 | 468 | 414 | 196 | 173 | 4 | 14 | 18 | 10 | a | dopus_lister | 
+  W | 0x103f5e3c | 468 | 414 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x1027e114 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x101027c4 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x100329cc | 0 | 587 | 800 | 13 | 0 | 0 | 0 | 0 | - | VTC:Apps/bin/Patina | Patina bar
+  W | 0x1003022c | 12 | 456 | 39 | 15 | 0 | 0 | 0 | 0 | - | dopus_start_menu | 
+  W | 0x1002dfec | 0 | 14 | 800 | 573 | 0 | 0 | 0 | 0 | b | DOpus5:DirectoryOpus | 
+### select 1 ok=False no menu window after the pick: open menu: no stable state within 60s (last None) | theme=
+  env: PATINA_DEFERRED=- PATINA_DOPUS_HIDES=- PATINA_DOPUS_HIDE_POLLS=- PATINA_DOPUS_HIDE_LEFT=- PATINA_DESK_APPLY_R=-
+=== windows AFTER pick
+  S | 0x100298c8 | 0 | 0 | 800 | 600 | 24 | Directory Opus  2042056 graphics mem  1072064968 other mem | 500 | 525
+  W | 0x10517ea4 | 468 | 414 | 196 | 173 | 4 | 14 | 18 | 10 | a | dopus_lister | 
+  W | 0x103f5e3c | 468 | 414 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x1027e114 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x101027c4 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x100329cc | 0 | 587 | 800 | 13 | 0 | 0 | 0 | 0 | - | VTC:Apps/bin/Patina | Patina bar
+  W | 0x1003022c | 12 | 456 | 39 | 15 | 0 | 0 | 0 | 0 | - | dopus_start_menu | 
+  W | 0x1002dfec | 0 | 14 | 800 | 573 | 0 | 0 | 0 | 0 | b | DOpus5:DirectoryOpus | 
+  env: PATINA_DEFERRED=- PATINA_DOPUS_HIDES=- PATINA_DOPUS_HIDE_POLLS=- PATINA_DOPUS_HIDE_LEFT=- PATINA_DESK_APPLY_R=-
+=== windows BEFORE pick
+  S | 0x100298c8 | 0 | 0 | 800 | 600 | 24 | Directory Opus  2045320 graphics mem  1072298144 other mem | 500 | 525
+  W | 0x1027e114 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x101027c4 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x100329cc | 0 | 587 | 800 | 13 | 0 | 0 | 0 | 0 | - | VTC:Apps/bin/Patina | Patina bar
+  W | 0x1003022c | 12 | 456 | 39 | 15 | 0 | 0 | 0 | 0 | - | dopus_start_menu | 
+  W | 0x1002dfec | 0 | 14 | 800 | 573 | 0 | 0 | 0 | 0 | ab | DOpus5:DirectoryOpus | 
+### select 1 ok=False no menu window after the pick: open menu: no stable state within 60s (last None) | theme=
+  env: PATINA_DEFERRED=- PATINA_DOPUS_HIDES=- PATINA_DOPUS_HIDE_POLLS=- PATINA_DOPUS_HIDE_LEFT=- PATINA_DESK_APPLY_R=-
+=== windows AFTER pick
+  S | 0x100298c8 | 0 | 0 | 800 | 600 | 24 | Directory Opus  2045320 graphics mem  1072298072 other mem | 500 | 525
+  W | 0x1027e114 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x101027c4 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x100329cc | 0 | 587 | 800 | 13 | 0 | 0 | 0 | 0 | - | VTC:Apps/bin/Patina | Patina bar
+  W | 0x1003022c | 12 | 456 | 39 | 15 | 0 | 0 | 0 | 0 | - | dopus_start_menu | 
+  W | 0x1002dfec | 0 | 14 | 800 | 573 | 0 | 0 | 0 | 0 | ab | DOpus5:DirectoryOpus | 
+  env: PATINA_DEFERRED=- PATINA_DOPUS_HIDES=- PATINA_DOPUS_HIDE_POLLS=- PATINA_DOPUS_HIDE_LEFT=- PATINA_DESK_APPLY_R=-
+=== windows BEFORE pick
+  S | 0x100298c8 | 0 | 0 | 800 | 600 | 24 | Workbench Screen | 500 | 525
+  W | 0x103e1c9c | 0 | 587 | 800 | 13 | 0 | 0 | 0 | 0 | - | Rushhours:Tools/UP-Term/bin/Patina | Patina bar
+  W | 0x10107314 | 148 | 97 | 503 | 406 | 0 | 12 | 0 | 0 | a | Rushhours:Tools/UP-Term/bin/patina-gui | Welcome to Patina
+  W | 0x1027e114 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x101027c4 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x1003022c | 12 | 456 | 39 | 15 | 0 | 0 | 0 | 0 | - | dopus_start_menu | 
+  W | 0x1002dfec | 0 | 14 | 800 | 573 | 0 | 0 | 0 | 0 | b | DOpus5:DirectoryOpus | 
+### select 1 ok=False Up in theme list: no stable state within 30s (last None) | theme=
+  env: PATINA_DEFERRED=- PATINA_DOPUS_HIDES=- PATINA_DOPUS_HIDE_POLLS=- PATINA_DOPUS_HIDE_LEFT=- PATINA_DESK_APPLY_R=-
+=== windows AFTER pick
+  S | 0x100298c8 | 0 | 0 | 800 | 600 | 24 | Directory Opus  2045320 graphics mem  1068685360 other mem | 500 | 525
+  W | 0x103e1c9c | 0 | 587 | 800 | 13 | 0 | 0 | 0 | 0 | - | Rushhours:Tools/UP-Term/bin/Patina | Patina bar
+  W | 0x1027e114 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x101027c4 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x1003022c | 12 | 456 | 39 | 15 | 0 | 0 | 0 | 0 | - | dopus_start_menu | 
+  W | 0x1002dfec | 0 | 14 | 800 | 573 | 0 | 0 | 0 | 0 | ab | DOpus5:DirectoryOpus | 
+  env: PATINA_DEFERRED=- PATINA_DOPUS_HIDES=- PATINA_DOPUS_HIDE_POLLS=- PATINA_DOPUS_HIDE_LEFT=- PATINA_DESK_APPLY_R=-
+=== windows BEFORE pick
+  S | 0x100298c8 | 0 | 0 | 800 | 600 | 24 | Directory Opus  2045320 graphics mem  1068685360 other mem | 500 | 525
+  W | 0x103e1c9c | 0 | 587 | 800 | 13 | 0 | 0 | 0 | 0 | - | Rushhours:Tools/UP-Term/bin/Patina | Patina bar
+  W | 0x1027e114 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x101027c4 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x1003022c | 12 | 456 | 39 | 15 | 0 | 0 | 0 | 0 | - | dopus_start_menu | 
+  W | 0x1002dfec | 0 | 14 | 800 | 573 | 0 | 0 | 0 | 0 | ab | DOpus5:DirectoryOpus | 
+### select 1 ok=False Up in theme list: no stable state within 30s (last None) | theme=
+  env: PATINA_DEFERRED=- PATINA_DOPUS_HIDES=- PATINA_DOPUS_HIDE_POLLS=- PATINA_DOPUS_HIDE_LEFT=- PATINA_DESK_APPLY_R=-
+=== windows AFTER pick
+  S | 0x100298c8 | 0 | 0 | 800 | 600 | 24 | Directory Opus  2045320 graphics mem  1068685208 other mem | 500 | 525
+  W | 0x103e1c9c | 0 | 587 | 800 | 13 | 0 | 0 | 0 | 0 | - | Rushhours:Tools/UP-Term/bin/Patina | Patina bar
+  W | 0x1027e114 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x101027c4 | 0 | 0 | 196 | 173 | 4 | 14 | 18 | 10 | - | dopus_lister | 
+  W | 0x1003022c | 12 | 456 | 39 | 15 | 0 | 0 | 0 | 0 | - | dopus_start_menu | 
+  W | 0x1002dfec | 0 | 14 | 800 | 573 | 0 | 0 | 0 | 0 | ab | DOpus5:DirectoryOpus | 
