@@ -135,6 +135,40 @@ static void test_gthemes_term_text(void)
     CHECK_INT(gt_term_text(buf, n, "nord", out, 20), 0);
 }
 
+/* S89: optional term_* keys beat the derived terminal colours; absent keys change nothing; selection lines only when set */
+static void test_gthemes_term_keys(void)
+{
+    static char buf[4096], out[1024], plain[1024], more[4300];
+    static upconf u;
+    long n = read_file(THEME_DIR "/nord.theme", buf, (long)sizeof buf);
+    int plen, len;
+    CHECK(n > 0);
+    plen = gt_term_text(buf, n, "nord", plain, (int)sizeof plain);
+    CHECK(plen > 0);
+    CHECK(strstr(plain, "selection-") == 0);
+    CHECK(strstr(plain, "cursor-color = 81A1C1") != 0);                  /* the accent, as before S89 */
+    snprintf(more, sizeof more, "%.*s\nterm_fg = 010203\nterm_bg = 040506\nterm_cursor = 070809\nterm_selection_fg = 0A0B0C\n"
+             "term_selection_bg = 0D0E0F\nterm_palette = 3,112233\n", (int)n, buf);
+    len = gt_term_text(more, (long)strlen(more), "nord", out, (int)sizeof out);
+    CHECK(len > 0);
+    upconf_clear(&u);
+    upconf_parse(&u, out, len);
+    CHECK_STR(upconf_get(&u, "nord", "fg"), "010203");
+    CHECK_STR(upconf_get(&u, "nord", "bg"), "040506");
+    CHECK_STR(upconf_get(&u, "nord", "cursor-color"), "070809");
+    CHECK_STR(upconf_get(&u, "nord", "selection-fg"), "0A0B0C");
+    CHECK_STR(upconf_get(&u, "nord", "selection-bg"), "0D0E0F");
+    CHECK(strstr(upconf_get(&u, "nord", "palette"), "3,112233") != 0);
+    snprintf(more, sizeof more, "%.*s\nterm_cursor = inverse\n", (int)n, buf);
+    len = gt_term_text(more, (long)strlen(more), "nord", out, (int)sizeof out);
+    CHECK(len > 0 && strstr(out, "cursor-color = inverse") != 0);
+    /* a key with an empty value is absent: same bytes as without */
+    snprintf(more, sizeof more, "%.*s\nterm_fg =\n", (int)n, buf);
+    len = gt_term_text(more, (long)strlen(more), "nord", out, (int)sizeof out);
+    CHECK_INT(len, plen);
+    CHECK(!strcmp(out, plain));
+}
+
 /* TE-7b.2: the Shell Font reaches the terminal text as one "font = NAME:SIZE" line in the same profile section */
 static long term_font_text(char *buf, long cap, const char *shell_font)
 {
@@ -3633,6 +3667,7 @@ void suite_gthemes(void)
     test_gthemes_fallback();
     test_gthemes_parse();
     test_gthemes_term_text();
+    test_gthemes_term_keys();
     test_gthemes_term_font();
     test_gthemes_boot_term();
     test_gthemes_text_grey();

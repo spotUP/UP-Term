@@ -829,6 +829,40 @@ static void test_lf_setting_text(void)
     }
 }
 
+/* S89: under an active shipped Patina theme the Colors, Palette and Cursor rows read and write the theme (term_* keys in its user
+ * copy, GT_TERM_FILE rewritten); the shipped file and the profile stay as they were */
+static void test_lf_setting_term_theme(void)
+{
+    memfs m;
+    prefs_fs fs;
+    amconf_io io = io_of(&m, &fs);
+    const sd_setting *pal = &sd_settings[SDI_PALETTE], *fg = &sd_settings[SDI_FG], *cur = &sd_settings[SDI_CURSOR_COLOUR];
+    const char *shipped = "mode = \"dark\"\nbackground = \"#2e3440\"\nforeground = \"#d8dee9\"\nred = \"#bf616a\"\n";
+    char before[UC_MAX_FILE + 2], hex[16], out[16];
+    int failed = -1;
+    mf_put(&m, AP, "patina-gui-theme = nord\n");
+    mf_put(&m, UP, "[default]\nfont = topaz\nfg = 112233\n");
+    mf_put(&m, "UP-Term:Patina/Themes/nord.theme", shipped);
+    snprintf(before, sizeof before, "%s", mf_get(&m, UP));
+    lf_colour_current(&io, fg, 0, out);
+    CHECK_STR(out, "D8DEE9");                                /* reads the theme's terminal colour, not the profile's */
+    CHECK_INT(lf_setting_set_colour(&io, fg, SD_PICK_CUSTOM, "aabbcc", &failed), LF_SET_OK);
+    CHECK_STR(mf_get(&m, UP), before);                       /* profile untouched */
+    CHECK(strstr(mf_get(&m, "ENVARC:Patina/themes/nord.theme"), "term_fg = AABBCC") != 0);   /* user copy */
+    CHECK_STR(mf_get(&m, "UP-Term:Patina/Themes/nord.theme"), shipped);   /* shipped file unchanged */
+    CHECK(strstr(mf_get(&m, "ENV:up-term/theme-active"), "fg = AABBCC") != 0);
+    lf_colour_current(&io, fg, 0, out);
+    CHECK_STR(out, "AABBCC");
+    CHECK_INT(lf_setting_set_colour(&io, pal, 5, "#aa11BB", &failed), LF_SET_OK);
+    lf_palette_hex(&io, 5, hex);
+    CHECK_STR(hex, "AA11BB");
+    CHECK(strstr(mf_get(&m, "ENVARC:Patina/themes/nord.theme"), "term_palette") != 0);
+    CHECK(strstr(mf_get(&m, "ENV:up-term/theme-active"), "5,AA11BB") != 0);
+    CHECK_INT(lf_setting_set_colour(&io, cur, SD_PICK_CUSTOM, "ff0000", &failed), LF_SET_OK);
+    CHECK(strstr(mf_get(&m, "ENV:up-term/theme-active"), "cursor-color = FF0000") != 0);
+    CHECK_STR(mf_get(&m, UP), before);
+}
+
 /* LF_SETTING colour pickers (plan 2026-10-26-patina-prefs-inline.md, M5): picking palette entry 5 writes that
  * slot to ENV: and ENVARC:; a swatch takes a palette entry or a typed hex; bad hex leaves the files alone. */
 static void test_lf_setting_colour_picker(void)
@@ -1250,6 +1284,7 @@ void suite_amconf(void)
     test_lf_setting_cycle_next_and_choices();
     test_lf_setting_text();
     test_lf_setting_colour_picker();
+    test_lf_setting_term_theme();
     test_lf_setting_asl_pickers();
     test_lf_theme_font_pick();
     test_lf_drawer_pick();
