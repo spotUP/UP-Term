@@ -65,6 +65,7 @@
 #include "job_dos.h"
 #include "help_core.h"
 #include "flat_core.h"
+#include "flat_glyph.h"
 #include "richaa_core.h"
 #include "amhelp.inc"          /* amhelp_welcome, amhelp_help: dist/patina.help through tools/gen_patina_help.py */
 #include "wbreset.h"
@@ -750,8 +751,10 @@ static void chip_pens_release(gui *g)
 static void draw_view_scrollbar(gui *g)
 {
     const mg_geom *q = &g->g;
-    int side = flat_side_px(g->ms.rx, g->ms.ry), bw = 2 * side < q->m.row_pad - 1 ? 2 * side : q->m.row_pad - 1;
-    int x1 = q->list_x + q->list_w - 1, x0, kh, ky, span;
+    /* shortcut: 6 rows is the measured Workbench horizontal knob (prop CHeight 6, BorderBottom 10, rig 84); read it from the screen
+     * when Workbench border sizes vary with the font. Knob = the Workbench knob: rows * side columns, its corner cuts (S69-KNOB-ASPECT). */
+    int side = flat_side_px(g->ms.rx, g->ms.ry), bw = 6 * side < q->m.row_pad - 1 ? 6 * side : q->m.row_pad - 1;
+    int x1 = q->list_x + q->list_w - 1, x0, kh, ky, span, i, cut[2];
     uc_u32 c;
     if (q->n <= q->visible || q->visible < 1)
         return;
@@ -765,7 +768,9 @@ static void draw_view_scrollbar(gui *g)
     ky = q->list_y + span * g->top / (q->n - q->visible);
     c = (uc_u32)flat_knob_colour(role_rgb(g, MT_BG), role_rgb(g, MT_DIM));
     fill_rgb(g, c, x0, ky, x1, ky + kh - 1);
-    rich_corners(g->depth, x0, ky, bw, kh, c, role_rgb(g, MT_BG), rich_put, g);
+    for (i = 0; i < FLAT_ROUND_MAX; i++)
+        if (flat_knob_cut_at(side, x0, ky, bw, kh, x0, ky, x1, ky + kh - 1, i, cut))
+            fill(g, MT_BG, cut[0], cut[1], cut[0], cut[1]);
 }
 
 /* The rows area (not a full draw: the sentinel counts those). */
@@ -1231,6 +1236,8 @@ static void key_list(gui *g, int k, int ch)
                 list_rebuild(g);
                 break;
             }
+            if (lf_row_bar(row) >= 0)    /* S89: a bar row owns Left/Right (at 0 or 255 too): never leave the picker */
+                break;
         }
         if (k == K_LEFT) {
             go_up(g);
