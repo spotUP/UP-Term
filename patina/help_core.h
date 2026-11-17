@@ -45,4 +45,8 @@ int hc_tick_role(int ticked);
  * scaled the same way. side < 1 counts as 1. */
 int hc_check_w(int s, int side);
 
+/* WELCOME-CHECK-SIZE: the checkbox is as tall as the text (text_h), never taller than the row allows (row_h - 6). Sized
+ * from the row alone it grew with the icon-row height and dwarfed its label. */
+int hc_check_h(int text_h, int row_h);
+
 #endif

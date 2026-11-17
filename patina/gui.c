@@ -493,7 +493,7 @@ static void draw_welcome_row(gui *g, int r, int tx, int y, int rbg)
     int rh = q->tail_h;                 /* the menu's row height */
     if (r == 0) {
         int side = flat_side_px(g->ms.rx, g->ms.ry);     /* WELCOME-CHECK-SQUARE: columns per row of visual height */
-        int s = rh - 6, bx = tx, by = y + 3, w = hc_check_w(s, side);
+        int s = hc_check_h(mt_height(g->mt), rh), bx = tx, by = y + (rh - s) / 2, w = hc_check_w(s, side);
         const char *t = "Don't show this again";
         fill(g, MT_TEXT, bx, by, bx + w - 1, by + s - 1);
         fill(g, MT_BG, bx + side, by + 1, bx + w - side - 1, by + s - 2);
