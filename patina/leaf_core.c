@@ -505,6 +505,27 @@ static const char *lf_term_key(const sd_setting *s)
     return 0;
 }
 
+/* S90: with lf_term_defer(1) a theme edit keeps the user copy current but leaves GT_TERM_FILE to lf_term_flush (the GUI
+ * debounces a colour bar so the open terminals recolour once). The pending count moves on every deferred write. */
+static int lf_tdefer, lf_tpend;
+static char lf_tpend_name[GT_NAME];
+
+void lf_term_defer(int on) { lf_tdefer = on; }
+int lf_term_pending(void) { return lf_tpend; }
+
+int lf_term_flush(const amconf_io *io)
+{
+    int len;
+    if (!lf_tpend_name[0])
+        return 0;
+    len = gt_load_term(io->read, io->fs->ctx, lf_tpend_name, lf_ttext, (int)sizeof lf_ttext);
+    lf_tpend_name[0] = 0;
+    if (len <= 0)
+        return 0;
+    io->fs->write_file(io->fs->ctx, GT_TERM_FILE, lf_ttext, len);
+    return 1;
+}
+
 /* hex "" removes the key. The theme's user copy is written (a shipped theme gets a same-name copy, gt_save) and GT_TERM_FILE
  * rewritten from it, which every open tab watches. LF_SET_KIND: not a theme case, the caller writes the profile. */
 static int lf_set_term_theme(const amconf_io *io, const sd_setting *s, int n, const char *hex, int *failed)
@@ -529,6 +550,12 @@ static int lf_set_term_theme(const amconf_io *io, const sd_setting *s, int n, co
         *failed = 0;
         return LF_SET_FULL;
     }
+    if (lf_tdefer) {
+        snprintf(lf_tpend_name, sizeof lf_tpend_name, "%s", name);
+        lf_tpend++;
+        return LF_SET_OK;
+    }
+    lf_tpend_name[0] = 0;
     len = gt_load_term(io->read, io->fs->ctx, name, lf_ttext, (int)sizeof lf_ttext);
     if (len > 0)
         io->fs->write_file(io->fs->ctx, GT_TERM_FILE, lf_ttext, len);

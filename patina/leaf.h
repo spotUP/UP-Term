@@ -134,6 +134,11 @@ void lf_colour_current(const amconf_io *io, const sd_setting *s, int entry, char
 int lf_bar_value(const amconf_io *io, const sd_setting *s, int entry);
 int lf_bar_set(const amconf_io *io, const sd_setting *s, int entry, int v);
 int lf_bar_step(const amconf_io *io, const sd_setting *s, int entry, int delta);
+/* S90: lf_term_defer(1) holds the GT_TERM_FILE rewrite of a theme colour edit; lf_term_flush writes it (1 when it did);
+ * lf_term_pending changes on every held edit (the GUI re-arms its debounce timer when it moves). */
+void lf_term_defer(int on);
+int lf_term_pending(void);
+int lf_term_flush(const amconf_io *io);
 int lf_row_bar(const mn_item *it);
 /* 1 when entry is a bar of row s (a swatch, a terminal colour row, a palette entry): stepped, never entered */
 int lf_bar_entry(const sd_setting *s, int entry);
