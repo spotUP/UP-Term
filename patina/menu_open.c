@@ -13,6 +13,22 @@
 static struct MsgPort *mo_port;
 static int mo_atexit;
 
+struct MsgPort *mo_srv_port;
+
+int mo_srv_quit_queued(void)
+{
+    struct Node *n;
+    int found = 0;
+    if (!mo_srv_port)
+        return 0;
+    Forbid();
+    for (n = mo_srv_port->mp_MsgList.lh_Head; n->ln_Succ; n = n->ln_Succ)
+        if (((struct ms_msg *)n)->kind == MS_QUIT)
+            found = 1;
+    Permit();
+    return found;
+}
+
 void mo_unregister(void)
 {
     struct MsgPort *p = mo_port;

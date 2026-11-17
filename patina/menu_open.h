@@ -46,6 +46,11 @@ void mo_srv_ops(ms_ops *ops, mo_srv *s);
 /* Commodity quit: tell a live idle server to end and wait up to 2 s for its reply. 1 when it replied. */
 int mo_srv_quit(mo_srv *s);
 
+/* The warm server's port while serve() runs, else 0 (set by serve in menu.c / gui.c). */
+extern struct MsgPort *mo_srv_port;
+/* A MS_QUIT waiting unread on mo_srv_port (peeked, not taken: serve() replies it). */
+int mo_srv_quit_queued(void);
+
 /* The menu program, first thing in main: clear a stale Ctrl-C, add the port (unless one exists),
  * remove it again at exit (atexit). */
 void mo_register(void);

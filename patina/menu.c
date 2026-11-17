@@ -190,6 +190,8 @@ static int on_tick(void *ctx)
         SetSignal(0, SIGBREAKF_CTRL_C);
         closing = 1;
     }
+    if (mo_srv_quit_queued())        /* S87: Patina quits while the menu is open: the server must end */
+        closing = 1;
     if (closing)
         return 1;
     return wt.on && ixw_poll(&wt);
@@ -746,8 +748,11 @@ static int serve(void)
     signal(SIGINT, on_int);
     menu_ignore_hangup();                     /* a closed XCON console must not print "Hangup" or end the server */
     hotkeys_init();
+    mo_srv_port = port;
     while (!quit) {
-        Wait(1UL << port->mp_SigBit | SIGBREAKF_CTRL_C);
+        /* no Wait when a message is already queued: a tick saw the S87 quit and the menu closed */
+        if (port->mp_MsgList.lh_Head->ln_Succ == 0)
+            Wait(1UL << port->mp_SigBit | SIGBREAKF_CTRL_C);
         SetSignal(0, SIGBREAKF_CTRL_C);        /* a stray toggle after a close must not end the server */
         while (!quit && (m = (struct ms_msg *)GetMsg(port)) != 0) {
             q = *m;
@@ -762,6 +767,7 @@ static int serve(void)
                 serve_one(&q);
         }
     }
+    mo_srv_port = 0;
     while ((m = (struct ms_msg *)GetMsg(port)) != 0)
         ReplyMsg(&m->m);
     DeleteMsgPort(port);
