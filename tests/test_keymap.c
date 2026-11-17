@@ -748,7 +748,7 @@ static void the_shipped_file_resolves_and_derives_menu_keys(void)
     CHECK(comm_is("g", MENU_FIND_NEXT, "G"));
     CHECK(comm_is("plus", MENU_FONT_BIGGER, "+"));
     CHECK(comm_is("minus", MENU_FONT_SMALLER, "-"));
-    CHECK(comm_is("p", MENU_PREFS, "P"));
+    CHECK(comm_is("p", MENU_PREFS, 0));      /* super+p opens the rich Settings (menu:settings), not this item */
     CHECK(comm_is("q", MENU_CLOSE, "Q"));
     /* a key with a Shift twin has none: Intuition ignores Shift in a command key */
     CHECK(comm_is("t", MENU_TAB_NEW, 0));
