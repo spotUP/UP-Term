@@ -3538,6 +3538,24 @@ static void terminal_palette_row_lists_its_16_colours(void)
     CHECK_INT(np, 16);
 }
 
+/* A group or element colour row lists the open theme's swatches (element rows: Follow group first), then Expression... */
+static void reference_rows_list_the_swatches(void)
+{
+    mn_item it[MN_MAX_ITEMS];
+    int ns, ng, ne;
+    CHECK(parse("[menu]\nsettings.theme = Theme Editor | settings:theme\nsettings.theme.groups = Groups | settings:theme-groups\n"
+                "settings.theme.elements = Elements | settings:theme-elements\n"));
+    tw_open_editor();
+    ns = gte_swatch_count();
+    ng = mn_children(&km, "settings.theme.groups.group.0.0", it, MN_MAX_ITEMS);
+    CHECK_INT(ng, ns + 1);
+    CHECK_STR(it[0].seg, "18");
+    CHECK_STR(it[ng - 1].seg, "16");
+    ne = mn_children(&km, "settings.theme.elements.elem.0.0", it, MN_MAX_ITEMS);
+    CHECK_INT(ne, ns + 2);
+    CHECK_STR(it[0].seg, "17");
+}
+
 static void the_theme_editor_window_fits_its_rows(void)
 {
     static const char *const part[] = {
@@ -3786,6 +3804,7 @@ void suite_keymap(void)
     drawn_menu_geometry_follows_the_font_and_screen();
     the_theme_editor_window_fits_its_rows();
     every_swatch_row_opens_its_colour_list();
+    reference_rows_list_the_swatches();
     terminal_palette_row_lists_its_16_colours();
     an_open_window_widens_when_a_value_grows();
     blit_starts_where_the_beam_cannot_cross_it();

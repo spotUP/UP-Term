@@ -169,6 +169,20 @@ static int choice_rows(const sd_setting *s, mn_item *out, int max)
         return list_rows(s, out, max);
     if (SD_HAS_PICKER(s))
         nv = s->kind != SD_PALETTE ? SD_PICK_CUSTOM + 1 + (gte_row_has_default(s) ? 1 : 0) : 16;   /* the 16 palette entries, Custom for a swatch, Default for a pointer colour */
+    if (SD_HAS_PICKER(s) && SD_IS_REFROW(s)) {
+        /* Follow group (element rows), the open theme's swatches, then Expression... */
+        int first = s->kind == SD_ELEMENT ? SD_PICK_DEFAULT : SD_PICK_SWATCH, last = SD_PICK_SWATCH + gte_swatch_count();
+        for (v = first; v <= last && n < max; v++, n++) {
+            int e = v == last ? SD_PICK_CUSTOM : v;
+            out[n].row = MN_ROW_CHOICE;
+            out[n].ix = s->id;
+            out[n].seg[0] = (char)('0' + e / 10);
+            out[n].seg[1] = (char)('0' + e % 10);
+            out[n].seg[2] = 0;
+            cpy(out[n].label, "", KM_LABEL);
+        }
+        return n;
+    }
     for (v = 0; v < nv && n < max; v++, n++) {
         out[n].row = MN_ROW_CHOICE;
         out[n].ix = s->id;

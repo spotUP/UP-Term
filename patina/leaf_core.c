@@ -476,6 +476,13 @@ int lf_setting_set_colour(const amconf_io *io, const sd_setting *s, int entry, c
                 r = gte_row_set_text(s, hex);
             } else
                 r = gte_row_set_text(s, text);
+        } else if (SD_IS_REFROW(s) && (entry == SD_PICK_DEFAULT || entry >= SD_PICK_SWATCH)) {
+            /* Follow group sets empty (element rows only); a swatch entry sets the reference to its name */
+            if (entry == SD_PICK_DEFAULT && s->kind != SD_ELEMENT)
+                return LF_SET_KIND;
+            if (entry >= SD_PICK_SWATCH && entry - SD_PICK_SWATCH >= gte_swatch_count())
+                return LF_SET_KIND;
+            r = gte_row_set_text(s, entry == SD_PICK_DEFAULT ? "" : gte_swatch_name(entry - SD_PICK_SWATCH));
         } else if (entry >= 0 && entry < 16) {
             lf_palette_hex(io, entry, hex + 1);
             hex[0] = '#';
@@ -702,9 +709,11 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
             if (SD_HAS_PICKER(s)) {
                 int v = atoi(it[i].seg);
                 if (v == SD_PICK_CUSTOM)
-                    strcpy(it[i].label, "Custom...");
+                    strcpy(it[i].label, SD_IS_REFROW(s) ? "Expression..." : "Custom...");
                 else if (v == SD_PICK_DEFAULT)
-                    strcpy(it[i].label, "Default");
+                    strcpy(it[i].label, SD_IS_REFROW(s) ? "Follow group" : "Default");
+                else if (v >= SD_PICK_SWATCH)
+                    snprintf(it[i].label, MN_LABEL, "%s", gte_swatch_name(v - SD_PICK_SWATCH));
                 else if (v >= 0 && v < 16) {
                     char hex[16];
                     lf_palette_hex(io, v, hex);

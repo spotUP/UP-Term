@@ -368,6 +368,7 @@ int gte_swatch_count(void);
 int gte_swatch_users(int sw, char *out, int cap);         /* refs that use swatch sw (groups, elements, nested); names in out */
 int gte_swatch_set(int sw, const char *text);             /* "#rrggbb" */
 int gte_swatch_add(const char *name, uc_u32 rgb);
+const char *gte_swatch_name(int sw);                      /* "" when sw is out of range */
 int gte_swatch_find(const char *name);                   /* the swatch of that name (case blind), -1 when none */
 int gte_swatch_rename_name(const char *old, const char *name); /* GTR_BAD when old names no swatch */
 int gte_swatch_remove_name(const char *old, char *why, int cap);

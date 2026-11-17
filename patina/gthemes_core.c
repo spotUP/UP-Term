@@ -1989,6 +1989,11 @@ void gte_saved(void)
     gt_ed.saved = gt_ed.m;
 }
 
+const char *gte_swatch_name(int sw)
+{
+    return sw >= 0 && sw < gt_ed.m.nswatch ? gt_ed.m.swatch_name[sw] : "";
+}
+
 int gte_swatch_count(void)
 {
     return gt_ed.m.nswatch;

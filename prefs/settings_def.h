@@ -156,6 +156,10 @@ const char *sd_text_reason(int check);
 #define SD_PICK_CUSTOM 16
 /* TI-3: a pointer colour row also offers Default, which clears the override (gte_row_has_default) */
 #define SD_PICK_DEFAULT 17
+/* A group or element colour row lists the open theme's swatches instead of the palette: Follow group (element rows
+ * only, entry SD_PICK_DEFAULT, sets empty), then entry SD_PICK_SWATCH + n for swatch n, then Custom (labelled "Expression..."). */
+#define SD_PICK_SWATCH 18
+#define SD_IS_REFROW(s) ((s)->kind == SD_SWATCHREF || (s)->kind == SD_ELEMENT)
 
 /* The menu's page groups: `settings:<name>` in the keymap [menu] names a page of Prefs. The PG_PAGE_* of a
  * name, -1 when none; the name of a page, 0 when out of range. */

@@ -2542,9 +2542,31 @@ static void test_gthemes_te4_pickers(void)
     it[2].row = MN_ROW_SETTING; it[2].ix = sw->id;
     lf_setting_labels(&io, it, 3);
     CHECK(strchr(it[0].label, '#') != 0);
-    CHECK_STR(it[1].label, "Custom...");
+    CHECK_STR(it[1].label, "Expression...");                        /* a reference row: typed expression behind its own entry */
     lf_setting_chips(&io, it, 3, chip);
     CHECK(chip[0] >= 0 && chip[1] == -1 && chip[2] == 0x0a0b0cL);
+    /* swatch names are the first-level choices of reference rows: Follow group (elements), swatches, Expression... */
+    {
+        char nm[24];
+        int n2 = gte_swatch_count();
+        snprintf(nm, sizeof nm, "%d", SD_PICK_SWATCH + 1);
+        memset(it, 0, sizeof it);
+        it[0].row = MN_ROW_CHOICE; it[0].ix = ref->id; strcpy(it[0].seg, nm);
+        it[1].row = MN_ROW_CHOICE; it[1].ix = el->id; strcpy(it[1].seg, "17");
+        lf_setting_labels(&io, it, 2);
+        CHECK_STR(it[0].label, gte_swatch_name(1));
+        CHECK_STR(it[1].label, "Follow group");
+        CHECK(lf_picker_prompt(ref, SD_PICK_SWATCH + 1) == 0);      /* a swatch pick sets without asking */
+        CHECK_INT(lf_setting_set_colour(&io, ref, SD_PICK_SWATCH + 1, 0, &failed), LF_SET_OK);
+        gte_row_text(ref, buf, sizeof buf);
+        CHECK_STR(buf, gte_swatch_name(1));
+        CHECK_INT(lf_setting_set_colour(&io, ref, SD_PICK_SWATCH + n2, 0, &failed), LF_SET_KIND);
+        CHECK_INT(lf_setting_set_colour(&io, ref, SD_PICK_DEFAULT, 0, &failed), LF_SET_KIND);
+        CHECK_INT(lf_setting_set_colour(&io, el, SD_PICK_SWATCH + 2, 0, &failed), LF_SET_OK);
+        CHECK(gte_elem_overridden(el->aux));
+        CHECK_INT(lf_setting_set_colour(&io, el, SD_PICK_DEFAULT, 0, &failed), LF_SET_OK);
+        CHECK(!gte_elem_overridden(el->aux));
+    }
     /* rename by name; an unknown name is refused and changes nothing */
     gte_swatch_add("Spare", 0x123456UL);
     before = gte_swatch_count();
