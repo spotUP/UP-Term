@@ -2590,6 +2590,16 @@ static void test_gthemes_ti2_numbers_step_instead_of_typing(void)
         gte_row_step(p);                  /* 100 -> 0 -> 10 ... -> 100 -> 0 */
     gte_row_text(p, t, sizeof t);
     CHECK_STR(t, "0");
+    CHECK_INT(gte_row_step_dir(p, -1), GTR_OK);   /* Left from 0 wraps to max */
+    gte_row_text(p, t, sizeof t);
+    CHECK_STR(t, "100");
+    CHECK_INT(gte_row_step_dir(p, -1), GTR_OK);
+    gte_row_text(p, t, sizeof t);
+    CHECK_STR(t, "90");
+    CHECK_INT(gte_row_set_text(b, "2"), GTR_OK);
+    CHECK_INT(gte_row_step_dir(b, -1), GTR_OK);   /* clamps at 0 */
+    gte_row_text(b, t, sizeof t);
+    CHECK_STR(t, "0");
 }
 
 static void test_gthemes_te4_modes(void)

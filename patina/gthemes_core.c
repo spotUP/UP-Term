@@ -2698,7 +2698,10 @@ int gte_row_step_dir(const sd_setting *s, int dir)
     }
     if (s->kind == SD_INT) {            /* TI-2: a bounded number steps by its natural size (1; 4 from max 32; 10 from max 100), clamps at max, wraps to 0 from max */
         int v = *look_byte(s), st = s->max >= 100 ? 10 : s->max >= 32 ? 4 : 1;
-        *look_byte(s) = (unsigned char)(v >= s->max ? 0 : v + st > s->max ? s->max : v + st);
+        if (dir < 0)                    /* Left: the mirror - clamps at 0, wraps to max from 0 */
+            *look_byte(s) = (unsigned char)(v <= 0 ? s->max : v - st < 0 ? 0 : v - st);
+        else
+            *look_byte(s) = (unsigned char)(v >= s->max ? 0 : v + st > s->max ? s->max : v + st);
         ed_touch();
         return GTR_OK;
     }
