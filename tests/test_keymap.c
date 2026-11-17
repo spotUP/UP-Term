@@ -748,7 +748,7 @@ static void the_shipped_file_resolves_and_derives_menu_keys(void)
     CHECK(comm_is("g", MENU_FIND_NEXT, "G"));
     CHECK(comm_is("plus", MENU_FONT_BIGGER, "+"));
     CHECK(comm_is("minus", MENU_FONT_SMALLER, "-"));
-    CHECK(comm_is("p", MENU_PREFS, 0));      /* super+p opens the rich Settings (menu:settings), not this item */
+    CHECK(comm_is("p", MENU_PREFS, "P"));
     CHECK(comm_is("q", MENU_CLOSE, "Q"));
     /* a key with a Shift twin has none: Intuition ignores Shift in a command key */
     CHECK(comm_is("t", MENU_TAB_NEW, 0));
@@ -1424,7 +1424,8 @@ static void cx_installs_only_the_commodity_rows(void)
     CHECK(n > 0 && keymap_parse(&km, buf, n));
     for (i = 0; i < km.nbind; i++) {
         int sc = keymap_action_scope(km.bind[i].kind);
-        CHECK(cx_row_installed(&km.bind[i]) == (sc != KS_TERMINAL || (km.bind[i].kind == KA_TAB && !strcmp(km.bind[i].arg, "new"))));
+        CHECK(cx_row_installed(&km.bind[i]) == (sc != KS_TERMINAL || (km.bind[i].kind == KA_TAB && !strcmp(km.bind[i].arg, "new"))
+                                                || (km.bind[i].kind == KA_MENUID && !strcmp(km.bind[i].arg, "MENU_PREFS"))));
         if (sc == KS_TERMINAL)
             term++;
         else
@@ -1437,6 +1438,11 @@ static void cx_installs_only_the_commodity_rows(void)
         t.arg = "new";
         CHECK(cx_row_installed(&t));
         t.arg = "close";
+        CHECK(!cx_row_installed(&t));
+        t.kind = KA_MENUID;   /* super+p: Patina shows the rich Settings where no terminal has focus */
+        t.arg = "MENU_PREFS";
+        CHECK(cx_row_installed(&t));
+        t.arg = "MENU_CLOSE";
         CHECK(!cx_row_installed(&t));
     }
 }

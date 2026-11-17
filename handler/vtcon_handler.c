@@ -400,6 +400,7 @@ typedef struct con {
     char req_name[UPREQ_NAMELEN];
 } con;
 static void ua_set(con *c, int on);
+static void ua_focus(con *c);
 
 /* What one window costs (research/2026-10-04_window-memory.md), held at
  * compile time in the 68k build itself: the build fails when one of
@@ -6702,12 +6703,17 @@ static void ua_set(con *c, int on)
         return;
     c->ua_on = on;
     upactive_note(on);
-    if (on) {
-        if (!c->req_port)
-            c->req_port = upreq_open(c->req_name);
-        if (c->req_port)
-            upactive_focus((ULONG)c->req_port);
-    }
+    if (on)
+        ua_focus(c);
+}
+
+/* This terminal to the front of the focus record (upactive_focus). */
+static void ua_focus(con *c)
+{
+    if (!c->req_port)
+        c->req_port = upreq_open(c->req_name);
+    if (c->req_port)
+        upactive_focus((ULONG)c->req_port);
 }
 
 /* The request port goes with the process: not findable, queued requests answered. */
@@ -6881,7 +6887,10 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
         break;
     case IDCMP_ACTIVEWINDOW:
     case IDCMP_INACTIVEWINDOW:
-        ua_set(c, cls == IDCMP_ACTIVEWINDOW);
+        if (c->own_win)
+            ua_set(c, cls == IDCMP_ACTIVEWINDOW);   /* the owner counts the window once (tab_route) */
+        else if (cls == IDCMP_ACTIVEWINDOW)
+            ua_focus(c);                            /* a tab: the quick menu's target, not a second count */
         vtwin_focus(&c->w, cls == IDCMP_ACTIVEWINDOW); /* ?1004: CSI I / CSI O */
         if (cls == IDCMP_INACTIVEWINDOW && c->wopt.close_inactive)
             close_gadget(c); /* CLOSEINACTIVE: the same path as the close gadget */
@@ -8068,6 +8077,10 @@ static int tab_route(con *c, struct IntuiMessage *im, int wheel)
     struct Window *win = c->own_win;
     if (tabslot_all(c->slots, c->ntabs) < 2 && !c->host_only)
         return 0;
+    /* the window's owner counts it in UPTERM.active, whichever tab has the keys: a tab
+     * counted on its own kept the count up after a tab switch and the window going inactive */
+    if (im->Class == IDCMP_ACTIVEWINDOW || im->Class == IDCMP_INACTIVEWINDOW)
+        ua_set(c, im->Class == IDCMP_ACTIVEWINDOW);
     /* Right Amiga 1-9: that tab (the digits' raw codes are the same on
      * every keymap, unlike [ and ], which a Swedish map makes letters) */
     if (im->Class == IDCMP_RAWKEY && (im->Qualifier & IEQUALIFIER_RCOMMAND) &&

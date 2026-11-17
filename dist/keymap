@@ -144,7 +144,7 @@ super+shift+w     = slash:/screen workbench       ; Workbench screen      | styl
 super+ctrl+d       = slash:/size 132x43     ; Wide window           | style
 super+shift+r     = slash:/size 80x24      ; Standard window       | style
 super+shift+l     = slash:/demo            ; Demo tour             | style
-super+p           = menu:settings          ; Settings              | menu
+super+p           = menuid:MENU_PREFS      ; Preferences           | style
 
 ; Apps
 super+return      = run:tmux               ; Tmux                  | apps
