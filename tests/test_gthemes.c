@@ -2449,6 +2449,24 @@ static void test_gthemes_swatch_and_palette_rows_apply(void)
     CHECK_INT(lf_setting_set_colour(&io, row, SD_PICK_CUSTOM, "445566", &failed), LF_SET_OK);
     gte_row_text(row, buf, sizeof buf);
     CHECK_STR(buf, "#445566");
+    /* S88: Red, Green, Blue bars: step 1 and 16, clamp at 0 and 255, RRGGBB rebuilt, the picker prompt is 0 for a bar */
+    CHECK_INT(lf_bar_value(&io, row, SD_PICK_BAR), 0x44);
+    CHECK_INT(lf_bar_value(&io, row, SD_PICK_BAR + 2), 0x66);
+    CHECK_INT(lf_bar_value(&io, row, 1), -1);
+    CHECK_INT(lf_bar_step(&io, row, SD_PICK_BAR + 1, 1), LF_SET_OK);
+    gte_row_text(row, buf, sizeof buf);
+    CHECK_STR(buf, "#445666");
+    CHECK_INT(lf_bar_step(&io, row, SD_PICK_BAR + 1, -1), LF_SET_OK);
+    CHECK_INT(lf_bar_step(&io, row, SD_PICK_BAR, 16), LF_SET_OK);
+    gte_row_text(row, buf, sizeof buf);
+    CHECK_STR(buf, "#545566");
+    CHECK_INT(lf_bar_step(&io, row, SD_PICK_BAR, 1000), LF_SET_OK);
+    CHECK_INT(lf_bar_value(&io, row, SD_PICK_BAR), 255);
+    CHECK_INT(lf_bar_step(&io, row, SD_PICK_BAR, -1000), LF_SET_OK);
+    CHECK_INT(lf_bar_value(&io, row, SD_PICK_BAR), 0);
+    gte_row_text(row, buf, sizeof buf);
+    CHECK_STR(buf, "#005566");
+    CHECK(lf_picker_prompt(row, SD_PICK_BAR) == 0);
     /* the Terminal Palette row is the Settings palette row: same store, same slot, same file */
     CHECK(pal != 0 && pal->kind == SD_PALETTE && pal->store == SD_UPTERM);
     CHECK(pal->store == sd_settings[SDI_PALETTE].store && pal->off == sd_settings[SDI_PALETTE].off);

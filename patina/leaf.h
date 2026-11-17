@@ -128,6 +128,13 @@ void lf_palette_hex(const amconf_io *io, int n, char *out);
 /* The hint of the value prompt a picker choice opens, or 0 when the choice sets without asking (the lf_setting_enter decision). */
 const char *lf_picker_prompt(const sd_setting *s, int entry);
 void lf_colour_current(const amconf_io *io, const sd_setting *s, int entry, char *out);
+/* S88 bars (a theme swatch's Red, Green, Blue rows, entries SD_PICK_BAR..+2): the channel 0..255 (-1 when entry is no bar);
+ * set it (clamped) or move it by delta, rebuilding the RRGGBB through lf_setting_set_colour (autosave + live apply);
+ * the value a drawn bar row shows (read from its "Red: 128" label), -1 when the row is no bar. */
+int lf_bar_value(const amconf_io *io, const sd_setting *s, int entry);
+int lf_bar_set(const amconf_io *io, const sd_setting *s, int entry, int v);
+int lf_bar_step(const amconf_io *io, const sd_setting *s, int entry, int delta);
+int lf_row_bar(const mn_item *it);
 /* The font, fallback font (an .otag file) and screen mode rows: the requester is asked
  * through `asl` (the Amiga layer wraps asl.library; a test passes a fake), starting on the row's current value.
  * A pick is written to both files (a font as name:size, a mode as 0xID plus the depth, the fallback as the file's base name); a requester that
@@ -287,8 +294,9 @@ int lf_open_index(const char *label, const char *path, const lf_ui *ui);
  * written (the caller rebuilds the level), 0 when not. */
 int lf_setting_enter(const mn_item *it, const lf_ui *ui);
 /* Left (dir -1) and Right (dir 1) on a Theme Editor bounded number row step it down / up (Enter steps up too). 1 when it stepped
- * (the caller rebuilds the level), 0 when the row is not such a number, so Left keeps meaning "go back". */
-int lf_number_step(const mn_item *it, int dir);
+ * (the caller rebuilds the level), 0 when the row is not such a number, so Left keeps meaning "go back". A colour bar row
+ * (S88) steps by 1, by 16 when big. */
+int lf_number_step(const mn_item *it, int dir, int big);
 /* lf_setting_labels over the DOS io: the level's setting rows show their current values. */
 void lf_setting_relabel(mn_item *it, int n);
 

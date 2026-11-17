@@ -183,6 +183,15 @@ static int choice_rows(const sd_setting *s, mn_item *out, int max)
         }
         return n;
     }
+    if (s->kind == SD_SWATCH && s->store == SD_GTHEME)      /* S88: Red, Green, Blue bars above the palette */
+        for (v = 0; v < SD_PICK_BARS && n < max; v++, n++) {
+            out[n].row = MN_ROW_CHOICE;
+            out[n].ix = s->id;
+            out[n].seg[0] = (char)('0' + (SD_PICK_BAR + v) / 10);
+            out[n].seg[1] = (char)('0' + (SD_PICK_BAR + v) % 10);
+            out[n].seg[2] = 0;
+            cpy(out[n].label, "", KM_LABEL);
+        }
     for (v = 0; v < nv && n < max; v++, n++) {
         out[n].row = MN_ROW_CHOICE;
         out[n].ix = s->id;

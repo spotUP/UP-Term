@@ -484,6 +484,50 @@ void lf_colour_current(const amconf_io *io, const sd_setting *s, int entry, char
         lf_setting_text_raw(io, s, out, 8);
 }
 
+/* S88 bars: the channel (0 red, 1 green, 2 blue) of a bar entry of a theme swatch row, else -1 */
+static int bar_channel(const sd_setting *s, int entry)
+{
+    return s->kind == SD_SWATCH && s->store == SD_GTHEME && entry >= SD_PICK_BAR && entry < SD_PICK_BAR + SD_PICK_BARS
+               ? entry - SD_PICK_BAR : -1;
+}
+
+int lf_bar_value(const amconf_io *io, const sd_setting *s, int entry)
+{
+    char hex[16];
+    uc_u32 rgb;
+    int c = bar_channel(s, entry);
+    lf_colour_current(io, s, 0, hex);
+    return c < 0 || !prefs_hex_parse(hex, &rgb) ? -1 : (int)((rgb >> (16 - 8 * c)) & 0xFF);
+}
+
+int lf_bar_set(const amconf_io *io, const sd_setting *s, int entry, int v)
+{
+    char hex[16];
+    uc_u32 rgb;
+    int c = bar_channel(s, entry), failed;
+    lf_colour_current(io, s, 0, hex);
+    if (c < 0 || !prefs_hex_parse(hex, &rgb))
+        return LF_SET_KIND;
+    v = v < 0 ? 0 : v > 255 ? 255 : v;
+    rgb = (rgb & ~((uc_u32)0xFF << (16 - 8 * c))) | ((uc_u32)v << (16 - 8 * c));
+    prefs_hex_format(rgb, hex);
+    return lf_setting_set_colour(io, s, SD_PICK_CUSTOM, hex, &failed);
+}
+
+int lf_bar_step(const amconf_io *io, const sd_setting *s, int entry, int delta)
+{
+    int v = lf_bar_value(io, s, entry);
+    return v < 0 ? LF_SET_KIND : lf_bar_set(io, s, entry, v + delta);
+}
+
+int lf_row_bar(const mn_item *it)
+{
+    const char *colon;
+    if (!MN_IS_CHOICE(it) || bar_channel(gte_row(it->ix), atoi(it->seg)) < 0 || !(colon = strstr(it->label, ": ")))
+        return -1;
+    return atoi(colon + 2);
+}
+
 int lf_setting_set_colour(const amconf_io *io, const sd_setting *s, int entry, const char *text, int *failed)
 {
     char hex[16];
@@ -738,7 +782,10 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
             }
             if (SD_HAS_PICKER(s)) {
                 int v = atoi(it[i].seg);
-                if (v == SD_PICK_CUSTOM)
+                if (bar_channel(s, v) >= 0)
+                    snprintf(it[i].label, MN_LABEL, "%s: %d", v == SD_PICK_BAR ? "Red" : v == SD_PICK_BAR + 1 ? "Green" : "Blue",
+                             lf_bar_value(io, s, v));
+                else if (v == SD_PICK_CUSTOM)
                     strcpy(it[i].label, SD_IS_REFROW(s) ? "Expression..." : "Custom...");
                 else if (v == SD_PICK_DEFAULT)
                     strcpy(it[i].label, SD_IS_REFROW(s) ? "Follow group" : "Default");
