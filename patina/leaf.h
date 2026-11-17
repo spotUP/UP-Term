@@ -127,8 +127,8 @@ typedef struct lf_asl {
     int (*mode)(void *ctx, unsigned long id, int depth, unsigned long *out_id, int *out_depth);
     /* the outline font file requester for the fallback font row: the picked path (an .otag file) into out */
     int (*otag)(void *ctx, char *out, int cap);
-    /* the drawer rows (Music, Demo, Hidden drawers): a drawers-only requester; the path is added to the row's comma list, or removed when already in it */
-    int (*drawer)(void *ctx, char *out, int cap);
+    /* the drawer rows (Music, Demo, Hidden drawers): a drawers-only requester; the path is added to the row's comma list, or removed when already in it; start: the row's last listed drawer ("" when empty) for the requester to open at */
+    int (*drawer)(void *ctx, const char *start, char *out, int cap);
     void *ctx;
 } lf_asl;
 /* 1 for the three drawer-list rows */

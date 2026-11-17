@@ -943,9 +943,12 @@ static void test_lf_theme_font_pick(void)
     CHECK_STR(out, "JetBrains Mono.font/13");
 }
 
-static int fake_drawer(void *ctx, char *out, int cap)
+static char drawer_start[UC_MAX_VALUE];
+
+static int fake_drawer(void *ctx, const char *start, char *out, int cap)
 {
     fake_asl *f = (fake_asl *)ctx;
+    snprintf(drawer_start, sizeof drawer_start, "%s", start);
     if (!f->ok)
         return 0;
     snprintf(out, (size_t)cap, "%s", f->otag_path);
@@ -973,6 +976,7 @@ static void test_lf_drawer_pick(void)
     CHECK_INT(lf_setting_pick(&io, row, &asl, &failed), LF_SET_CANCELLED);
     lf_setting_text(&io, row, out, sizeof out);
     CHECK_STR(out, "Work:Music");
+    CHECK_STR(drawer_start, "Work:Music");               /* the requester opens at the row's drawer */
     fk.ok = 1;
     strcpy(fk.otag_path, "Work:Mods");
     CHECK_INT(lf_setting_pick(&io, row, &asl, &failed), LF_SET_OK);
@@ -982,6 +986,10 @@ static void test_lf_drawer_pick(void)
     CHECK_INT(lf_setting_pick(&io, row, &asl, &failed), LF_SET_OK);
     lf_setting_text(&io, row, out, sizeof out);
     CHECK_STR(out, "Work:Mods");
+    CHECK_STR(drawer_start, "Work:Mods");                /* last of the list "Work:Music,Work:Mods" */
+    mf_init(&m, &fs);                                    /* fresh store: nothing stored */
+    lf_setting_pick(&io, row, &asl, &failed);
+    CHECK_STR(drawer_start, "");                         /* empty row: the default drawer */
 }
 
 /* LF_SETTING font and screen mode pickers (plan 2026-10-26-patina-prefs-inline.md, M6): a picked font or mode

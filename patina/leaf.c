@@ -155,10 +155,10 @@ static int asl_otag(void *ctx, char *out, int cap)
     return asl_pick_file(w->scr, w->win, "Choose an outline font", "FONTS:", "#?.otag", 1, out, cap, &named) && named;
 }
 
-static int asl_drawer(void *ctx, char *out, int cap)
+static int asl_drawer(void *ctx, const char *start, char *out, int cap)
 {
     const asl_where *w = (const asl_where *)ctx;
-    return asl_pick_drawer(w->scr, w->win, "Choose a drawer", 0, out, cap);
+    return asl_pick_drawer(w->scr, w->win, "Choose a drawer", start, out, cap);
 }
 
 static int asl_mode(void *ctx, unsigned long id, int depth, unsigned long *oid, int *odepth)

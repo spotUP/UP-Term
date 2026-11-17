@@ -536,6 +536,13 @@ int lf_is_drawer_row(const sd_setting *s)
     return s->id == SDI_AM_MUSIC || s->id == SDI_AM_DEMO || s->id == SDI_AM_HIDE;
 }
 
+/* the last entry of a comma list ("" when empty) */
+static const char *lf_list_last(const char *list)
+{
+    const char *c = strrchr(list, ',');
+    return c ? c + 1 : list;
+}
+
 /* list = comma list; toggle path: drop the entry when present, else append. 0: does not fit. */
 static int lf_list_toggle(const char *list, const char *path, char *out, int cap)
 {
@@ -575,9 +582,11 @@ int lf_setting_pick(const amconf_io *io, const sd_setting *s, const lf_asl *asl,
     *failed = 0;
     if (lf_is_drawer_row(s)) {      /* picks add the drawer to the stored comma list; a drawer already listed is removed */
         char path[300], list[UC_MAX_VALUE], next[UC_MAX_VALUE];
-        if (!asl->drawer || !asl->drawer(asl->ctx, path, sizeof path))
+        if (!asl->drawer || !lf_setting_text(io, s, list, sizeof list))
+            return LF_SET_INVALID;
+        if (!asl->drawer(asl->ctx, lf_list_last(list), path, sizeof path))
             return LF_SET_CANCELLED;
-        if (!lf_setting_text(io, s, list, sizeof list) || strchr(path, ',') || !lf_list_toggle(list, path, next, sizeof next))
+        if ( strchr(path, ',') || !lf_list_toggle(list, path, next, sizeof next))
             return LF_SET_INVALID;
         return lf_setting_set_text(io, s, next, failed);
     }
