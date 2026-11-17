@@ -1247,6 +1247,28 @@ static void cx_gate_takes_only_its_own_row(void)
     CHECK(cx_row_takes(0x25, KM_Q_SUPER | KM_Q_SHIFT, 0x25, 0x0041));
 }
 
+static void gui_super_rows(void)
+{
+    CHECK_INT((int)lf_gui_super(KA_MENUID, kact_menu_id("MENU_CLOSE"), "MENU_CLOSE"), (int)LFG_CLOSE);
+    CHECK_INT((int)lf_gui_super(KA_TAB, -1, "close"), (int)LFG_CLOSE);
+    CHECK_INT((int)lf_gui_super(KA_MENUID, kact_menu_id("MENU_COPY"), "MENU_COPY"), (int)LFG_IGNORE);
+    CHECK_INT((int)lf_gui_super(KA_MENUID, kact_menu_id("MENU_FIND_NEXT"), "MENU_FIND_NEXT"), (int)LFG_IGNORE);
+    CHECK_INT((int)lf_gui_super(KA_MENUID, kact_menu_id("MENU_FONT_BIGGER"), "MENU_FONT_BIGGER"), (int)LFG_IGNORE);
+    CHECK_INT((int)lf_gui_super(KA_TAB, -1, "goto 3"), (int)LFG_IGNORE);
+    CHECK_INT((int)lf_gui_super(KA_TAB, -1, "next"), (int)LFG_IGNORE);
+    CHECK_INT((int)lf_gui_super(KA_MENUID, kact_menu_id("MENU_PREFS"), "MENU_PREFS"), (int)LFG_RUN);
+    CHECK_INT((int)lf_gui_super(KA_MENUID, kact_menu_id("MENU_AGENT"), "MENU_AGENT"), (int)LFG_RUN);
+    CHECK_INT((int)lf_gui_super(KA_TAB, -1, "new"), (int)LFG_RUN);
+    CHECK_INT((int)lf_gui_super(KA_SLASH, -1, "/help"), (int)LFG_RUN);
+    /* the gui finds the row by the commodity's matcher: Left Amiga+P is the Preferences row */
+    CHECK(parse("[bind]\nsuper+p = menuid:MENU_PREFS\n"));
+    {
+        const km_bind *b = keymap_find(&km, cx_qual_mask(0x0040), 0x19);
+        CHECK(b != 0 && b->kind == KA_MENUID);
+        CHECK(keymap_find(&km, cx_qual_mask(0x0001), 0x19) == 0);
+    }
+}
+
 static void cx_helper_path(void)
 {
     char out[64];
@@ -1366,6 +1388,7 @@ static void cx_descriptions_and_qualifier_mask(void)
     CHECK_INT(x.qual_mask, 0x0040);
     cx_filter_models_matchix();
     cx_gate_takes_only_its_own_row();
+    gui_super_rows();
     cx_helper_path();
     menu_style_commands();
     menu_style_parse();

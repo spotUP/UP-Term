@@ -34,6 +34,8 @@
 #include "menu_geom.h"
 #include "menu_theme.h"
 #include "leaf.h"
+#include "cxdesc.h"
+#include "../handler/keymap_act.h"
 #include "gthemes_dos.h"
 #include "iconpen_core.h"
 #include "desk_dos.h"
@@ -1361,6 +1363,33 @@ static void key(gui *g, int k, int ch, int wheel)
     }
 }
 
+/* S87: a Left Amiga chord that is a keymap row (the same matcher as the commodity's gate) runs here as the menu
+ * row of that kind would, except the rows lf_gui_super closes or ignores. */
+static void super_key(gui *g, int code, unsigned qual)
+{
+    const km_bind *b;
+    unsigned q = cx_qual_mask(qual);
+    km_menu m;
+    lf_ui ui;
+    if (!(q & KM_Q_SUPER) || g->await || (b = keymap_find(&km, q, (unsigned)code)) == 0)
+        return;
+    switch (lf_gui_super(b->kind, b->kind == KA_MENUID ? kact_menu_id(b->arg) : -1, b->arg)) {
+    case LFG_CLOSE:
+        g->quit = g->stop = 1;
+        return;
+    case LFG_IGNORE:
+        return;
+    default:
+        break;
+    }
+    memset(&m, 0, sizeof m);
+    m.kind = b->kind;
+    m.label = b->label;
+    m.arg = b->arg;
+    gui_ui_fill(g, &ui);
+    (void)lf_run(&m, &ui);
+}
+
 static void raw_key(gui *g, int code)
 {
     switch (code) {
@@ -1375,9 +1404,11 @@ static void raw_key(gui *g, int code)
     }
 }
 
-static void vanilla_key(gui *g, int c, int repeat)
+static void vanilla_key(gui *g, int c, int repeat, unsigned qual)
 {
     g->key_repeat = repeat;
+    if (qual & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND))
+        return;                                     /* an Amiga chord is a row (super_key), never typed text */
     if (c == 27)
         key(g, K_ESC, 0, 0);
     else if (c == 13 || c == 10)
@@ -1484,11 +1515,15 @@ static void event_loop(gui *g)
             ReplyMsg((struct Message *)im);
             switch (cls) {
             case IDCMP_VANILLAKEY:
-                vanilla_key(g, code, (qual & IEQUALIFIER_REPEAT) != 0);
+                vanilla_key(g, code, (qual & IEQUALIFIER_REPEAT) != 0, qual);
                 break;
             case IDCMP_RAWKEY:
-                if (!(code & IECODE_UP_PREFIX))
-                    raw_key(g, code);
+                if (!(code & IECODE_UP_PREFIX)) {
+                    if (qual & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND))
+                        super_key(g, code, qual);
+                    else
+                        raw_key(g, code);
+                }
                 break;
             case IDCMP_MOUSEBUTTONS:
                 mouse_button(g, code, mx, my);

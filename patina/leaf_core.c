@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include "leaf.h"
 #include "../handler/tabprog.h"
+#include "../handler/menu_ids.h"
 
 lf_how lf_plan(int kind)
 {
@@ -41,6 +42,25 @@ lf_how lf_plan(int kind)
 int lf_job_view(const lf_ui *ui)
 {
     return ui && ui->run_job;
+}
+
+lf_gui_how lf_gui_super(int kind, long menu_id, const char *arg)
+{
+    if (kind == KA_TAB) {
+        if (!strcmp(arg, "close"))
+            return LFG_CLOSE;
+        return !strcmp(arg, "new") ? LFG_RUN : LFG_IGNORE;   /* goto, next, prev: no tabs here */
+    }
+    if (kind == KA_MENUID) {
+        switch (menu_id) {
+        case MENU_CLOSE: case MENU_TAB_CLOSE:
+            return LFG_CLOSE;
+        case MENU_COPY: case MENU_PASTE: case MENU_SELECT_ALL: case MENU_FIND: case MENU_FIND_NEXT:
+        case MENU_FONT_BIGGER: case MENU_FONT_SMALLER: case MENU_TAB_NEXT: case MENU_TAB_PREV:
+            return LFG_IGNORE;
+        }
+    }
+    return LFG_RUN;
 }
 
 lf_how lf_plan_t(int kind, int term)

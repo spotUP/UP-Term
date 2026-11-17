@@ -59,6 +59,13 @@ typedef enum {
 
 lf_how lf_plan(int kind);
 
+/* What a Left Amiga key row does in a patina-gui window (S87): the commodity swallows its own rows, the terminal's
+ * rows (tab:, menuid:, slash:) reach the window. LFG_CLOSE closes the window (close rows); LFG_IGNORE is a row that
+ * acts on a terminal's content (copy, paste, select all, find, font size, tab goto/next/prev) and means nothing here;
+ * LFG_RUN runs as a menu row of that kind. menu_id is kact_menu_id(arg) for a menuid: row, else ignored. */
+typedef enum { LFG_RUN, LFG_CLOSE, LFG_IGNORE } lf_gui_how;
+lf_gui_how lf_gui_super(int kind, long menu_id, const char *arg);
+
 /* lf_plan with whether a terminal window is open (upactive_terminal_present): a slash: row (the Style > Terminal
  * rows) shown with no terminal opens one first, then applies there. Every other kind plans as lf_plan. */
 lf_how lf_plan_t(int kind, int term);
