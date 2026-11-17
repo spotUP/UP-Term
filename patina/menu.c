@@ -447,7 +447,7 @@ static int menu_levels(const char *start)
             return rc;
         i = ui_hotkey();
         if ((i == UI_HOTKEY_RIGHT || i == UI_HOTKEY_LEFT) && ui_selected() >= shift && ui_selected() < c + shift
-            && lf_number_step(&it[idx[ui_selected() - shift]], i == UI_HOTKEY_RIGHT ? 1 : -1)) {   /* TI-2: a bounded number steps with the arrows */
+            && lf_number_step(&it[idx[ui_selected() - shift]], i == UI_HOTKEY_RIGHT ? 1 : -1, 0)) {   /* TI-2: a bounded number steps with the arrows */
             keep_ix = it[idx[ui_selected() - shift]].ix;
             continue;
         }

@@ -390,9 +390,11 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
     return ok;
 }
 
-int lf_number_step(const mn_item *it, int dir)
+int lf_number_step(const mn_item *it, int dir, int big)
 {
     const sd_setting *s;
+    if (MN_IS_CHOICE(it))
+        return lf_bar_step(amconf_dos_io(), gte_row(it->ix), atoi(it->seg), dir * (big ? 16 : 1)) == LF_SET_OK;
     if (!MN_IS_SETTING(it))
         return 0;
     s = gte_row(it->ix);
@@ -486,8 +488,8 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
         int entry = atoi(it->seg);
         const char *text = 0;
         char value[UC_MAX_VALUE + 2], why[80];
-        if (!MN_IS_CHOICE(it))
-            return 0;                   /* the row opens its picker level: the menu does that */
+        if (!MN_IS_CHOICE(it) || (s->kind == SD_SWATCH && entry >= SD_PICK_BAR))
+            return 0;                   /* the row opens its picker level: the menu does that; a bar row is stepped, not entered */
         if (lf_picker_prompt(s, entry)) {
             lf_colour_current(amconf_dos_io(), s, entry, value);
             if (!ui->ask_value || !ui->ask_value(ui->ctx, it->label, lf_picker_prompt(s, entry), value, sizeof value))

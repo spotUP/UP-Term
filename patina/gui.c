@@ -153,6 +153,8 @@ typedef struct gui {
     /* input */
     char edit[EDIT_MAX];
     int elen, edone;
+    int shift_held;              /* S88: Shift was down at the last arrow key (bars step 16) */
+    int bar_drag;                /* S88: the left button is held on a colour bar row's track (the row's index in g->it) else -1 */
 } gui;
 
 static keymap km;
@@ -527,6 +529,46 @@ static void draw_welcome_row(gui *g, int r, int tx, int y, int rbg)
     }
 }
 
+/* S88: the track of a colour bar row, the right half of the row's text area; its inner width excludes the outline
+ * (side pixel columns per visual pixel, flat_side_px). */
+static void bar_track(const gui *g, int *x0, int *x1)
+{
+    const mg_geom *q = &g->g;
+    int tx = q->list_x + q->m.row_pad + (g->icon_w ? g->icon_w + q->m.icon_gap : 0);
+    int tw = q->list_w - 2 * q->m.row_pad - (g->icon_w ? g->icon_w + q->m.icon_gap : 0);
+    *x0 = tx + tw / 2;
+    *x1 = tx + tw - 1;
+}
+
+/* the bar value 0..255 a pointer at mx stands for, clamped to the track */
+static int bar_value_at(const gui *g, int mx)
+{
+    int x0, x1, w;
+    bar_track(g, &x0, &x1);
+    w = x1 - x0;
+    return w <= 0 ? 0 : mx <= x0 ? 0 : mx >= x1 ? 255 : (int)(((long)(mx - x0) * 255 + w / 2) / w);
+}
+
+static void draw_bar(gui *g, int role, int rbg, int y, int v)
+{
+    const mg_geom *q = &g->g;
+    int x0, x1, side = flat_side_px(g->ms.rx, g->ms.ry), th = q->m.row_h / 3, ty, ix0, ix1, tw, tx;
+    bar_track(g, &x0, &x1);
+    if (side < 1)
+        side = 1;
+    if (th < 5)
+        th = 5;
+    ty = y + (q->m.row_h - th) / 2;
+    fill(g, role, x0, ty, x1, ty + th - 1);                     /* outline in the row's text colour */
+    ix0 = x0 + side;
+    ix1 = x1 - side;
+    fill(g, rbg, ix0, ty + 1, ix1, ty + th - 2);                /* empty part */
+    tw = ix1 - ix0 + 1;
+    tx = ix0 + (int)((long)tw * v / 255);
+    fill(g, role, ix0, ty + 1, tx, ty + th - 2);                /* filled part */
+    fill(g, role, tx - side, y + 2, tx + side, y + q->m.row_h - 3);   /* thumb, a visual square pixel wide per side */
+}
+
 static void draw_row(gui *g, int e)
 {
     const mg_geom *q = &g->g;
@@ -582,8 +624,15 @@ static void draw_row(gui *g, int e)
             }
             {
                 const char *sep = MN_IS_SETTING(it) ? strstr(it->label, ": ") : 0;   /* the value is not what is cut */
-                put_keep(g, role, rbg, tx, y, q->m.row_h, it->label, (int)strlen(it->label), tw,
-                         sep ? (int)(sep - it->label) : -1);
+                int bar = lf_row_bar(it);
+                if (bar >= 0) {                   /* S88: Red, Green, Blue: the label left, the bar in the right half */
+                    int bx0, bx1;
+                    bar_track(g, &bx0, &bx1);
+                    put(g, role, rbg, tx, y, q->m.row_h, it->label, (int)strlen(it->label), bx0 - tx - q->m.row_pad);
+                    draw_bar(g, role, rbg, y, bar);
+                } else
+                    put_keep(g, role, rbg, tx, y, q->m.row_h, it->label, (int)strlen(it->label), tw,
+                             sep ? (int)(sep - it->label) : -1);
             }
         }
         if (MN_IS_GROUP(it) && !minimal)
@@ -810,6 +859,7 @@ static void preview_sync(gui *g)
 
 /* The level for the node and filter; the cursor goes to the entry labelled keep when it is still shown, else
  * the first real entry. */
+static int keep_row = -1;       /* S88: the list row (without the status row) the cursor returns to after a bar step, else -1 */
 static int keep_setting = -1;   /* the SDI_* id of the setting row the cursor stays on after a set, else -1 */
 
 static int load_due(gui *g);
@@ -837,6 +887,9 @@ static void list_rebuild_keep(gui *g, const char *keep)
     gt_label(cur, cur, cur_label, (int)sizeof cur_label);
     pos = mn_open_pos(g->it, g->idx, g->count - g->shift, keep_setting, keep, cur_label);
     keep_setting = -1;
+    if (keep_row >= 0 && keep_row < g->count - g->shift)
+        pos = keep_row;
+    keep_row = -1;
     g->sel = g->shift + (pos > 0 ? pos : 0);
     g->top = 0;
     if (pos > 0) {                       /* the layout (visible rows) is needed to scroll to it */
@@ -1145,8 +1198,11 @@ static void key_list(gui *g, int k, int ch)
     case K_RIGHT:
         if (g->sel >= g->shift && g->sel < g->count) {
             const mn_item *row = &g->it[g->idx[g->sel - g->shift]];
-            if (lf_number_step(row, k == K_RIGHT ? 1 : -1)) {   /* TI-2: a bounded number steps with the arrows */
-                keep_setting = row->ix;
+            if (lf_number_step(row, k == K_RIGHT ? 1 : -1, g->shift_held)) {   /* TI-2: a bounded number steps with the arrows */
+                if (MN_IS_CHOICE(row))
+                    keep_row = g->sel - g->shift;   /* S88: every bar shares the picker's ix: keep the row, not the setting */
+                else
+                    keep_setting = row->ix;
                 list_rebuild(g);
                 break;
             }
@@ -1399,8 +1455,9 @@ static void super_key(gui *g, int code, unsigned qual)
     (void)lf_run(&m, &ui);
 }
 
-static void raw_key(gui *g, int code)
+static void raw_key(gui *g, int code, unsigned qual)
 {
+    g->shift_held = (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) != 0;
     switch (code) {
     case 0x4C: key(g, K_UP, 0, 0); break;
     case 0x4D: key(g, K_DOWN, 0, 0); break;
@@ -1428,6 +1485,20 @@ static void vanilla_key(gui *g, int c, int repeat, unsigned qual)
         key(g, K_CHAR, c, 0);
 }
 
+/* S88: set the bar of list row h to the value under mx (lf_bar_set: autosave + live apply), then rebuild so the preview
+ * pane redraws; the cursor stays on the row. Nothing is written when the value does not change. */
+static void bar_set_at(gui *g, int h, int mx)
+{
+    const mn_item *row = &g->it[g->idx[h - g->shift]];
+    int v = bar_value_at(g, mx);
+    if (v == lf_row_bar(row))
+        return;
+    if (lf_bar_set(amconf_dos_io(), gte_row(row->ix), atoi(row->seg), v) == LF_SET_OK) {
+        keep_row = h - g->shift;
+        list_rebuild(g);
+    }
+}
+
 static void mouse_button(gui *g, int code, int mx, int my)
 {
     int h;
@@ -1442,6 +1513,10 @@ static void mouse_button(gui *g, int code, int mx, int my)
             key_job(g, K_ESC);
         else
             g->stop = 1;
+        return;
+    }
+    if (code == SELECTUP) {
+        g->bar_drag = -1;
         return;
     }
     if (code != SELECTDOWN)
@@ -1476,6 +1551,16 @@ static void mouse_button(gui *g, int code, int mx, int my)
     if (g->mode != M_LIST)
         return;
     h = mg_hit(&g->g, g->top, mx, my);
+    if (h >= g->shift && h < g->count && lf_row_bar(&g->it[g->idx[h - g->shift]]) >= 0) {
+        int bx0, bx1;
+        set_sel(g, h);                   /* S88: a bar row never activates; a click on the track sets the value and starts a drag */
+        bar_track(g, &bx0, &bx1);
+        if (mx >= bx0) {
+            g->bar_drag = h;
+            bar_set_at(g, h, mx);
+        }
+        return;
+    }
     if (h >= g->shift) {
         set_sel(g, h);
         activate(g, 0);
@@ -1487,6 +1572,10 @@ static void mouse_move(gui *g, int mx, int my)
     int h;
     if (g->await || (g->mode != M_LIST && g->mode != M_PICK))
         return;
+    if (g->bar_drag >= 0) {              /* S88: the button is held on a track (WA_ReportMouse delivers the moves) */
+        bar_set_at(g, g->bar_drag, mx);
+        return;
+    }
     h = mg_hit(&g->g, g->top, mx, my);
     if (h >= 0 && h < g->top + g->g.visible && h != g->sel) {
         if (g->mode == M_PICK) {
@@ -1541,7 +1630,7 @@ static void event_loop(gui *g)
                     if (qual & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND))
                         super_key(g, code, qual);
                     else
-                        raw_key(g, code);
+                        raw_key(g, code, qual);
                 }
                 break;
             case IDCMP_MOUSEBUTTONS:
@@ -2012,6 +2101,7 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
     at_mark("start");
     memset(g, 0, sizeof *g);
     mg_focus_init(&g->focus);
+    g->bar_drag = -1;
     keep_setting = -1;
     lf_reset();
     mo_register();   /* MENU-TOGGLE: the menu hotkey again ends this menu; clears a stale Ctrl-C */
