@@ -346,10 +346,17 @@ int sd_value_index(const sd_setting *s, const char *file)
     return -1;
 }
 
+const char *sd_shown_string(const sd_setting *s, const char *t)
+{
+    return (!t || !*t) && s->kind == SD_STRING && s->nvalues > 1 ? s->values[0].file : t;
+}
+
 const char *sd_preset_next(const sd_setting *s, const char *cur)
 {
     int i, n = s->nvalues - 1;      /* the typed entry has no file text */
-    long c = atol(cur);
+    long c;
+    cur = sd_shown_string(s, cur);
+    c = atol(cur);
     for (i = 0; i < n; i++)
         if (sd_ieq(s->values[i].file, cur))
             return s->values[(i + 1) % n].file;
@@ -545,7 +552,7 @@ static const char *row_value(const sd_setting *s, const void *store, char *hex)
     case SD_PROFILE:
         return "...";
     }
-    t = sd_string(s, (void *)store, 0);
+    t = (char *)sd_shown_string(s, sd_string(s, (void *)store, 0));
     if (!t || !*t)
         return s->kind == SD_STRING ? "(empty)" : "default";
     if (s->kind == SD_COLOUR) {

@@ -308,7 +308,7 @@ static void test_settings_row_label(void)
     strcpy(f.term, "xterm");
     label_is(SDI_TERM, &f, "Terminal type: xterm");
     f.term[0] = 0;
-    label_is(SDI_TERM, &f, "Terminal type: (empty)");
+    label_is(SDI_TERM, &f, "Terminal type: vtcon");   /* empty means vtcon */
     strcpy(f.fg, "A0B0C0");
     label_is(SDI_FG, &f, "Text colour: #A0B0C0");
     label_is(SDI_BG, &f, "Background: default");

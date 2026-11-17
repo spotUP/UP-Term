@@ -819,7 +819,12 @@ static void test_lf_setting_text(void)
         lf_setting_text(&io, tm, out, sizeof out);
         CHECK_STR(out, "my-term");                            /* any text survives through Other */
         CHECK_STR(sd_preset_next(tm, "my-term"), "vtcon");
-        CHECK_STR(sd_preset_next(tm, ""), "vtcon");
+        CHECK_STR(sd_preset_next(tm, ""), "xterm");           /* empty is vtcon: the next is xterm */
+        CHECK_INT(lf_setting_set_text(&io, tm, "", &failed), LF_SET_OK);
+        ch[0].ix = tm->id;
+        strcpy(ch[0].seg, "0");   /* vtcon */
+        lf_setting_labels(&io, ch, 1);
+        CHECK_STR(ch[0].label, "* vtcon");                    /* empty term marks vtcon */
         CHECK_STR(sd_preset_next(tm, "linux"), "vtcon");
     }
 }

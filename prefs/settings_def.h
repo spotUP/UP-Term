@@ -158,6 +158,9 @@ const char *sd_text_reason(int check);
 /* The file text of the preset after cur (cur is a preset: the next, wrapping; a number between presets: the next larger;
  * else the first). Never 0 for a row with presets. */
 const char *sd_preset_next(const sd_setting *s, const char *cur);
+/* S87-TERM-EMPTY: the value a string row with presets stands for: empty means its first preset (term: empty = vtcon),
+ * so the row label, the "*" mark and the Prefs stepper show what is in effect, not "(empty)". */
+const char *sd_shown_string(const sd_setting *s, const char *t);
 /* Entry numbers of the picker's rows (seg of a MN_ROW_CHOICE row): 0..15 the palette entries, then this. */
 #define SD_PICK_CUSTOM 16
 /* TI-3: a pointer colour row also offers Default, which clears the override (gte_row_has_default) */

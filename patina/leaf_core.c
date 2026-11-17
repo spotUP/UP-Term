@@ -763,7 +763,7 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
             int v = atoi(it[i].seg), j, hit = -1;
             if (lf_setting_text(io, s, cur, sizeof cur))
                 for (j = 0; j < s->nvalues - 1; j++)
-                    if (!strcmp(cur, s->values[j].file))
+                    if (!strcmp(sd_shown_string(s, cur), s->values[j].file))
                         hit = j;
             if (hit < 0 && cur[0] && v == s->nvalues - 1)
                 hit = v;                /* a value no preset names marks the typed entry */
