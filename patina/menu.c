@@ -451,6 +451,11 @@ static int menu_levels(const char *start)
             keep_ix = it[idx[ui_selected() - shift]].ix;
             continue;
         }
+        if ((i == UI_HOTKEY_RIGHT || i == UI_HOTKEY_LEFT) && ui_selected() >= shift && ui_selected() < c + shift
+            && lf_row_bar(&it[idx[ui_selected() - shift]]) >= 0) {   /* S90: a bar row owns Left/Right at 0 or 255 too (gui.c twin) */
+            keep_ix = it[idx[ui_selected() - shift]].ix;
+            continue;
+        }
         if (i == UI_HOTKEY_RIGHT) {            /* Right enters a group or a setting with a page, as Return does */
             int s = ui_selected();
             if (s >= shift && s < c + shift && mn_right_enters(&it[idx[s - shift]]))
