@@ -3643,6 +3643,26 @@ int gt_term_fields(gt_read_fn rd, void *ctx, const char *gtheme, prefs_fields *f
     return 1;
 }
 
+/* S90: with gt_term_defer(1) a set keeps the user copy current but leaves GT_TERM_FILE to gt_term_flush (the GUI debounces a
+ * colour bar so the open terminals recolour once). */
+static int gt_tdefer;
+static char gt_tpend[GT_NAME];
+
+void gt_term_defer(int on) { gt_tdefer = on; }
+
+int gt_term_flush(gt_read_fn rd, const prefs_fs *fs)
+{
+    int len;
+    if (!gt_tpend[0])
+        return 0;
+    len = gt_load_term(rd, fs->ctx, gt_tpend, gt_ttext, (int)sizeof gt_ttext);
+    gt_tpend[0] = 0;
+    if (len <= 0)
+        return 0;
+    fs->write_file(fs->ctx, GT_TERM_FILE, gt_ttext, len);
+    return 1;
+}
+
 int gt_term_set(gt_read_fn rd, const prefs_fs *fs, const char *gtheme, const char *key, int entry, const char *hex)
 {
     char name[GT_NAME], val[UC_MAX_VALUE], why[80];
@@ -3662,6 +3682,11 @@ int gt_term_set(gt_read_fn rd, const prefs_fs *fs, const char *gtheme, const cha
     }
     if (!gt_model_term_set(&gt_tmodel, key, val) || !gt_save(fs, name, &gt_tmodel, why, (int)sizeof why))
         return GT_TERM_FAIL;
+    if (gt_tdefer) {
+        snprintf(gt_tpend, sizeof gt_tpend, "%s", name);
+        return GT_TERM_OK;
+    }
+    gt_tpend[0] = 0;
     len = gt_load_term(rd, fs->ctx, name, gt_ttext, (int)sizeof gt_ttext);
     if (len > 0)
         fs->write_file(fs->ctx, GT_TERM_FILE, gt_ttext, len);

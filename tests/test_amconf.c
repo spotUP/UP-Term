@@ -861,6 +861,18 @@ static void test_lf_setting_term_theme(void)
     CHECK_INT(lf_setting_set_colour(&io, cur, SD_PICK_CUSTOM, "ff0000", &failed), LF_SET_OK);
     CHECK(strstr(mf_get(&m, "ENV:up-term/theme-active"), "cursor-color = FF0000") != 0);
     CHECK_STR(mf_get(&m, UP), before);
+    /* S90: deferred sets leave GT_TERM_FILE alone; one flush writes the last value */
+    mf_put(&m, "ENV:up-term/theme-active", "stale\n");
+    lf_term_defer(1);
+    CHECK_INT(lf_setting_set_colour(&io, fg, SD_PICK_CUSTOM, "010203", &failed), LF_SET_OK);
+    CHECK_INT(lf_setting_set_colour(&io, fg, SD_PICK_CUSTOM, "040506", &failed), LF_SET_OK);
+    CHECK_INT(lf_setting_set_colour(&io, fg, SD_PICK_CUSTOM, "070809", &failed), LF_SET_OK);
+    lf_term_defer(0);
+    CHECK_STR(mf_get(&m, "ENV:up-term/theme-active"), "stale\n");
+    CHECK(strstr(mf_get(&m, "ENVARC:Patina/themes/nord.theme"), "term_fg = 070809") != 0);
+    CHECK_INT(lf_term_flush(&io), 1);
+    CHECK(strstr(mf_get(&m, "ENV:up-term/theme-active"), "fg = 070809") != 0);
+    CHECK_INT(lf_term_flush(&io), 0);                        /* nothing pending: no second write */
 }
 
 /* S90: UP-Term Prefs' path (gt_term_fields / gt_term_store on the edited fields): the colour rows show the theme's colours, and only

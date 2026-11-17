@@ -420,6 +420,8 @@ int gte_open_from(gt_read_fn rd, void *ctx, const char *name);
 enum { GT_TERM_OK = 0, GT_TERM_NONE = -1, GT_TERM_FAIL = 1 };
 int gt_term_fields(gt_read_fn rd, void *ctx, const char *gtheme, prefs_fields *f);
 int gt_term_set(gt_read_fn rd, const prefs_fs *fs, const char *gtheme, const char *key, int entry, const char *hex);
+void gt_term_defer(int on);                              /* 1: gt_term_set leaves GT_TERM_FILE to gt_term_flush */
+int gt_term_flush(gt_read_fn rd, const prefs_fs *fs);   /* writes GT_TERM_FILE once for the last deferred set; 1 if written */
 int gt_term_store(gt_read_fn rd, const prefs_fs *fs, const char *gtheme, const prefs_fields *f);
 /* TE-8.1: a theme as a starting point: the user file, else the shipped file, else (the name is GT_DEFAULT) the built-in tokyo-night.
  * Parsed into out with out->name = name. 1 found; 0 when no such theme. */

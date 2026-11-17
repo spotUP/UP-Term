@@ -487,6 +487,13 @@ static const char *lf_term_key(const sd_setting *s)
     return 0;
 }
 
+/* S90: lf_term_defer(1) holds GT_TERM_FILE for lf_term_flush (gt_term_defer); the pending count moves on every deferred write. */
+static int lf_tdefer, lf_tpend;
+
+void lf_term_defer(int on) { lf_tdefer = on; gt_term_defer(on); }
+int lf_term_pending(void) { return lf_tpend; }
+int lf_term_flush(const amconf_io *io) { return gt_term_flush(io->read, io->fs); }
+
 /* hex "" removes the key. LF_SET_KIND: not a theme case, the caller writes the profile. */
 static int lf_set_term_theme(const amconf_io *io, const sd_setting *s, int n, const char *hex, int *failed)
 {
@@ -502,6 +509,8 @@ static int lf_set_term_theme(const amconf_io *io, const sd_setting *s, int n, co
         *failed = 0;
         return LF_SET_FULL;
     }
+    if (lf_tdefer)
+        lf_tpend++;
     return LF_SET_OK;
 }
 

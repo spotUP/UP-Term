@@ -34,6 +34,7 @@
 #include "menu_geom.h"
 #include "menu_theme.h"
 #include "leaf.h"
+#include "poll_timer.h"
 #include "cxdesc.h"
 #include "../handler/keymap_act.h"
 #include "gthemes_dos.h"
@@ -1659,14 +1660,33 @@ static void mouse_move(gui *g, int mx, int my)
     }
 }
 
+/* S90: a colour bar edit keeps the live row and the theme file current but holds the GT_TERM_FILE rewrite (lf_term_defer);
+ * the open terminals recolour once, when no bar input came for TERM_DEBOUNCE_US, or when the loop ends. */
+#define TERM_DEBOUNCE_US 150000UL
+static poll_timer term_deb;
+static int term_deb_ok = -1, term_seen;
+
+static void term_flush_now(void)
+{
+    if (term_deb_ok > 0)
+        pt_stop(&term_deb);
+    lf_term_flush(amconf_dos_io());
+}
+
 /* Runs until g->stop (this mode is done) or g->quit (the window goes). */
 static void event_loop(gui *g)
 {
     struct IntuiMessage *im;
+    if (term_deb_ok < 0)
+        term_deb_ok = pt_open(&term_deb) ? 1 : (pt_close(&term_deb), 0);
+    lf_term_defer(term_deb_ok > 0);     /* no timer: every edit writes at once, as before */
     while (!g->stop && !g->quit) {
         ULONG jm = job_on ? jb_sigmask() : 0;       /* every mode: a nested one must not starve the job */
         ULONG pm = mo_srv_port ? 1UL << mo_srv_port->mp_SigBit : 0;
-        ULONG got = Wait((1UL << g->win->UserPort->mp_SigBit) | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | jm | pm);
+        ULONG tm = term_deb_ok > 0 ? pt_sigmask(&term_deb) : 0;
+        ULONG got = Wait((1UL << g->win->UserPort->mp_SigBit) | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | jm | pm | tm);
+        if (tm && pt_fired(&term_deb, got))
+            lf_term_flush(amconf_dos_io());
         /* S87: Patina quits while a menu or editor is open: the server must end, whatever exit_ok would ask */
         if ((got & pm) && mo_srv_quit_queued()) {
             g->quit = g->stop = 1;
@@ -1736,7 +1756,12 @@ static void event_loop(gui *g)
                 break;
             }
         }
+        if (term_deb_ok > 0 && lf_term_pending() != term_seen) {    /* a bar moved: restart the quiet period */
+            term_seen = lf_term_pending();
+            pt_start(&term_deb, TERM_DEBOUNCE_US);
+        }
     }
+    term_flush_now();
 }
 
 /* ---- screen, font, pens, window ---------------------------------------------------------------------- */
