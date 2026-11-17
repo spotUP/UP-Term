@@ -2371,7 +2371,8 @@ static void test_gthemes_te4_dispatch(void)
     int i;
     rc.calls = 0;
     /* theme_action: what each action does before it touches a file */
-    CHECK_INT(gte_action_plan(GTA_OPEN, 0), GTP_NAME);
+    CHECK_INT(gte_action_plan(GTA_OPEN, 0), 0);
+    CHECK_INT(gte_action_plan(GTA_OPEN_OTHER, 0), GTP_NAME);
     CHECK_INT(gte_action_plan(GTA_RESET_BASE, 1), 0);
     CHECK_INT(gte_action_plan(GTA_APPLY, 0), GTP_SKIP);
     CHECK_INT(gte_action_plan(GTA_SAVE_AS, 0), GTP_SKIP);
@@ -3130,7 +3131,7 @@ static void test_gthemes_te8_rows(void)
         if (s->kind == SD_INFO && !strncmp(s->label, "Pen Share ", 10)) share_all++;
     }
     CHECK_INT(share_all, GTG_COUNT);                                   /* one Pen Share row per group, all built */
-    CHECK_INT(total, 483);                                             /* the true row count counted from the builder: 309 earlier rows + 174 Screens page rows (TE-10.8b) + 1 Restore Original (TE-10.9) - the Save row (autosave) */
+    CHECK_INT(total, 484);                                             /* the true row count counted from the builder: 309 earlier rows + 174 Screens page rows (TE-10.8b) + 1 Restore Original (TE-10.9) - the Save row (autosave) + 1 Open Other Theme */
     gt_ed.depth = 3;
     share_vis = 0;
     for (i = 0; i < total; i++) {

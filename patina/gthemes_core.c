@@ -1771,7 +1771,7 @@ void gte_open(const gt_model *m, const char *name)
 int gte_action_plan(int aux, int editor_open)
 {
     switch (aux) {
-    case GTA_OPEN:
+    case GTA_OPEN_OTHER:
         return GTP_NAME;
     case GTA_APPLY:
         return editor_open ? 0 : GTP_SKIP;
@@ -2337,7 +2337,8 @@ static void er_build(void)
         snprintf(k, sizeof k, "penshare-%s", gt_group_defs[g].key);
         er_add(PG_PAGE_THEME, SD_INFO, k, l)->aux = ER_INFO_SHARE + g;
     }
-    er_add(PG_PAGE_THEME, SD_GACTION, "open", "Edit Theme...")->aux = GTA_OPEN;
+    er_add(PG_PAGE_THEME, SD_GACTION, "open", "Edit Current Theme")->aux = GTA_OPEN;
+    er_add(PG_PAGE_THEME, SD_GACTION, "openother", "Open Other Theme...")->aux = GTA_OPEN_OTHER;
     er_add(PG_PAGE_THEME, SD_GACTION, "saveas", "Save As...")->aux = GTA_SAVE_AS;
     er_add(PG_PAGE_THEME, SD_GACTION, "revert", "Revert")->aux = GTA_REVERT;
     er_add(PG_PAGE_THEME, SD_GACTION, "apply", "Apply to Desktop")->aux = GTA_APPLY;

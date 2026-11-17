@@ -287,8 +287,9 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
         return 0;
     switch (s->aux) {
     case GTA_OPEN:
+    case GTA_OPEN_OTHER:
         gt_dos_current(name, sizeof name);
-        if (!lf_ask_name(ui, label, 0, name, sizeof name))
+        if (s->aux == GTA_OPEN_OTHER && !lf_ask_name(ui, label, 0, name, sizeof name))
             return 0;
         ok = gt_dos_edit_open(name);
         if (!ok)
