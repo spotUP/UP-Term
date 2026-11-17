@@ -213,6 +213,8 @@ static void test_shipped_text_placeholders(void)
 static void test_check_square(void)
 {
     CHECK_INT(hc_check_w(10, flat_side_px(22, 44)), 20);        /* hires 640x256 */
+    CHECK_INT(hc_check_h(9, 30), 9);          /* tall icon row: text height, not 24 */
+    CHECK_INT(hc_check_h(9, 12), 6);          /* short row: capped by the row */
     CHECK_INT(hc_check_w(10, flat_side_px(11, 44)), 40);        /* super hires */
     CHECK_INT(hc_check_w(10, flat_side_px(44, 44)), 10);        /* lores */
     CHECK_INT(hc_check_w(10, flat_side_px(22, 22)), 10);        /* hires interlace */

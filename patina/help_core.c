@@ -167,6 +167,11 @@ int hc_tick_role(int ticked)
     return ticked ? MT_THEME_ACCENT : MT_BG;
 }
 
+int hc_check_h(int text_h, int row_h)
+{
+    return text_h < row_h - 6 ? text_h : row_h - 6;
+}
+
 int hc_check_w(int s, int side)
 {
     return s * (side < 1 ? 1 : side);
