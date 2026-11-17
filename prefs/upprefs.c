@@ -1838,6 +1838,25 @@ static int act(struct app *a, int id, int val)
     case PG_FONT_CHOOSE:
         pick_font(a);
         return 0;
+    case PG_SCROLLBACK_PRESET:
+    case PG_TERM_PRESET: {
+        /* steps the typed field through the row's presets (sd_preset_next); a value no preset names moves on to the next larger one */
+        const sd_setting *row = sd_find_gadget(id);
+        collect(a);
+        if (id == PG_TERM_PRESET) {
+            strncpy(a->f.term, sd_preset_next(row, a->f.term), sizeof(a->f.term) - 1);
+            a->f.term[sizeof(a->f.term) - 1] = 0;
+        } else {
+            char cur[16];
+            prefs_sb_format(a->sb_lines, a->sb_none, cur);
+            if (!cur[0])
+                strcpy(cur, "500");   /* blank means the default, PREFS_SB_DEFAULT */
+            prefs_sb_parse(sd_preset_next(row, cur), &a->sb_lines, &a->sb_none);
+            sb_store(a);
+        }
+        show_fields(a);
+        return 0;
+    }
     case PG_FONT_CLEAR:
         a->f.font[0] = 0;
         show_texts(a);

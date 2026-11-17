@@ -875,7 +875,7 @@ static void right_enters_only_rows_with_children(void)
     it.row = MN_ROW_SETTING;
     for (i = 0; i < sd_nsettings; i++) {
         const sd_setting *s = &sd_settings[i];
-        int want = s->kind == SD_CYCLE || SD_HAS_PICKER(s) || SD_HAS_LIST(s);
+        int want = s->kind == SD_CYCLE || SD_HAS_PICKER(s) || SD_HAS_LIST(s) || SD_HAS_PRESETS(s);
         it.ix = s->id;
         CHECK_INT(mn_right_enters(&it), want);
         enter += want;

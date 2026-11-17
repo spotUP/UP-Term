@@ -1029,8 +1029,8 @@ static void activate_setting(gui *g, const mn_item *it, int right)
 {
     lf_ui ui;
     gui_ui_fill(g, &ui);
-    if (MN_IS_SETTING(it) && (right || SD_HAS_PICKER(gte_row(it->ix)) || SD_HAS_LIST(gte_row(it->ix)))) {
-        if (gte_row(it->ix)->kind == SD_CYCLE || SD_HAS_PICKER(gte_row(it->ix)) || SD_HAS_LIST(gte_row(it->ix))) {
+    if (MN_IS_SETTING(it) && (right || SD_HAS_PICKER(gte_row(it->ix)) || SD_HAS_LIST(gte_row(it->ix)) || SD_HAS_PRESETS(gte_row(it->ix)))) {
+        if (gte_row(it->ix)->kind == SD_CYCLE || SD_HAS_PICKER(gte_row(it->ix)) || SD_HAS_LIST(gte_row(it->ix)) || SD_HAS_PRESETS(gte_row(it->ix))) {
             mn_child_node(g->node, it, g->node, sizeof g->node);
             g->filter[0] = 0;
             list_rebuild(g);

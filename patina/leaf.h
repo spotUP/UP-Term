@@ -104,6 +104,9 @@ int lf_setting_set(const amconf_io *io, const sd_setting *s, int index, int *fai
  * prefill); 0 when the row has no text. */
 int lf_setting_set_text(const amconf_io *io, const sd_setting *s, const char *text, int *failed);
 int lf_setting_text(const amconf_io *io, const sd_setting *s, char *out, int n);
+/* A row with presets (SD_HAS_PRESETS): choice `entry` of values[]. A preset writes its file text; the last (typed)
+ * entry writes `text` through the same range check as lf_setting_set_text (0 text: LF_SET_KIND). */
+int lf_setting_set_preset(const amconf_io *io, const sd_setting *s, int entry, const char *text, int *failed);
 /* The colour pickers (SD_COLOUR swatches, SD_PALETTE): entry 0..15 of the palette. A swatch takes the colour
  * of palette entry `entry` (text 0) or the typed hex (entry SD_PICK_CUSTOM); the palette row sets entry
  * `entry` to the typed hex (text "" puts it back to the built-in). Hex is RRGGBB with an optional "#"; bad

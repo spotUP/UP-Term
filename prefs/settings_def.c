@@ -1,5 +1,6 @@
 /* settings_def: the settings table (see settings_def.h). */
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "settings_def.h"
@@ -22,6 +23,11 @@ static const sd_value v_kc_common[] = { { "", "Off" }, { "C", "On" } };
 static const sd_value v_kc_silent[] = { { "", "Off" }, { "S", "On" } };
 
 /* the cycles, in the order of the gadget's choices */
+/* presets of a typed row (SD_HAS_PRESETS): the last entry has no file text and is the typed "Custom" / "Other" one */
+static const sd_value v_scrollback[] = { { "100", "100" }, { "500", "500" }, { "1000", "1000" }, { "5000", "5000" }, { "20000", "20000" },
+                                         { 0, "Custom..." } };
+static const sd_value v_term[] = { { "vtcon", "vtcon" }, { "xterm", "xterm" }, { "xterm-256color", "xterm-256color" }, { "ansi", "ansi" },
+                                   { "vt100", "vt100" }, { "linux", "linux" }, { 0, "Other..." } };
 static const sd_value v_cursor[] = { { "block", "Block" }, { "underline", "Underline" }, { "bar", "Bar" } };
 static const sd_value v_bell[] = { { "none", "None" }, { "beep", "Beep" }, { "visual", "Visual" } };
 static const sd_value v_meta[] = { { "amiga", "Left Amiga" }, { "alt", "Alt" } };
@@ -63,7 +69,7 @@ const sd_setting sd_settings[SDI_COUNT] = {
     /* 0 is "No scrollback"; an absent key keeps 500 */
     { SDI_SCROLLBACK, "scrollback", 0, PG_PAGE_GENERAL, SD_INT, "Scrollbac_k",
       "Lines kept above the window, 1 to 99999 (500 when not set); 0: none.",
-      NOVALS, "", SD_UPTERM, SDF_STR, FO(sb), FS(sb), 0, 99999, PG_SCROLLBACK, PG_SCROLLBACK_NONE, 0, 1, 0 },
+      VALS(v_scrollback), "", SD_UPTERM, SDF_STR, FO(sb), FS(sb), 0, 99999, PG_SCROLLBACK, PG_SCROLLBACK_NONE, PG_SCROLLBACK_PRESET, 1, 0 },
     { SDI_CURSOR, "cursor", 0, PG_PAGE_GENERAL, SD_CYCLE, "Curso_r",
       "The shape of the cursor.",
       VALS(v_cursor), "block", SD_UPTERM, SDF_INT, FO(cursor), 0, NORANGE, PG_CURSOR, 0, 0, 1, 0 },
@@ -112,7 +118,7 @@ const sd_setting sd_settings[SDI_COUNT] = {
       PG_PADDING, 0, 0, 1, 0 },
     { SDI_TERM, "term", 0, PG_PAGE_COLORS, SD_STRING, "Ter_minal type",
       "TERM for programs vsh starts; empty: vtcon. /term sets it for one window.",
-      NOVALS, "", SD_UPTERM, SDF_STR, FO(term), FS(term), NORANGE, PG_TERM, 0, 0, 1, 0 },
+      VALS(v_term), "", SD_UPTERM, SDF_STR, FO(term), FS(term), NORANGE, PG_TERM, PG_TERM_PRESET, 0, 1, 0 },
     { SDI_COLORS, "colors", 0, PG_PAGE_COLORS, SD_CYCLE, "Colour m_ode",
       "The colours programs are told they have. /colors sets it for one window.",
       VALS(v_colors), "", SD_UPTERM, SDF_STR, FO(colors), FS(colors), NORANGE, PG_COLORS, 0, 0, 1, 0 },
@@ -335,9 +341,23 @@ int sd_value_index(const sd_setting *s, const char *file)
 {
     int i;
     for (i = 0; i < s->nvalues; i++)
-        if (sd_ieq(s->values[i].file, file))
+        if (s->values[i].file && sd_ieq(s->values[i].file, file))
             return i;
     return -1;
+}
+
+const char *sd_preset_next(const sd_setting *s, const char *cur)
+{
+    int i, n = s->nvalues - 1;      /* the typed entry has no file text */
+    long c = atol(cur);
+    for (i = 0; i < n; i++)
+        if (sd_ieq(s->values[i].file, cur))
+            return s->values[(i + 1) % n].file;
+    if (s->kind == SD_INT)
+        for (i = 0; i < n; i++)
+            if (atol(s->values[i].file) > c)
+                return s->values[i].file;
+    return s->values[0].file;
 }
 
 int sd_conf_index(const sd_setting *s, const upconf *c, const char *p)
@@ -349,7 +369,7 @@ int sd_conf_index(const sd_setting *s, const upconf *c, const char *p)
 int sd_conf_key_index(const char *key, const upconf *c, const char *p)
 {
     const sd_setting *s = sd_find_key(SD_UPTERM, key);
-    return s && s->nvalues ? sd_conf_index(s, c, p) : 0;
+    return s && s->nvalues && !SD_HAS_PRESETS(s) ? sd_conf_index(s, c, p) : 0;
 }
 
 const int sd_write_order[] = {
@@ -427,7 +447,7 @@ void sd_set_index(const sd_setting *s, void *store, int index)
 
 char *sd_string(const sd_setting *s, void *store, int n)
 {
-    if (s->nvalues || (s->ftype != SDF_STR && s->ftype != SDF_AMSTR) || n < 0 || n >= s->count)
+    if ((s->nvalues && !SD_HAS_PRESETS(s)) || (s->ftype != SDF_STR && s->ftype != SDF_AMSTR) || n < 0 || n >= s->count)
         return 0;
     return (char *)store + s->off + (size_t)n * (size_t)s->size;
 }
@@ -439,7 +459,7 @@ int sd_text_check(const sd_setting *s, const char *text)
     if (s->kind != SD_INT && s->kind != SD_STRING)
         return SD_TEXT_KIND;
     if (s->kind == SD_STRING) {
-        if (s->nvalues || (s->ftype != SDF_STR && s->ftype != SDF_AMSTR))
+        if ((s->nvalues && !SD_HAS_PRESETS(s)) || (s->ftype != SDF_STR && s->ftype != SDF_AMSTR))
             return SD_TEXT_KIND;
         if (strlen(text) >= (size_t)s->size)
             return SD_TEXT_LONG;

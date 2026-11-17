@@ -113,7 +113,7 @@ static const sd_setting *choice_setting(const keymap *k, const char *node)
             continue;
         page = sd_page_by_name(k->menu[i].arg);
         while ((s = next_page_row(page, &j)) != 0) {
-            if ((s->kind == SD_CYCLE || SD_HAS_PICKER(s) || SD_HAS_LIST(s)) && s->key && !strcmp(s->key, node + l + 1))
+            if ((s->kind == SD_CYCLE || SD_HAS_PICKER(s) || SD_HAS_LIST(s) || SD_HAS_PRESETS(s)) && s->key && !strcmp(s->key, node + l + 1))
                 return s;
         }
     }
@@ -299,7 +299,7 @@ int mn_right_enters(const mn_item *it)
         return 1;
     if (MN_IS_SETTING(it)) {
         const sd_setting *s = gte_row(it->ix);
-        return s->kind == SD_CYCLE || SD_HAS_PICKER(s) || SD_HAS_LIST(s);
+        return s->kind == SD_CYCLE || SD_HAS_PICKER(s) || SD_HAS_LIST(s) || SD_HAS_PRESETS(s);
     }
     return 0;
 }

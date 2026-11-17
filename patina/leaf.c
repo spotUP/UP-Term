@@ -422,6 +422,25 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
             ui->refused(ui->ctx, it->label, LF_SET_INVALID, "not accepted: check the colour or reference");
         return r == GTR_OK;
     }
+    if (SD_HAS_PRESETS(s) && MN_IS_CHOICE(it)) {
+        int entry = atoi(it->seg);
+        char value[UC_MAX_VALUE + 2], why[80], title[MN_LABEL];
+        const char *text = 0;
+        value[0] = 0;
+        sd_label_plain(s, title, sizeof title);   /* the row's name, not the "* Custom..." choice label */
+        if (entry == s->nvalues - 1) {  /* the typed entry */
+            if (!lf_setting_text(amconf_dos_io(), s, value, sizeof value) || !ui->ask_value
+                || !ui->ask_value(ui->ctx, title, s->kind == SD_INT ? "number" : "text", value, sizeof value))
+                return 0;               /* cancelled */
+            text = value;
+        }
+        r = lf_setting_set_preset(amconf_dos_io(), s, entry, text, &failed);
+        if (r == LF_SET_OK)
+            return 1;
+        snprintf(why, sizeof why, "%s", r == LF_SET_INVALID ? sd_text_reason(sd_text_check(s, value)) : "");
+        ui->refused(ui->ctx, title, r, why);
+        return 0;
+    }
     if ((s->kind == SD_INT || s->kind == SD_STRING) && !lf_is_drawer_row(s)) {
         char value[UC_MAX_VALUE + 2], why[80];
         if (!MN_IS_SETTING(it) || !lf_setting_text(amconf_dos_io(), s, value, sizeof value))

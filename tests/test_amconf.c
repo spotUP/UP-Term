@@ -786,6 +786,42 @@ static void test_lf_setting_text(void)
     CHECK_INT(lf_setting_set_text(&io, mu, "a\tb", &failed), LF_SET_INVALID);
     CHECK_INT(lf_setting_set_text(&io, &sd_settings[SDI_BLINK], "1", &failed), LF_SET_KIND);
     CHECK_INT(sb->max, PREFS_SB_MAX);                        /* the row's bound is Prefs' cut */
+    /* presets (S87): a preset writes its text, Custom keeps the range check, a value no preset names survives */
+    {
+        const sd_setting *tm = &sd_settings[SDI_TERM];
+        mn_item ch[2];
+        CHECK(SD_HAS_PRESETS(sb) && SD_HAS_PRESETS(tm) && !SD_HAS_PRESETS(mu));
+        CHECK_INT(lf_setting_set_preset(&io, sb, 2, 0, &failed), LF_SET_OK);   /* 1000 */
+        lf_setting_text(&io, sb, out, sizeof out);
+        CHECK_STR(out, "1000");
+        CHECK_INT(lf_setting_set_preset(&io, sb, sb->nvalues - 1, 0, &failed), LF_SET_KIND);   /* Custom needs its text */
+        CHECK_INT(lf_setting_set_preset(&io, sb, sb->nvalues - 1, "100000", &failed), LF_SET_INVALID);
+        CHECK_INT(lf_setting_set_preset(&io, sb, sb->nvalues - 1, "777", &failed), LF_SET_OK);
+        lf_setting_text(&io, sb, out, sizeof out);
+        CHECK_STR(out, "777");
+        memset(ch, 0, sizeof ch);
+        ch[0].row = MN_ROW_CHOICE;
+        ch[0].ix = sb->id;
+        strcpy(ch[0].seg, "1");   /* 500 */
+        ch[1] = ch[0];
+        strcpy(ch[1].seg, "5");   /* Custom */
+        lf_setting_labels(&io, ch, 2);
+        CHECK_STR(ch[0].label, "  500");
+        CHECK_STR(ch[1].label, "* Custom...");                /* 777 is no preset: Custom is marked */
+        CHECK_STR(sd_preset_next(sb, "5000"), "20000");
+        CHECK_STR(sd_preset_next(sb, "20000"), "100");        /* wraps */
+        CHECK_STR(sd_preset_next(sb, "777"), "1000");         /* between presets: the next larger */
+        CHECK_STR(sd_preset_next(sb, "99999"), "100");
+        CHECK_INT(lf_setting_set_preset(&io, tm, 2, 0, &failed), LF_SET_OK);
+        lf_setting_text(&io, tm, out, sizeof out);
+        CHECK_STR(out, "xterm-256color");
+        CHECK_INT(lf_setting_set_preset(&io, tm, tm->nvalues - 1, "my-term", &failed), LF_SET_OK);
+        lf_setting_text(&io, tm, out, sizeof out);
+        CHECK_STR(out, "my-term");                            /* any text survives through Other */
+        CHECK_STR(sd_preset_next(tm, "my-term"), "vtcon");
+        CHECK_STR(sd_preset_next(tm, ""), "vtcon");
+        CHECK_STR(sd_preset_next(tm, "linux"), "vtcon");
+    }
 }
 
 /* LF_SETTING colour pickers (plan 2026-10-26-patina-prefs-inline.md, M5): picking palette entry 5 writes that

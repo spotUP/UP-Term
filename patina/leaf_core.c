@@ -412,6 +412,16 @@ int lf_setting_set_text(const amconf_io *io, const sd_setting *s, const char *te
     return lf_set_upterm(io, s, -1, text, 0, 0, failed);
 }
 
+int lf_setting_set_preset(const amconf_io *io, const sd_setting *s, int entry, const char *text, int *failed)
+{
+    *failed = 0;
+    if (!SD_HAS_PRESETS(s) || entry < 0 || entry >= s->nvalues)
+        return LF_SET_KIND;
+    if (s->values[entry].file)
+        return lf_setting_set_text(io, s, s->values[entry].file, failed);
+    return text ? lf_setting_set_text(io, s, text, failed) : LF_SET_KIND;   /* the typed entry needs its text */
+}
+
 /* xterm's default 16, what an unset palette entry shows */
 static const unsigned long lf_ansi_rgb[16] = {
     0x000000UL, 0xCD0000UL, 0x00CD00UL, 0xCDCD00UL, 0x0000EEUL, 0xCD00CDUL, 0x00CDCDUL, 0xE5E5E5UL,
@@ -748,6 +758,17 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
                 lf_palette_hex(io, v, hex);
                 snprintf(it[i].label, MN_LABEL, "%s: #%s", prefs_pal_name(v), hex);
             }
+        } else if (SD_HAS_PRESETS(s)) {
+            char cur[UC_MAX_VALUE + 2];
+            int v = atoi(it[i].seg), j, hit = -1;
+            if (lf_setting_text(io, s, cur, sizeof cur))
+                for (j = 0; j < s->nvalues - 1; j++)
+                    if (!strcmp(cur, s->values[j].file))
+                        hit = j;
+            if (hit < 0 && cur[0] && v == s->nvalues - 1)
+                hit = v;                /* a value no preset names marks the typed entry */
+            strcpy(it[i].label, v == hit ? "* " : "  ");
+            strncat(it[i].label, v >= 0 && v < s->nvalues ? s->values[v].text : "", MN_LABEL - 3);
         } else {
             char txt[KM_LABEL];
             int v = atoi(it[i].seg);

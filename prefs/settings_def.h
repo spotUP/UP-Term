@@ -152,6 +152,12 @@ const char *sd_text_reason(int check);
 /* TE-4: the editor'"'"'s colour rows open the same picker; they write the theme being edited, not a prefs file. */
 #define SD_IS_THEME_COLOUR(s) ((s)->kind == SD_SWATCH || (s)->kind == SD_SWATCHREF || (s)->kind == SD_ELEMENT)
 #define SD_HAS_PICKER(s) ((s)->kind == SD_COLOUR || (s)->kind == SD_PALETTE || SD_IS_THEME_COLOUR(s))
+/* A typed row (SD_INT, SD_STRING) with presets: values[] lists them, the last entry (no file text) is the typed one.
+ * The menu opens a choice level; Prefs steps the field with sd_preset_next. */
+#define SD_HAS_PRESETS(s) (((s)->kind == SD_INT || (s)->kind == SD_STRING) && (s)->nvalues > 1)
+/* The file text of the preset after cur (cur is a preset: the next, wrapping; a number between presets: the next larger;
+ * else the first). Never 0 for a row with presets. */
+const char *sd_preset_next(const sd_setting *s, const char *cur);
 /* Entry numbers of the picker's rows (seg of a MN_ROW_CHOICE row): 0..15 the palette entries, then this. */
 #define SD_PICK_CUSTOM 16
 /* TI-3: a pointer colour row also offers Default, which clears the override (gte_row_has_default) */

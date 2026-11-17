@@ -35,7 +35,7 @@ static int claims(int id)
 
 static void test_settings_gadgets(void)
 {
-    int i, n, checked = 0, ctl = 0, claimed = 0;
+    int i, n, checked = 0, ctl = 0, claimed = 0, presets = 0;
     int per_page[PG_NPAGES];
 
     /* every control that holds a value is claimed by exactly one row */
@@ -67,15 +67,16 @@ static void test_settings_gadgets(void)
                 for (j = 0; j < pg_nitems; j++)
                     if (pg_items[j].id == ids[k]) {
                         CHECK_INT(pg_items[j].page, s->page);
-                        CHECK(pg_items[j].kind != PGK_BUTTON || s->kind == SD_THEME);
+                        CHECK(pg_items[j].kind != PGK_BUTTON || s->kind == SD_THEME || SD_HAS_PRESETS(s));
                     }
             }
         }
+        presets += SD_HAS_PRESETS(s);   /* each presets row also claims its Presets button */
         checked++;
     }
     CHECK_INT(checked, sd_nsettings);
     /* the controls the rows claim are the controls that hold a value, plus the Theme button */
-    CHECK_INT(claimed, ctl + 1);
+    CHECK_INT(claimed, ctl + 1 + presets);
     /* each page has rows */
     memset(per_page, 0, sizeof(per_page));
     for (i = 0; i < sd_nsettings; i++)
@@ -115,7 +116,7 @@ static void test_settings_table(void)
                 CHECK(s->ftype >= SDF_KC_MATCH && t->ftype >= SDF_KC_MATCH);
         }
         /* a default a cycle can show */
-        if (s->nvalues) {
+        if (s->nvalues && !SD_HAS_PRESETS(s)) {
             int d = sd_def_index(s);
             CHECK(d >= 0 && d < s->nvalues);
             CHECK_STR(s->values[d].file, s->def);
@@ -167,7 +168,7 @@ static void test_settings_defaults(void)
     for (i = 0; i < sd_nsettings; i++) {
         const sd_setting *s = &sd_settings[i];
         const void *st = s->store == SD_PATINA ? (const void *)&a : (const void *)&f;
-        if (s->nvalues) {
+        if (s->nvalues && !SD_HAS_PRESETS(s)) {
             if (sd_index(s, st) != sd_def_index(s))
                 printf("default of %s: index %d, table says %d\n", s->key, sd_index(s, st), sd_def_index(s));
             CHECK_INT(sd_index(s, st), sd_def_index(s));
@@ -189,7 +190,7 @@ static void test_settings_roundtrip(void)
     CHECK_INT(prefs_load(&conf, "", 0, UC_MAX_FILE), PREFS_LOAD_NONE);
     for (i = 0; i < sd_nsettings; i++) {
         const sd_setting *s = &sd_settings[i];
-        if (!s->nvalues)
+        if (!s->nvalues || SD_HAS_PRESETS(s))
             continue;
         for (v = 0; v < s->nvalues; v++) {
             long len;
@@ -234,7 +235,7 @@ static void test_settings_garbage_value(void)
     int i, bold_on = -1;
     for (i = 0; i < sd_nsettings; i++) {
         const sd_setting *s = &sd_settings[i];
-        if (s->store != SD_UPTERM || !s->key || s->ftype != SDF_INT || !s->nvalues)
+        if (s->store != SD_UPTERM || !s->key || s->ftype != SDF_INT || !s->nvalues || SD_HAS_PRESETS(s))
             continue;
         strcpy(text, "[profile default]\n");
         strcat(text, s->key);

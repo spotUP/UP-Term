@@ -536,7 +536,7 @@ static int menu_levels(const char *start)
         if (MN_IS_SETTING(&it[i]) || MN_IS_CHOICE(&it[i])) {
             int choice = MN_IS_CHOICE(&it[i]);
             char up[KM_ID * 2];
-            if (!choice && (SD_HAS_PICKER(gte_row(it[i].ix)) || SD_HAS_LIST(gte_row(it[i].ix)))) {
+            if (!choice && (SD_HAS_PICKER(gte_row(it[i].ix)) || SD_HAS_LIST(gte_row(it[i].ix)) || SD_HAS_PRESETS(gte_row(it[i].ix)))) {
                 mn_child_node(node, &it[i], node, sizeof node);   /* the colour list */
                 filter[0] = 0;
                 continue;
