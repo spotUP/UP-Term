@@ -1457,13 +1457,36 @@ static void mouse_move(gui *g, int mx, int my)
     }
 }
 
+static struct MsgPort *srv_port;            /* the warm server's port while serve() runs, else 0 */
+
+/* A MS_QUIT waiting unread on the server port (peeked, not taken: serve() replies it). */
+static int srv_quit_queued(void)
+{
+    struct Node *n;
+    int found = 0;
+    if (!srv_port)
+        return 0;
+    Forbid();
+    for (n = srv_port->mp_MsgList.lh_Head; n->ln_Succ; n = n->ln_Succ)
+        if (((struct ms_msg *)n)->kind == MS_QUIT)
+            found = 1;
+    Permit();
+    return found;
+}
+
 /* Runs until g->stop (this mode is done) or g->quit (the window goes). */
 static void event_loop(gui *g)
 {
     struct IntuiMessage *im;
     while (!g->stop && !g->quit) {
         ULONG jm = job_on ? jb_sigmask() : 0;       /* every mode: a nested one must not starve the job */
-        ULONG got = Wait((1UL << g->win->UserPort->mp_SigBit) | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | jm);
+        ULONG pm = srv_port ? 1UL << srv_port->mp_SigBit : 0;
+        ULONG got = Wait((1UL << g->win->UserPort->mp_SigBit) | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | jm | pm);
+        /* S87: Patina quits while a menu or editor is open: the server must end, whatever exit_ok would ask */
+        if ((got & pm) && srv_quit_queued()) {
+            g->quit = g->stop = 1;
+            break;
+        }
         if (jm && (got & jm))
             job_tick(g);
         /* MENU-TOGGLE: the menu hotkey pressed again (Ctrl-C); WBRESET-EXT: another program closes the Workbench (Ctrl-F) */
@@ -2147,8 +2170,11 @@ static int serve(void)
     }
     AddPort(port);
     Permit();
+    srv_port = port;
     while (!quit) {
-        Wait(1UL << port->mp_SigBit | SIGBREAKF_CTRL_C);
+        /* no Wait when a message is already queued: event_loop consumed the port signal (S87 quit) */
+        if (port->mp_MsgList.lh_Head->ln_Succ == 0)
+            Wait(1UL << port->mp_SigBit | SIGBREAKF_CTRL_C);
         SetSignal(0, SIGBREAKF_CTRL_C);        /* a stray toggle after a close must not end the server */
         while (!quit && (m = (struct ms_msg *)GetMsg(port)) != 0) {
             q = *m;
@@ -2165,6 +2191,7 @@ static int serve(void)
             }
         }
     }
+    srv_port = 0;
     while ((m = (struct ms_msg *)GetMsg(port)) != 0)
         ReplyMsg(&m->m);
     DeleteMsgPort(port);

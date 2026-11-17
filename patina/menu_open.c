@@ -182,13 +182,41 @@ void mo_srv_ops(ms_ops *ops, mo_srv *s)
     ops->st = &s->st;
 }
 
+/* Take s->msg back if the server has not read it yet, so it can never reply into freed memory after Patina
+ * exits. If the server already took it, it replies at once: wait for that (10 s cap; a hung server keeps
+ * s->out = 1 and act.c then leaves the reply port allocated). */
+static void srv_reclaim(mo_srv *s)
+{
+    struct MsgPort *p;
+    int i;
+    Forbid();
+    p = FindPort((STRPTR)s->port);
+    if (p) {
+        struct Node *n;
+        for (n = p->mp_MsgList.lh_Head; n->ln_Succ; n = n->ln_Succ)
+            if (n == &s->msg.m.mn_Node) {
+                Remove(n);
+                s->out = 0;
+                break;
+            }
+    }
+    Permit();
+    for (i = 0; s->out && i < 100; i++) {
+        srv_drain(s);
+        if (s->out)
+            Delay(5);
+    }
+}
+
 int mo_srv_quit(mo_srv *s)
 {
     struct MsgPort *p;
     int sent = 0, i;
     srv_drain(s);
     if (s->out)
-        return 0;                   /* wedged: nothing to wait for */
+        srv_reclaim(s);             /* an earlier press still unreplied: take it back so the quit can go */
+    if (s->out)
+        return 0;                   /* the server holds it and never replies: nothing more to do */
     memset(&s->msg, 0, sizeof s->msg);
     s->msg.m.mn_Node.ln_Type = NT_MESSAGE;
     s->msg.m.mn_Length = sizeof s->msg;
@@ -208,9 +236,6 @@ int mo_srv_quit(mo_srv *s)
             return 1;
         Delay(5);
     }
-    /* Timed out: the server may still hold s->msg (it replies at once, but a server busy in an open has not
-     * reached its GetMsg yet). s->msg lives in the static mo_srv and is never freed, and the caller must
-     * leave s->reply allocated too (s->out stays 1): freeing either now would let the server reply into
-     * freed memory. A leaked port at process exit is harmless; a use-after-free is not. */
-    return 0;
+    srv_reclaim(s);
+    return !s->out;
 }
