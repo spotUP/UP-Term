@@ -745,6 +745,29 @@ static void chip_pens_release(gui *g)
     pc_theme_changed(&g->prev_pens, chip_release_fn, g->cm);
 }
 
+/* Flat scrollbar of a text viewer (welcome, Help) when more lines exist than show: no outline, a rounded knob in the
+ * scroller knob grey, in the right padding beside the text. Size = visible/n, position = top/(n-visible). */
+static void draw_view_scrollbar(gui *g)
+{
+    const mg_geom *q = &g->g;
+    int side = flat_side_px(g->ms.rx, g->ms.ry), bw = 2 * side < q->m.row_pad - 1 ? 2 * side : q->m.row_pad - 1;
+    int x1 = q->list_x + q->list_w - 1, x0, kh, ky, span;
+    uc_u32 c;
+    if (q->n <= q->visible || q->visible < 1)
+        return;
+    if (bw < 2)
+        bw = 2;
+    x0 = x1 - bw + 1;
+    kh = q->list_h * q->visible / q->n;
+    if (kh < q->m.row_h)
+        kh = q->m.row_h;
+    span = q->list_h - kh;
+    ky = q->list_y + span * g->top / (q->n - q->visible);
+    c = (uc_u32)flat_knob_colour(role_rgb(g, MT_BG), role_rgb(g, MT_DIM));
+    fill_rgb(g, c, x0, ky, x1, ky + kh - 1);
+    rich_corners(g->depth, x0, ky, bw, kh, c, role_rgb(g, MT_BG), rich_put, g);
+}
+
 /* The rows area (not a full draw: the sentinel counts those). */
 static void draw_list(gui *g)
 {
@@ -760,6 +783,8 @@ static void draw_list(gui *g)
             draw_row(g, e);
     /* the peek row's text runs past the list: put the padding and the border back */
     fill(g, MT_BG, q->m.bx, q->list_y + q->list_h, q->w - q->m.bx - 1, q->h - q->m.by - 1);
+    if (g->mode == M_VIEW)
+        draw_view_scrollbar(g);
     if (g->mode == M_VIEW && g->welcome == 1) {      /* the pinned strip: always in view, repainted with every list draw */
         int r;
         for (r = 0; r < q->tail; r++)
