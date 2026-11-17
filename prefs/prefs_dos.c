@@ -12,11 +12,30 @@ long prefs_dos_last_error(void)
     return g_last_err;
 }
 
+/* Make every drawer on path's way (after the volume) so a first write on a fresh system finds them; existing ones fail CreateDir, fine. */
+static void dos_parents(const char *path)
+{
+    char p[256];
+    char *s;
+    if (strlen(path) >= sizeof p)
+        return;
+    strcpy(p, path);
+    s = strchr(p, ':');
+    for (s = s ? s + 1 : p; (s = strchr(s, '/')) != 0; *s++ = '/') {
+        *s = 0;
+        UnLock(CreateDir((STRPTR)p));
+    }
+}
+
 static int dos_write(void *ctx, const char *path, const char *buf, long len)
 {
     BPTR f = Open((STRPTR)path, MODE_NEWFILE);
     LONG w, closed;
     (void)ctx;
+    if (!f && IoErr() == ERROR_OBJECT_NOT_FOUND) {   /* a missing drawer (ENVARC:Patina/themes on a fresh system): make it, try once more */
+        dos_parents(path);
+        f = Open((STRPTR)path, MODE_NEWFILE);
+    }
     if (!f) {
         g_last_err = IoErr();
         return 0;
