@@ -2473,6 +2473,18 @@ static void test_gthemes_swatch_and_palette_rows_apply(void)
     CHECK_INT(lf_setting_set_colour(&io, pal, 5, "aa11bb", &failed), LF_SET_OK);
     lf_palette_hex(&io, 5, hex);
     CHECK_STR(hex, "AA11BB");
+    /* S89: the palette entry's own bars (SD_PICK_PALBAR + 3 * n + channel): read, step 1 and 16, clamp, same file */
+    CHECK_INT(lf_bar_value(&io, pal, SD_PICK_PALBAR + 15), 0xAA);
+    CHECK_INT(lf_bar_value(&io, pal, SD_PICK_PALBAR + 17), 0xBB);
+    CHECK_INT(lf_bar_value(&io, pal, SD_PICK_BAR), -1);
+    CHECK(lf_bar_entry(pal, SD_PICK_PALBAR + 47) && !lf_bar_entry(pal, SD_PICK_PALBAR + 48));
+    CHECK_INT(lf_bar_step(&io, pal, SD_PICK_PALBAR + 16, 16), LF_SET_OK);
+    lf_palette_hex(&io, 5, hex);
+    CHECK_STR(hex, "AA21BB");
+    CHECK_INT(lf_bar_step(&io, pal, SD_PICK_PALBAR + 15, 1000), LF_SET_OK);
+    lf_palette_hex(&io, 5, hex);
+    CHECK_STR(hex, "FF21BB");
+    CHECK_INT(lf_setting_set_colour(&io, pal, 5, "aa11bb", &failed), LF_SET_OK);   /* the checks below expect the entry as set above */
     CHECK_INT(lf_setting_set_colour(&io, &sd_settings[SDI_PALETTE], 6, "010203", &failed), LF_SET_OK);
     lf_palette_hex(&io, 5, hex);
     CHECK_STR(hex, "AA11BB");                  /* the other row leaves slot 5 alone, and its slot 6 is in the same file */

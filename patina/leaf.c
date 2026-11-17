@@ -488,7 +488,7 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
         int entry = atoi(it->seg);
         const char *text = 0;
         char value[UC_MAX_VALUE + 2], why[80];
-        if (!MN_IS_CHOICE(it) || (s->kind == SD_SWATCH && entry >= SD_PICK_BAR))
+        if (!MN_IS_CHOICE(it) || lf_bar_entry(s, entry))
             return 0;                   /* the row opens its picker level: the menu does that; a bar row is stepped, not entered */
         if (lf_picker_prompt(s, entry)) {
             lf_colour_current(amconf_dos_io(), s, entry, value);
