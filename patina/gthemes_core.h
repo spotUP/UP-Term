@@ -104,6 +104,8 @@ void gt_parse(const char *buf, long len, gtheme *out);
 int gt_term_text(const char *buf, long len, const char *name, char *out, int cap);
 
 /* The file the console handler's tabs watch: a written theme recolours every open tab (vtcon_handler.c watch_worker). */
+/* gt_term_text: "no selection colour in the theme" (above any 24-bit colour) */
+#define GT_TERM_UNSET 0x1000000UL
 #define GT_TERM_FILE "ENV:up-term/theme-active"
 
 /* Every channel of an 0xRRGGBB scaled to pct percent (0..100); the one brightness scaler of the desktop theme. */
@@ -315,6 +317,10 @@ int gt_check_text(const char *buf, long len, char *msg, int cap);
 /* Save the model as the user theme name (both files). 1 saved; 0 with why filled (gt_save_text). Refused: a bad name, a shipped
  * theme's name that has no user file (D2). */
 int gt_save(const prefs_fs *fs, const char *name, const gt_model *m, char *why, int cap);
+/* S89: set (value "" removes) a terminal-only default key of the model: term_fg, term_bg, term_cursor, term_selection_fg,
+ * term_selection_bg, term_palette. gt_term_text prefers each over the value it derives from the GUI keys. 0 when the model is full. */
+int gt_model_term_set(gt_model *m, const char *key, const char *value);
+void gt_model_term_get(const gt_model *m, const char *key, char *out, int cap); /* "" when the model has no such key */
 /* Save As: gt_save under a new name; refused (GT_SAVE_EXISTS) when the user or the shipped drawer holds it. */
 int gt_save_as(const prefs_fs *fs, const char *name, const gt_model *m, char *why, int cap);
 /* Duplicate: theme from (the user's file, else the shipped one) written as the new user theme to (a v2 file). */

@@ -271,8 +271,8 @@ int gt_term_text(const char *buf, long len, const char *name, char *out, int cap
      * foreground (never a colour of another theme), black is the darkest ground of the file. */
     static const char *const col[6] = { "red", "green", "yellow", "blue", "magenta", "cyan" };
     gtheme t;
-    uc_u32 p[16], fg;
-    char key[24];
+    uc_u32 p[16], fg, selfg, selbg;
+    char key[24], curtxt[12];
     int i, n;
     if (!out || cap < 1)
         return 0;
@@ -287,12 +287,35 @@ int gt_term_text(const char *buf, long len, const char *name, char *out, int cap
     p[7] = upconf_rgb(&g_conf, "default", "light_foreground", fg);
     p[8] = t.muted;
     p[15] = upconf_rgb(&g_conf, "default", "bright_foreground", fg);
-    n = snprintf(out, (size_t)cap, "[profile %s]\nfg = %06lX\nbg = %06lX\ncursor-color = %06lX\npalette = ",
-                 name && *name ? name : "patina", (unsigned long)t.fg, (unsigned long)t.bg, (unsigned long)t.accent);
+    /* S89: the optional term_* keys (terminal only, the GUI colours stay) beat the derived values; read before gt_model_attach
+     * reloads g_conf. term_palette is the profile form "i,RRGGBB,..." (upconf_palette_parse); entries it lacks stay derived. */
+    {
+        uc_u32 tp[16];
+        const char *cur = upconf_str(&g_conf, "default", "term_cursor", "");
+        upconf_palette_parse(upconf_str(&g_conf, "default", "term_palette", 0), tp);
+        for (i = 0; i < 16; i++)
+            if (tp[i] & 0x01000000UL)
+                p[i] = tp[i] & 0xFFFFFFUL;
+        t.fg = upconf_rgb(&g_conf, "default", "term_fg", t.fg);
+        t.bg = upconf_rgb(&g_conf, "default", "term_bg", t.bg);
+        t.accent = upconf_rgb(&g_conf, "default", "term_cursor", t.accent);
+        selfg = upconf_rgb(&g_conf, "default", "term_selection_fg", GT_TERM_UNSET);
+        selbg = upconf_rgb(&g_conf, "default", "term_selection_bg", GT_TERM_UNSET);
+        if (!strcmp(cur, "inverse"))
+            strcpy(curtxt, "inverse");
+        else
+            snprintf(curtxt, sizeof curtxt, "%06lX", (unsigned long)t.accent);
+    }
+    n = snprintf(out, (size_t)cap, "[profile %s]\nfg = %06lX\nbg = %06lX\ncursor-color = %s\npalette = ",
+                 name && *name ? name : "patina", (unsigned long)t.fg, (unsigned long)t.bg, curtxt);
     for (i = 0; i < 16 && n > 0 && n < cap; i++)
         n += snprintf(out + n, (size_t)(cap - n), "%s%d,%06lX", i ? "," : "", i, (unsigned long)p[i]);
     if (n > 0 && n < cap - 1)
         n += snprintf(out + n, (size_t)(cap - n), "\n");
+    if (n > 0 && n < cap && selfg != GT_TERM_UNSET)
+        n += snprintf(out + n, (size_t)(cap - n), "selection-fg = %06lX\n", (unsigned long)selfg);
+    if (n > 0 && n < cap && selbg != GT_TERM_UNSET)
+        n += snprintf(out + n, (size_t)(cap - n), "selection-bg = %06lX\n", (unsigned long)selbg);
     /* TE-7b.2: the theme's Shell Font as the profile key "font = NAME:SIZE" (the handler turns ':' into ' ' and parse_font reads
      * it; NAME keeps its ".font"). Read from the look slot through the model parser, the one parser of "name.font/size". No
      * Shell Font, or a size missing or 0: no line, the terminal keeps its own font. */
@@ -1080,6 +1103,50 @@ static void extra_add(gt_model *m, char letter, const char *key, const char *val
         return;
     }
     m->extralen += snprintf(m->extra + m->extralen, (size_t)(GT_EXTRA_MAX - m->extralen), "%c%s = %s\n", letter, key, value);
+}
+
+/* S89: a terminal-only key of the default section (term_fg ... term_palette) in the kept 'D' lines; value "" removes it. The
+ * model keeps unmanaged default keys verbatim (extra_add), so these survive every save and need no gt_managed entry. */
+int gt_model_term_set(gt_model *m, const char *key, const char *value)
+{
+    char *p = m->extra, *end = m->extra + m->extralen;
+    size_t kl = strlen(key);
+    while (p < end) {
+        char *nl = memchr(p, '\n', (size_t)(end - p));
+        size_t ll = nl ? (size_t)(nl - p) + 1 : (size_t)(end - p);
+        if (*p == 'D' && !strncmp(p + 1, key, kl) && !strncmp(p + 1 + kl, " = ", 3)) {
+            memmove(p, p + ll, (size_t)(end - p - ll));
+            m->extralen -= (int)ll;
+            end -= ll;
+            continue;
+        }
+        p += ll;
+    }
+    m->extra[m->extralen] = 0;
+    if (value && *value)
+        extra_add(m, 'D', key, value);
+    return !(m->warn & GT_WARN_OVERFLOW);
+}
+
+/* the value of a term_* key kept in the model, "" when it has none */
+void gt_model_term_get(const gt_model *m, const char *key, char *out, int cap)
+{
+    const char *p = m->extra, *end = m->extra + m->extralen;
+    size_t kl = strlen(key);
+    out[0] = 0;
+    while (p < end) {
+        const char *nl = memchr(p, '\n', (size_t)(end - p));
+        size_t ll = nl ? (size_t)(nl - p) : (size_t)(end - p);
+        if (*p == 'D' && !strncmp(p + 1, key, kl) && !strncmp(p + 1 + kl, " = ", 3)) {
+            size_t vl = ll - (1 + kl + 3);
+            if (vl >= (size_t)cap)
+                vl = (size_t)cap - 1;
+            memcpy(out, p + 1 + kl + 3, vl);
+            out[vl] = 0;
+            return;
+        }
+        p += ll + 1;
+    }
 }
 
 static void unquote(const char *v, char *dst, int cap)

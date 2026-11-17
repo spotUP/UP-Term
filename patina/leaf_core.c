@@ -450,14 +450,98 @@ static const unsigned long lf_ansi_rgb[16] = {
 
 static void lf_setting_text_raw(const amconf_io *io, const sd_setting *s, char *out, int n);
 
+/* S89: with a Patina theme active the terminal takes its colours from the theme (GT_TERM_FILE), not the profile, so the colour rows
+ * show the theme's effective terminal colours (what gt_term_text emits) and write its term_* keys. No loadable theme: the profile. */
+static upconf lf_tconf;
+static char lf_ttext[1024];
+static gt_model lf_tmodel;
+
+static int lf_term_theme(const amconf_io *io, char *name, int cap)
+{
+    am_prefs *a = amconf_borrow_with(io);
+    const char *v = a->val[AM_GTHEME];
+    snprintf(name, (size_t)cap, "%s", *v ? v : GT_DEFAULT);
+    amconf_return_with(io, a);
+    return gt_load_term(io->read, io->fs->ctx, name, lf_ttext, (int)sizeof lf_ttext) > 0;
+}
+
+/* f's terminal colours replaced by the active theme's effective ones */
+static void lf_term_overlay(const amconf_io *io, prefs_fields *f)
+{
+    char name[GT_NAME];
+    prefs_fields t;
+    if (!lf_term_theme(io, name, sizeof name))
+        return;
+    upconf_parse(&lf_tconf, lf_ttext, (long)strlen(lf_ttext));
+    if (lf_tconf.nprof < 1)
+        return;
+    prefs_from_conf(&t, &lf_tconf, lf_tconf.prof[0]);
+    memcpy(f->fg, t.fg, sizeof f->fg);
+    memcpy(f->bg, t.bg, sizeof f->bg);
+    memcpy(f->selfg, t.selfg, sizeof f->selfg);
+    memcpy(f->selbg, t.selbg, sizeof f->selbg);
+    memcpy(f->curcol, t.curcol, sizeof f->curcol);
+    memcpy(f->pal, t.pal, sizeof f->pal);
+}
+
+/* the profile as the rows show it */
+static void lf_fields(const amconf_io *io, prefs_fields *f)
+{
+    lf_load_upterm(io);
+    prefs_from_conf(f, &lf_conf, LF_PROFILE);
+    lf_term_overlay(io, f);
+}
+
+static const char *lf_term_key(const sd_setting *s)
+{
+    switch (s->id) {
+    case SDI_FG: return "term_fg";
+    case SDI_BG: return "term_bg";
+    case SDI_SELFG: return "term_selection_fg";
+    case SDI_SELBG: return "term_selection_bg";
+    case SDI_CURSOR_COLOUR: return "term_cursor";
+    case SDI_PALETTE: return "term_palette";
+    }
+    return 0;
+}
+
+/* hex "" removes the key. The theme's user copy is written (a shipped theme gets a same-name copy, gt_save) and GT_TERM_FILE
+ * rewritten from it, which every open tab watches. LF_SET_KIND: not a theme case, the caller writes the profile. */
+static int lf_set_term_theme(const amconf_io *io, const sd_setting *s, int n, const char *hex, int *failed)
+{
+    char name[GT_NAME], val[UC_MAX_VALUE], why[80];
+    const char *key = lf_term_key(s);
+    int len;
+    if (!key || !lf_term_theme(io, name, sizeof name) || !gt_preset_model(io->read, io->fs->ctx, name, &lf_tmodel))
+        return LF_SET_KIND;
+    if (s->kind == SD_PALETTE) {
+        uc_u32 pal[16];
+        uc_u32 rgb;
+        gt_model_term_get(&lf_tmodel, key, val, sizeof val);
+        upconf_palette_parse(val, pal);
+        pal[n] = *hex && prefs_hex_parse(hex, &rgb) ? 0x01000000UL | rgb : 0;
+        if (upconf_palette_str(pal, val, sizeof val) < 0)
+            return LF_SET_FULL;
+    } else {
+        snprintf(val, sizeof val, "%s", hex);
+    }
+    if (!gt_model_term_set(&lf_tmodel, key, val) || !gt_save(io->fs, name, &lf_tmodel, why, (int)sizeof why)) {
+        *failed = 0;
+        return LF_SET_FULL;
+    }
+    len = gt_load_term(io->read, io->fs->ctx, name, lf_ttext, (int)sizeof lf_ttext);
+    if (len > 0)
+        io->fs->write_file(io->fs->ctx, GT_TERM_FILE, lf_ttext, len);
+    return LF_SET_OK;
+}
+
 void lf_palette_hex(const amconf_io *io, int n, char *out)
 {
     prefs_fields f;
     out[0] = 0;
     if (n < 0 || n > 15)
         return;
-    lf_load_upterm(io);
-    prefs_from_conf(&f, &lf_conf, LF_PROFILE);
+    lf_fields(io, &f);
     if (f.pal[n][0])
         snprintf(out, 8, "%s", f.pal[n]);
     else
@@ -607,6 +691,11 @@ int lf_setting_set_colour(const amconf_io *io, const sd_setting *s, int entry, c
         prefs_hex_format(rgb, hex);
     } else
         return LF_SET_INVALID;
+    {
+        int r = lf_set_term_theme(io, s, entry, hex, failed);
+        if (r != LF_SET_KIND)
+            return r;
+    }
     return lf_set_upterm(io, s, -1, hex, s->kind == SD_PALETTE ? entry : 0, 0, failed);
 }
 
@@ -744,8 +833,7 @@ static void lf_setting_text_raw(const amconf_io *io, const sd_setting *s, char *
 {
     prefs_fields f;
     const char *t;
-    lf_load_upterm(io);
-    prefs_from_conf(&f, &lf_conf, LF_PROFILE);
+    lf_fields(io, &f);
     t = sd_string(s, &f, 0);
     snprintf(out, (size_t)n, "%s", t ? t : "");
 }
@@ -769,8 +857,7 @@ int lf_setting_text(const amconf_io *io, const sd_setting *s, char *out, int n)
         t = t ? out : 0;                /* t pointed into the returned copy: only whether there was one is used below */
     } else {
         prefs_fields f;
-        lf_load_upterm(io);
-        prefs_from_conf(&f, &lf_conf, LF_PROFILE);
+        lf_fields(io, &f);
         t = sd_string(s, &f, 0);
         if (t)
             snprintf(out, (size_t)n, "%s", t);
@@ -829,10 +916,8 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
                 a = amconf_borrow_with(io);
             store = a;
         } else {
-            if (!have_u++) {
-                lf_load_upterm(io);
-                prefs_from_conf(&f, &lf_conf, LF_PROFILE);
-            }
+            if (!have_u++)
+                lf_fields(io, &f);
             store = &f;
         }
         if (MN_IS_SETTING(&it[i]))
