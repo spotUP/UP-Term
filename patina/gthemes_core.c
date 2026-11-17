@@ -3608,3 +3608,86 @@ static int se_set_text(const sd_setting *s, const char *text)
         return GTR_BAD;
     }
 }
+
+
+/* ---- S90: the terminal colours of the theme in force (gthemes_core.h) ---- */
+static upconf gt_tconf;
+static char gt_ttext[1024];
+static gt_model gt_tmodel;
+static prefs_fields gt_tfields;
+
+/* the theme's name into name; 1 when its terminal text (gt_ttext) and colours (gt_tfields) loaded */
+static int gt_term_load(gt_read_fn rd, void *ctx, const char *gtheme, char *name, int cap)
+{
+    snprintf(name, (size_t)cap, "%s", *gtheme ? gtheme : GT_DEFAULT);
+    if (gt_load_term(rd, ctx, name, gt_ttext, (int)sizeof gt_ttext) <= 0)
+        return 0;
+    upconf_parse(&gt_tconf, gt_ttext, (long)strlen(gt_ttext));
+    if (gt_tconf.nprof < 1)
+        return 0;
+    prefs_from_conf(&gt_tfields, &gt_tconf, gt_tconf.prof[0]);
+    return 1;
+}
+
+int gt_term_fields(gt_read_fn rd, void *ctx, const char *gtheme, prefs_fields *f)
+{
+    char name[GT_NAME];
+    if (!gt_term_load(rd, ctx, gtheme, name, sizeof name))
+        return 0;
+    memcpy(f->fg, gt_tfields.fg, sizeof f->fg);
+    memcpy(f->bg, gt_tfields.bg, sizeof f->bg);
+    memcpy(f->selfg, gt_tfields.selfg, sizeof f->selfg);
+    memcpy(f->selbg, gt_tfields.selbg, sizeof f->selbg);
+    memcpy(f->curcol, gt_tfields.curcol, sizeof f->curcol);
+    memcpy(f->pal, gt_tfields.pal, sizeof f->pal);
+    return 1;
+}
+
+int gt_term_set(gt_read_fn rd, const prefs_fs *fs, const char *gtheme, const char *key, int entry, const char *hex)
+{
+    char name[GT_NAME], val[UC_MAX_VALUE], why[80];
+    int len;
+    if (!gt_term_load(rd, fs->ctx, gtheme, name, sizeof name) || !gt_preset_model(rd, fs->ctx, name, &gt_tmodel))
+        return GT_TERM_NONE;
+    if (entry >= 0) {
+        uc_u32 pal[16];
+        uc_u32 rgb;
+        gt_model_term_get(&gt_tmodel, key, val, sizeof val);
+        upconf_palette_parse(val, pal);
+        pal[entry] = *hex && prefs_hex_parse(hex, &rgb) ? 0x01000000UL | rgb : 0;
+        if (upconf_palette_str(pal, val, sizeof val) < 0)
+            return GT_TERM_FAIL;
+    } else {
+        snprintf(val, sizeof val, "%s", hex);
+    }
+    if (!gt_model_term_set(&gt_tmodel, key, val) || !gt_save(fs, name, &gt_tmodel, why, (int)sizeof why))
+        return GT_TERM_FAIL;
+    len = gt_load_term(rd, fs->ctx, name, gt_ttext, (int)sizeof gt_ttext);
+    if (len > 0)
+        fs->write_file(fs->ctx, GT_TERM_FILE, gt_ttext, len);
+    return GT_TERM_OK;
+}
+
+int gt_term_store(gt_read_fn rd, const prefs_fs *fs, const char *gtheme, const prefs_fields *f)
+{
+    static prefs_fields t;
+    char name[GT_NAME];
+    int n, r;
+    if (!gt_term_load(rd, fs->ctx, gtheme, name, sizeof name))
+        return GT_TERM_NONE;
+    t = gt_tfields;                       /* gt_term_set reloads the shared buffers */
+    if (strcmp(f->fg, t.fg) && (r = gt_term_set(rd, fs, gtheme, "term_fg", -1, f->fg)) != GT_TERM_OK)
+        return r;
+    if (strcmp(f->bg, t.bg) && (r = gt_term_set(rd, fs, gtheme, "term_bg", -1, f->bg)) != GT_TERM_OK)
+        return r;
+    if (strcmp(f->selfg, t.selfg) && (r = gt_term_set(rd, fs, gtheme, "term_selection_fg", -1, f->selfg)) != GT_TERM_OK)
+        return r;
+    if (strcmp(f->selbg, t.selbg) && (r = gt_term_set(rd, fs, gtheme, "term_selection_bg", -1, f->selbg)) != GT_TERM_OK)
+        return r;
+    if (strcmp(f->curcol, t.curcol) && (r = gt_term_set(rd, fs, gtheme, "term_cursor", -1, f->curcol)) != GT_TERM_OK)
+        return r;
+    for (n = 0; n < 16; n++)
+        if (strcmp(f->pal[n], t.pal[n]) && (r = gt_term_set(rd, fs, gtheme, "term_palette", n, f->pal[n])) != GT_TERM_OK)
+            return r;
+    return GT_TERM_OK;
+}

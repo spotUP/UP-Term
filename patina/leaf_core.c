@@ -450,38 +450,20 @@ static const unsigned long lf_ansi_rgb[16] = {
 
 static void lf_setting_text_raw(const amconf_io *io, const sd_setting *s, char *out, int n);
 
-/* S89: with a Patina theme active the terminal takes its colours from the theme (GT_TERM_FILE), not the profile, so the colour rows
- * show the theme's effective terminal colours (what gt_term_text emits) and write its term_* keys. No loadable theme: the profile. */
-static upconf lf_tconf;
-static char lf_ttext[1024];
-static gt_model lf_tmodel;
-
-static int lf_term_theme(const amconf_io *io, char *name, int cap)
+/* S89/S90: with a Patina theme active the terminal takes its colours from the theme (GT_TERM_FILE), not the profile, so the colour
+ * rows show the theme's effective terminal colours and write its term_* keys (gthemes_core: gt_term_fields, gt_term_set). */
+static const char *lf_gtheme(const amconf_io *io, char *buf, int cap)
 {
     am_prefs *a = amconf_borrow_with(io);
-    const char *v = a->val[AM_GTHEME];
-    snprintf(name, (size_t)cap, "%s", *v ? v : GT_DEFAULT);
+    snprintf(buf, (size_t)cap, "%s", a->val[AM_GTHEME]);
     amconf_return_with(io, a);
-    return gt_load_term(io->read, io->fs->ctx, name, lf_ttext, (int)sizeof lf_ttext) > 0;
+    return buf;
 }
 
-/* f's terminal colours replaced by the active theme's effective ones */
 static void lf_term_overlay(const amconf_io *io, prefs_fields *f)
 {
-    char name[GT_NAME];
-    prefs_fields t;
-    if (!lf_term_theme(io, name, sizeof name))
-        return;
-    upconf_parse(&lf_tconf, lf_ttext, (long)strlen(lf_ttext));
-    if (lf_tconf.nprof < 1)
-        return;
-    prefs_from_conf(&t, &lf_tconf, lf_tconf.prof[0]);
-    memcpy(f->fg, t.fg, sizeof f->fg);
-    memcpy(f->bg, t.bg, sizeof f->bg);
-    memcpy(f->selfg, t.selfg, sizeof f->selfg);
-    memcpy(f->selbg, t.selbg, sizeof f->selbg);
-    memcpy(f->curcol, t.curcol, sizeof f->curcol);
-    memcpy(f->pal, t.pal, sizeof f->pal);
+    char g[UC_MAX_VALUE];
+    gt_term_fields(io->read, io->fs->ctx, lf_gtheme(io, g, sizeof g), f);
 }
 
 /* the profile as the rows show it */
@@ -505,33 +487,21 @@ static const char *lf_term_key(const sd_setting *s)
     return 0;
 }
 
-/* hex "" removes the key. The theme's user copy is written (a shipped theme gets a same-name copy, gt_save) and GT_TERM_FILE
- * rewritten from it, which every open tab watches. LF_SET_KIND: not a theme case, the caller writes the profile. */
+/* hex "" removes the key. LF_SET_KIND: not a theme case, the caller writes the profile. */
 static int lf_set_term_theme(const amconf_io *io, const sd_setting *s, int n, const char *hex, int *failed)
 {
-    char name[GT_NAME], val[UC_MAX_VALUE], why[80];
+    char g[UC_MAX_VALUE];
     const char *key = lf_term_key(s);
-    int len;
-    if (!key || !lf_term_theme(io, name, sizeof name) || !gt_preset_model(io->read, io->fs->ctx, name, &lf_tmodel))
+    int r;
+    if (!key)
         return LF_SET_KIND;
-    if (s->kind == SD_PALETTE) {
-        uc_u32 pal[16];
-        uc_u32 rgb;
-        gt_model_term_get(&lf_tmodel, key, val, sizeof val);
-        upconf_palette_parse(val, pal);
-        pal[n] = *hex && prefs_hex_parse(hex, &rgb) ? 0x01000000UL | rgb : 0;
-        if (upconf_palette_str(pal, val, sizeof val) < 0)
-            return LF_SET_FULL;
-    } else {
-        snprintf(val, sizeof val, "%s", hex);
-    }
-    if (!gt_model_term_set(&lf_tmodel, key, val) || !gt_save(io->fs, name, &lf_tmodel, why, (int)sizeof why)) {
+    r = gt_term_set(io->read, io->fs, lf_gtheme(io, g, sizeof g), key, s->kind == SD_PALETTE ? n : -1, hex);
+    if (r == GT_TERM_NONE)
+        return LF_SET_KIND;
+    if (r == GT_TERM_FAIL) {
         *failed = 0;
         return LF_SET_FULL;
     }
-    len = gt_load_term(io->read, io->fs->ctx, name, lf_ttext, (int)sizeof lf_ttext);
-    if (len > 0)
-        io->fs->write_file(io->fs->ctx, GT_TERM_FILE, lf_ttext, len);
     return LF_SET_OK;
 }
 

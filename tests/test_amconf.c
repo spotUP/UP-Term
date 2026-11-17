@@ -863,6 +863,37 @@ static void test_lf_setting_term_theme(void)
     CHECK_STR(mf_get(&m, UP), before);
 }
 
+/* S90: UP-Term Prefs' path (gt_term_fields / gt_term_store on the edited fields): the colour rows show the theme's colours, and only
+ * the changed ones go to the theme's user copy and GT_TERM_FILE; no theme loads: GT_TERM_NONE, the caller writes the profile */
+static void test_prefs_term_theme(void)
+{
+    memfs m;
+    prefs_fs fs;
+    amconf_io io = io_of(&m, &fs);
+    static prefs_fields f;
+    const char *shipped = "mode = \"dark\"\nbackground = \"#2e3440\"\nforeground = \"#d8dee9\"\nred = \"#bf616a\"\n";
+    char before[UC_MAX_FILE + 2];
+    mf_put(&m, UP, "[default]\nfont = topaz\nfg = 112233\n");
+    snprintf(before, sizeof before, "%s", mf_get(&m, UP));
+    prefs_defaults(&f);
+    CHECK_INT(gt_term_fields(io.read, fs.ctx, "nord", &f), 0);          /* no such theme: untouched */
+    CHECK_INT(gt_term_store(io.read, &fs, "nord", &f), GT_TERM_NONE);
+    mf_put(&m, "UP-Term:Patina/Themes/nord.theme", shipped);
+    CHECK_INT(gt_term_fields(io.read, fs.ctx, "nord", &f), 1);
+    CHECK_STR(f.fg, "D8DEE9");
+    CHECK_INT(gt_term_store(io.read, &fs, "nord", &f), GT_TERM_OK);     /* nothing edited: nothing written */
+    CHECK(!fs.exists(fs.ctx, "ENVARC:Patina/themes/nord.theme"));
+    strcpy(f.fg, "AABBCC");
+    strcpy(f.pal[5], "AA11BB");
+    CHECK_INT(gt_term_store(io.read, &fs, "nord", &f), GT_TERM_OK);
+    CHECK(strstr(mf_get(&m, "ENVARC:Patina/themes/nord.theme"), "term_fg = AABBCC") != 0);
+    CHECK(strstr(mf_get(&m, "ENV:up-term/theme-active"), "fg = AABBCC") != 0);
+    CHECK(strstr(mf_get(&m, "ENV:up-term/theme-active"), "5,AA11BB") != 0);
+    CHECK(strstr(mf_get(&m, "ENVARC:Patina/themes/nord.theme"), "term_bg") == 0);   /* unedited colours stay the theme's */
+    CHECK_STR(mf_get(&m, "UP-Term:Patina/Themes/nord.theme"), shipped);
+    CHECK_STR(mf_get(&m, UP), before);                                  /* profile untouched */
+}
+
 /* LF_SETTING colour pickers (plan 2026-10-26-patina-prefs-inline.md, M5): picking palette entry 5 writes that
  * slot to ENV: and ENVARC:; a swatch takes a palette entry or a typed hex; bad hex leaves the files alone. */
 static void test_lf_setting_colour_picker(void)
@@ -1285,6 +1316,7 @@ void suite_amconf(void)
     test_lf_setting_text();
     test_lf_setting_colour_picker();
     test_lf_setting_term_theme();
+    test_prefs_term_theme();
     test_lf_setting_asl_pickers();
     test_lf_theme_font_pick();
     test_lf_drawer_pick();
