@@ -155,6 +155,7 @@ typedef struct gui {
     char edit[EDIT_MAX];
     int elen, edone;
     int shift_held;              /* S88: Shift was down at the last arrow key (bars step 16) */
+    int view_drag;               /* S89: the left button holds the view scrollbar knob: the grab offset in it, else -1 */
     int bar_drag;                /* S88: the left button is held on a colour bar row's track (the row's index in g->it) else -1 */
 } gui;
 
@@ -748,28 +749,37 @@ static void chip_pens_release(gui *g)
 
 /* Flat scrollbar of a text viewer (welcome, Help) when more lines exist than show: no outline, a rounded knob in the
  * scroller knob grey, in the right padding beside the text. Size = visible/n, position = top/(n-visible). */
-static void draw_view_scrollbar(gui *g)
+/* the view knob box (x0..x1, ky, kh) and its free travel span; 0 when everything fits (no scrollbar) */
+static int view_knob(const gui *g, int *x0, int *x1, int *ky, int *kh, int *span)
 {
     const mg_geom *q = &g->g;
     /* shortcut: 6 rows is the measured Workbench horizontal knob (prop CHeight 6, BorderBottom 10, rig 84); read it from the screen
      * when Workbench border sizes vary with the font. Knob = the Workbench knob: rows * side columns, its corner cuts (S69-KNOB-ASPECT). */
     int side = flat_side_px(g->ms.rx, g->ms.ry), bw = 6 * side < q->m.row_pad - 1 ? 6 * side : q->m.row_pad - 1;
-    int x1 = q->list_x + q->list_w - 1, x0, kh, ky, span, i, cut[2];
-    uc_u32 c;
     if (q->n <= q->visible || q->visible < 1)
-        return;
+        return 0;
     if (bw < 2)
         bw = 2;
-    x0 = x1 - bw + 1;
-    kh = q->list_h * q->visible / q->n;
-    if (kh < q->m.row_h)
-        kh = q->m.row_h;
-    span = q->list_h - kh;
-    ky = q->list_y + span * g->top / (q->n - q->visible);
+    *x1 = q->list_x + q->list_w - 1;
+    *x0 = *x1 - bw + 1;
+    *kh = q->list_h * q->visible / q->n;
+    if (*kh < q->m.row_h)
+        *kh = q->m.row_h;
+    *span = q->list_h - *kh;
+    *ky = q->list_y + *span * g->top / (q->n - q->visible);
+    return 1;
+}
+
+static void draw_view_scrollbar(gui *g)
+{
+    int side = flat_side_px(g->ms.rx, g->ms.ry), x0, x1, kh, ky, span, i, cut[2];
+    uc_u32 c;
+    if (!view_knob(g, &x0, &x1, &ky, &kh, &span))
+        return;
     c = (uc_u32)flat_knob_colour(role_rgb(g, MT_BG), role_rgb(g, MT_DIM));
     fill_rgb(g, c, x0, ky, x1, ky + kh - 1);
     for (i = 0; i < FLAT_ROUND_MAX; i++)
-        if (flat_knob_cut_at(side, x0, ky, bw, kh, x0, ky, x1, ky + kh - 1, i, cut))
+        if (flat_knob_cut_at(side, x0, ky, x1 - x0 + 1, kh, x0, ky, x1, ky + kh - 1, i, cut))
             fill(g, MT_BG, cut[0], cut[1], cut[0], cut[1]);
 }
 
@@ -1531,6 +1541,31 @@ static void bar_set_at(gui *g, int h, int mx)
     }
 }
 
+/* S89: the view knob follows the pointer, keeping the grab offset */
+static void view_drag_to(gui *g, int my)
+{
+    int x0, x1, ky, kh, span;
+    if (!view_knob(g, &x0, &x1, &ky, &kh, &span) || span < 1)
+        return;
+    my -= g->g.list_y + g->view_drag;
+    scroll_lines(g, (my * (g->g.n - g->g.visible) + span / 2) / span - g->top);
+}
+
+/* S89: a press in the view scrollbar column: on the knob it starts a drag, above or below it pages (Workbench prop) */
+static int view_click(gui *g, int mx, int my)
+{
+    int x0, x1, ky, kh, span;
+    if (!view_knob(g, &x0, &x1, &ky, &kh, &span) || mx < x0 || mx > x1 || my < g->g.list_y || my >= g->g.list_y + g->g.list_h)
+        return 0;
+    if (my < ky)
+        scroll_lines(g, -g->g.visible);
+    else if (my >= ky + kh)
+        scroll_lines(g, g->g.visible);
+    else
+        g->view_drag = my - ky;
+    return 1;
+}
+
 static void mouse_button(gui *g, int code, int mx, int my)
 {
     int h;
@@ -1548,7 +1583,7 @@ static void mouse_button(gui *g, int code, int mx, int my)
         return;
     }
     if (code == SELECTUP) {
-        g->bar_drag = -1;
+        g->bar_drag = g->view_drag = -1;
         return;
     }
     if (code != SELECTDOWN)
@@ -1557,6 +1592,8 @@ static void mouse_button(gui *g, int code, int mx, int my)
         g->stop = 1;
         return;
     }
+    if (g->mode == M_VIEW && view_click(g, mx, my))
+        return;
     if (g->mode == M_VIEW && g->welcome == 1) {
         h = mg_strip_hit(&g->g, mx, my);
         if (h == 0) {
@@ -1602,6 +1639,10 @@ static void mouse_button(gui *g, int code, int mx, int my)
 static void mouse_move(gui *g, int mx, int my)
 {
     int h;
+    if (g->mode == M_VIEW && g->view_drag >= 0) {
+        view_drag_to(g, my);
+        return;
+    }
     if (g->await || (g->mode != M_LIST && g->mode != M_PICK))
         return;
     if (g->bar_drag >= 0) {              /* S88: the button is held on a track (WA_ReportMouse delivers the moves) */
@@ -2133,7 +2174,7 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
     at_mark("start");
     memset(g, 0, sizeof *g);
     mg_focus_init(&g->focus);
-    g->bar_drag = -1;
+    g->bar_drag = g->view_drag = -1;
     keep_setting = -1;
     lf_reset();
     mo_register();   /* MENU-TOGGLE: the menu hotkey again ends this menu; clears a stale Ctrl-C */
