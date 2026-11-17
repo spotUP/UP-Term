@@ -204,7 +204,7 @@ static void layout(mg_geom *g, const mg_font *f, int w, int n, int tail, const m
     fit = imin(imax(1, (room + m->row_gap) / m->pitch), MG_MAX_ROWS);
     g->n = n;
     if (n > fit) {
-        g->peek = m->row_h * 55 / 100;
+        g->peek = tail >= 0 ? 0 : m->row_h * 55 / 100;   /* text shows whole lines only; a menu peeks at the next row */
         g->visible = imin(imax(1, (room - g->peek) / m->pitch), MG_MAX_ROWS);
         g->list_h = g->visible * m->pitch + g->peek;
     } else {

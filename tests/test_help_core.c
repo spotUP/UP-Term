@@ -276,6 +276,11 @@ static void test_welcome_strip_pinned(void)
         CHECK_INT(mg_strip_hit(&g, g.list_x + 2, g.list_y), -1);
     }
     mg_layout_text(&g, &f, 568, 60, 2, &s);
+    CHECK_INT(g.peek, 0);                                       /* text: whole lines, no half line ... */
+    CHECK_INT(g.list_h, g.visible * g.m.pitch);
+    mg_layout(&g, &f, 568, 60, &s);
+    CHECK(g.peek > 0);                                          /* ... a menu still peeks */
+    mg_layout_text(&g, &f, 568, 60, 2, &s);
     CHECK(g.visible < 60);                                      /* long text scrolls ... */
     CHECK(mg_strip_y(&g, 1) + g.tail_h <= g.h);                 /* ... and the strip is still in the window */
 }
