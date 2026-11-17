@@ -10,6 +10,8 @@
  * or written). The old files are copied to T:patina-revert/ first. Returns the mask applied, 0 when off, -1 when the
  * theme is refused (desk_check; why gets the text) or a write failed. ENVARC: is never written (persist is R1.10). */
 int desk_dos_apply(const gtheme *th, char *why, int cap);
+/* S85k/S87: send the theme to Directory Opus once its display is back from a Workbench reset (at most DK_RESET_SECS) */
+void desk_dos_dopus_theme(const gtheme *th);
 /* FLAT-PENS-STALE-FILE part 2: at start, with flat-system-look on and palette.prefs not holding the current flat pens, write it as a theme pick
  * does (current theme); else nothing (no Workbench reset). Returns 1 when it wrote the theme colours. */
 int desk_dos_flat_pens_refresh(void);

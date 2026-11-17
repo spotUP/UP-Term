@@ -27,12 +27,6 @@
 unsigned long gt_dos_dopus_sends;
 unsigned long gt_dos_wb_pens, gt_dos_wb_refused;
 
-static long gt_dopus_send(const char *port, const char *line, char *result, int cap, void *ud)
-{
-    (void)ud;
-    return rexx_send(port, line, result, cap);
-}
-
 /* Workbench pens 0-3 become the theme's bg/fg/dim/accent on the Workbench screen's ViewPort, live (the pattern of
  * render/amiga_render.c: SetRGB32 with the 8-bit channel replicated to 32 bits). Refused, and counted, when pen 0
  * against pen 1 is weak (wb_pens_plan). The library bases are local: this file is linked into four programs that
@@ -208,7 +202,7 @@ static int gt_dos_apply_saved(const char *name)
     if (d <= 0 || !(d & (1 << DT_PALETTE))) {
         /* desk_dos_apply hands the theme to DOpus itself after its Palette write (FLAT-D2); otherwise it goes here */
         gt_dos_dopus_sends++;
-        dopus_theme_send(&th, gt_dopus_send, 0, &dopustb_dos_ops);
+        desk_dos_dopus_theme(&th); /* S87: a font edit resets the Workbench; DOpus reopens on its own timer and a send before that is lost */
         wb_pens_apply(&th);
     }
     ipd_recolour();             /* ICON-AA-WRONG-BG: the held icon pens 32-47 follow the new theme live */
