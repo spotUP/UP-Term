@@ -1,6 +1,8 @@
 ; Flat Directory Opus 5.104 lister toolbar (task B7): <upstream image name> <Lucide glyph> <Phosphor glyph>, one row
 ; per image the upstream default toolbar (Buttons/Toolbar) names. tools/gen_dopus_toolbar.py draws each glyph at every
 ; size set into Images/Patina/<set>/<name>: the outline family from Lucide, the filled family (DT-9) from Phosphor Fill.
+; Selected frames: every row NAME.small without its own NAME_s.small row also gets NAME_s.small, the same image (upstream ships a _s
+; for every name; only All_s differs, so it is an explicit row). Rows after Datestamp: the other stock brushes of DOpus5/Images.
 Root.small       chevrons-up       caret-double-up
 World.small      globe             globe
 Parent.small     arrow-up          arrow-up
@@ -23,3 +25,30 @@ Play.small       play              play
 Protect.small    shield            shield
 Comment.small    message-square    chat-centered
 Datestamp.small  calendar-clock    calendar-dots
+AddressBook.small   contact           address-book
+CD.small            disc-3            disc
+ClipBoard.small     clipboard         clipboard
+Connect.small       plug              plugs-connected
+FastView.small      scan-eye          eyeglasses
+Format.small        eraser            eraser
+FTPSend.small       cloud-upload      cloud-arrow-up
+HangUp.small        phone-off         phone-x
+Help.small          circle-help       question
+IconInfo.small      info              info
+LhaAdd.small        package-plus      package
+LhaExtr.small       package-open      export
+LhaShow.small       package-search    file-magnifying-glass
+LhaTest.small       package-check     seal-check
+Library.small       library           books
+None.small          ban               prohibit
+Opus.small          app-window        app-window
+Pattern.small       asterisk          asterisk
+Print.small         printer           printer
+QuitFTP.small       log-out           sign-out
+Reload.small        rotate-cw         arrow-clockwise
+Rexx.small          scroll-text       scroll
+Search.small        search            magnifying-glass
+SysPrefs.small      settings          gear
+Telephone.small     phone             phone
+Text.small          type              text-aa
+ToolbarArrow.small  chevron-down      caret-down

@@ -9,7 +9,7 @@ centred on a 1:2 pixel grid (the + of folder-plus), so the owner touches every t
 the owner's ILBM (any paint program: any CMAP, compression or masking); it is decoded (tools/ilbm_decode.py), checked
 for the set's size and pens 0-6, and written back as this generator's own brush (CMAP, masking 2, uncompressed), so DOpus
 and dopustb_core.c dt_cmap see the same format as for a generated set. A tall set image with no hand file is an error.
---export-hand copies a built <out dir>'s tall images into <hand dir> once, as the starting files.
+--export-hand copies a built <out dir>'s tall images into <hand dir> as starting files (existing hand files are kept).
 
 Writes <out>/Images/<set>/<name> (IFF ILBM brushes, FORM ILBM / BMHD / CMAP of 8 pens / BODY, pens 0-6) and
 <out>/Buttons/Patina-toolbar-<set>, one per set. A set is a family and a size: "outline-16" ... "outline-32t" and
@@ -75,6 +75,13 @@ def parse_map(path):
     return rows
 
 
+def selected_name(name, rows):
+    """NAME_s.small for NAME.small unless the table has its own such row (All_s) or NAME is itself a _s row, else None."""
+    stem, _, ext = name.rpartition(".")
+    sel = "%s_s.%s" % (stem, ext)
+    return None if stem.endswith("_s") or any(r[0] == sel for r in rows) else sel
+
+
 def set_name(family, width, tall):
     return "%s-%d%s" % (family, width, "t" if tall else "")
 
@@ -106,7 +113,8 @@ def export_hand(out, hand):
     for sname in HAND_SETS:
         (hand / sname).mkdir(parents=True, exist_ok=True)
         for f in sorted((out / "Images" / sname).iterdir()):
-            (hand / sname / f.name).write_bytes(f.read_bytes())
+            if not (hand / sname / f.name).exists():   # never overwrite the owner's touched-up brush
+                (hand / sname / f.name).write_bytes(f.read_bytes())
     print("[OK] exported %s to %s" % (", ".join(HAND_SETS), hand))
 
 
@@ -196,6 +204,8 @@ def main():
             else:
                 img = glyph(svgs[fam][name], w, h)
             (dest / "Images" / sname / name).write_bytes(img)
+            if selected_name(name, rows):
+                (dest / "Images" / sname / selected_name(name, rows)).write_bytes(img)
         (dest / "Buttons" / ("Patina-toolbar-" + sname)).write_bytes(rewrite_bank(upstream, sname))
     print("[OK] %d images x %d sets and Buttons/Patina-toolbar-<set> in %s" % (len(rows), len(sets()), dest))
 

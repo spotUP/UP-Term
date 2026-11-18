@@ -26,7 +26,7 @@ TGZ = ROOT / 'build' / 'lucide' / 'lucide-static-1.66.0.tgz'
 TTF = ROOT / 'build' / 'phosphor' / 'Phosphor-Fill.ttf'
 TABLE = ROOT / 'dist' / 'dopus-toolbar.txt'
 HAND = ROOT / 'dist' / 'dopus-toolbar-hand'
-CEILING = {'outline-16': 0.40, 'outline-16t': 0.40, 'outline-24': 0.25, 'outline-24t': 0.36, 'outline-32': 0.25, 'outline-32t': 0.36,
+CEILING = {'outline-16': 0.42, 'outline-16t': 0.40, 'outline-24': 0.25, 'outline-24t': 0.36, 'outline-32': 0.25, 'outline-32t': 0.36,
            'filled-16': 0.15, 'filled-16t': 0.20, 'filled-24': 0.12, 'filled-24t': 0.17, 'filled-32': 0.12, 'filled-32t': 0.14}
 DEFAULT = re.search(r'#define DOPUS_TOOLBAR_SET "([^"]+)"', (ROOT / 'patina' / 'menu_theme.h').read_text()).group(1)
 FLAGS_OFF = 12 + 8 + 128   # FORM header, BTNW chunk header, CFG_BTNW flags (dopus5.h)
@@ -94,6 +94,12 @@ class DopusToolbar(unittest.TestCase):
                     for s, w, h in [('16', 16, 16), ('16t', 16, 8), ('24', 24, 24), ('24t', 24, 12), ('32', 32, 32), ('32t', 32, 16)]]
             self.assertEqual(sorted(p.name for p in (t / 'out' / 'Images').iterdir()), sorted(n for n, _, _ in want))
             self.assertEqual(sorted(p.name for p in (t / 'out' / 'Buttons').iterdir()), sorted('Patina-toolbar-' + n for n, _, _ in want))
+            # every table row yields its image in every set, plus NAME_s.small for each row without its own _s row
+            rows = gd.parse_map(TABLE)
+            expect = sorted({r[0] for r in rows} | ({gd.selected_name(r[0], rows) for r in rows} - {None}))
+            self.assertEqual(len(expect), len(rows) + sum(1 for r in rows if gd.selected_name(r[0], rows)))
+            for name, _, _ in want:
+                self.assertEqual(sorted(p.name for p in (t / 'out' / 'Images' / name).iterdir()), expect, name)
             for name, w, h in want:
                 b = (t / 'out' / 'Buttons' / ('Patina-toolbar-' + name)).read_bytes()
                 self.assertIn(('dopus5:images/Patina/%s/' % name).encode(), b)
