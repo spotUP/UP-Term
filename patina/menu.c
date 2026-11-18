@@ -22,6 +22,7 @@
 #include "index_core.h"
 #include "ixwatch.h"
 #include "leaf.h"
+#include "amconf_dos.h"
 #include "gthemes_dos.h"
 #include "pkgs_dos.h"
 #include "job_dos.h"
@@ -181,9 +182,35 @@ static void on_move(void *ctx)
     preview_sync(0);
 }
 
+/* S91: a colour edit holds the GT_TERM_FILE rewrite (lf_term_defer, as gui.c); the open terminals recolour once, when no
+ * edit came for TERM_DEBOUNCE_TICKS, on a page change, or when the menu closes. The clock is on_tick (ui_run's tick). */
+#define TERM_DEBOUNCE_TICKS 8           /* 1/50 s units: 160 ms, the nearest tick count to the GUI's 150 ms */
+static int term_seen;
+static long term_at = -1;               /* at_ticks() of the last edit while a rewrite is pending, else -1 */
+
+static void term_flush(void)
+{
+    term_at = -1;
+    lf_term_flush(amconf_dos_io());
+}
+
+static void term_debounce(void)
+{
+    long now = at_ticks(), d;
+    if (lf_term_pending() != term_seen) {   /* an edit: restart the quiet period */
+        term_seen = lf_term_pending();
+        term_at = now;
+    } else if (term_at >= 0) {
+        d = now - term_at;
+        if (d < 0 || d >= TERM_DEBOUNCE_TICKS)     /* d < 0: the clock wrapped at midnight */
+            term_flush();
+    }
+}
+
 static int on_tick(void *ctx)
 {
     (void)ctx;
+    term_debounce();
     if (ui_selected() != pv_sel)
         preview_sync(0);             /* the highlight moved */
     if (SetSignal(0, 0) & SIGBREAKF_CTRL_C) {
@@ -353,14 +380,20 @@ static int menu_levels(const char *start)
     char node[KM_ID * 2], filter[KM_LABEL], prompt[96];
     char keep[IXW_ROW > MN_LABEL ? IXW_ROW : MN_LABEL];   /* the entry the cursor stays on over a rebuild */
     mn_bsguard bsg;
+    char tnode[KM_ID * 2];
     int keep_status = 0, shift, keep_ix = -1;   /* keep_ix: a setting row the cursor stays on after a set */
 
     strncpy(node, start, sizeof node - 1);
     node[sizeof node - 1] = 0;
     filter[0] = 0;
+    strcpy(tnode, node);
     mn_bsguard_init(&bsg);
     keep[0] = 0;
     for (;;) {
+        if (strcmp(node, tnode)) {         /* a page change: no edit is held back across it */
+            term_flush();
+            strcpy(tnode, node);
+        }
         if (pk_dos_due(&ixs, node)) {      /* Install > Packages entered: upkg gives its rows now, not on every open */
             free_level();
             pk_dos_load_rows(&ixs);
@@ -586,10 +619,15 @@ static int menu_loop(const char *start)
         int alive0 = 0, have0 = ixw_snapshot(&p0, &alive0);
         ix_watcher_begin(&wt, 0, have0, have0 ? &p0 : 0, alive0);
     }
+    lf_term_defer(1);
+    term_seen = lf_term_pending();
+    term_at = -1;
     if (alloc_level())
         rc = menu_levels(start);
     else
         ui_message("%s", "patina-menu: out of memory");
+    term_flush();          /* S91: a held colour edit is written before the menu ends */
+    lf_term_defer(0);
     gt_dos_edit_close();   /* S87: autosaved edits ask for the Workbench reset once, now */
     if (pv_drawn[0])
         preview_sync(1);   /* closed on a previewed row (Esc, toggle): the consoles get the saved theme back */

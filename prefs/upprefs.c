@@ -1613,7 +1613,8 @@ static void pick_theme(struct app *a)
     if (got > 0 && prefs_apply_theme(&a->f, &a->work, a->buf, got)) {
         strcpy(a->theme, path);
         show_fields(a);
-        set_status(a, "Theme in the fields: Save or Use writes it.");
+        set_status(a, a->themed ? "Theme in the fields: Save or Use writes the colours into the Menu theme, not the profile."
+                                : "Theme in the fields: Save or Use writes it.");
     } else
         set_status(a, "That file holds no colours.");
 }
