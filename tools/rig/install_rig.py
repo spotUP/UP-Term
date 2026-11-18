@@ -1378,6 +1378,8 @@ def base_uninstall(ck, before, expect_user_startup_clean=True, leaves=(), instal
                                       BASE_STARTUP_LEAVES + tuple(n for n in leaves if n not in BASE_STARTUP_LEAVES))
     ck(run('Type S:Startup-Sequence')[1] == before.sseq, 'after base Uninstall: S:Startup-Sequence as it was')
     left = upterm_targets(run('Assign UP-Term: EXISTS')[1])   # keep_assign: the image's own target, back after a reboot (not Install's)
+    # reboot_ok: Uninstall keeps UP-Term: as a PATH assign (listed as [Vol:Dir]) while patina-flat/IPrefs still run; the boot no longer makes it
+    left = [t for t in left if not (reboot_ok and t.startswith('[') and t.endswith(']'))]
     ck(all(t in keep_assign for t in left), 'after base Uninstall: no UP-Term: assign of the Install', 'left %s' % left)
     now = run('List SYS:UP-Term ALL')
     stamp = lambda r: (r[0], re.sub(r'\s(Today|Yesterday|\w+day|\d\d-\w{3}-\d\d)\s+\d\d:\d\d:\d\d', '', r[1]))   # a drawer's date moves with its contents
@@ -2082,11 +2084,6 @@ def case_legw(ck):
     time.sleep(5)   # a task that opens an UP-Term: path after the assign is gone raises a System Request
     open_req = ami.requesters()
     ck(not open_req, 'legw (f): no System Request is open after Uninstall', '; '.join(map(ami.describe_requester, open_req)))
-    if open_req:   # what still names UP-Term: when a task asks for it (written to the log for the diagnosis)
-        print('legw (f) ENV: %s' % run('Search ENV: UP-Term ALL')[1][:600])
-        print('legw (f) ENVARC: %s' % run('Search ENVARC: UP-Term ALL')[1][:600])
-        print('legw (f) assigns: %s' % run('Assign LIST')[1][:900])
-        print('legw (f) tasks: %s' % run('Status')[1][:600])
     ami.dismiss_requesters()
 
 
