@@ -2005,6 +2005,21 @@ static void test_gthemes_model_full_and_extras(void)
     CHECK_INT(gt_resolve_rgb(&te_m2, 0, GT_ST_PRESSED), 0x111111);
 }
 
+/* S90: a shipped (v1) theme saved through the model keeps the ANSI keys v1 does not map; losing them turned every terminal
+ * palette slot the foreground after one terminal colour edit */
+static void test_gthemes_v1_save_keeps_ansi(void)
+{
+    long n = read_file(THEME_DIR "/hackerman.theme", te_buf, (long)sizeof te_buf), len;
+    CHECK(n > 0);
+    gt_model_parse(te_buf, n, &te_m);
+    len = gt_model_save_text(&te_m, te_out, (long)sizeof te_out);
+    CHECK(len > 0);
+    CHECK(strstr(te_out, "yellow = \"#50f7d4\"") != 0);
+    CHECK(strstr(te_out, "bright_magenta = \"#cddbf4\"") != 0);
+    CHECK(strstr(te_out, "cyan = \"#7cf8f7\"") != 0);
+    CHECK_INT(te_m.warn & GT_WARN_OVERFLOW, 0);
+}
+
 /* TE-1.6: the model hangs off a gtheme only through attach, and gt_free releases it */
 static void test_gthemes_model_attach(void)
 {
@@ -3653,6 +3668,7 @@ void suite_gthemes(void)
     test_gthemes_model_refs();
     test_gthemes_model_cycle();
     test_gthemes_model_full_and_extras();
+    test_gthemes_v1_save_keeps_ansi();
     test_gthemes_model_attach();
     test_gthemes_role_table();
     test_gthemes_inactive_key();

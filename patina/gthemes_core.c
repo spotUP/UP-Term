@@ -1292,6 +1292,9 @@ void gt_model_parse(const char *buf, long len, gt_model *m)
     if (upconf_int(&g_conf, "default", "patina-theme", 1) < 2) {
         gt_model_from_v1(&t, m);
         str_key(m->name, GT_NAME, "name");
+        p.m = m; /* keep the keys v1 does not map (yellow, cyan, bright_* ... the terminal palette reads them) or the first save drops them */
+        p.sec = 0;
+        upconf_rows(buf, len, "default", row_cb, &p, 0);
         return;
     }
     model_init(m);
