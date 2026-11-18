@@ -782,7 +782,29 @@ static void am_fields(struct app *a, prefs_fields *f)
 {
     const amconf_io *io = amconf_dos_io();
     amconf_to_fields(&a->am, f);
-    a->themed = gt_term_fields(io->read, io->fs->ctx, a->am.val[AM_GTHEME], f);
+    a->themed = gt_term_fields(io->read, io->fs->ctx, f->am_gtheme, f);
+}
+
+/* The terminal colour rows of *from into *to, the rest of *to untouched. */
+static void copy_colours(prefs_fields *to, const prefs_fields *from)
+{
+    memcpy(to->fg, from->fg, sizeof to->fg);
+    memcpy(to->bg, from->bg, sizeof to->bg);
+    memcpy(to->selfg, from->selfg, sizeof to->selfg);
+    memcpy(to->selbg, from->selbg, sizeof to->selbg);
+    memcpy(to->curcol, from->curcol, sizeof to->curcol);
+    memcpy(to->pal, from->pal, sizeof to->pal);
+}
+
+/* The colours of the profile *name as the file holds them (the built-in ones for a new profile) into *f. */
+static void profile_colours(struct app *a, const char *name, prefs_fields *f)
+{
+    static prefs_fields pc;
+    if (prefs_profile_exists(&a->conf, name))
+        prefs_from_conf(&pc, &a->conf, name);
+    else
+        prefs_defaults(&pc);
+    copy_colours(f, &pc);
 }
 
 /* The profile named in the fields: its values from the table (or the built-in
@@ -942,18 +964,9 @@ static int commit(struct app *a, int keep)
     }
     sf = &a->f;
     if (a->themed) {              /* the profile's colours stay as they were in the file */
-        static prefs_fields pf, pc;
+        static prefs_fields pf;
         pf = a->f;
-        if (prefs_profile_exists(&a->conf, name))
-            prefs_from_conf(&pc, &a->conf, name);
-        else
-            prefs_defaults(&pc);
-        memcpy(pf.fg, pc.fg, sizeof pf.fg);
-        memcpy(pf.bg, pc.bg, sizeof pf.bg);
-        memcpy(pf.selfg, pc.selfg, sizeof pf.selfg);
-        memcpy(pf.selbg, pc.selbg, sizeof pf.selbg);
-        memcpy(pf.curcol, pc.curcol, sizeof pf.curcol);
-        memcpy(pf.pal, pc.pal, sizeof pf.pal);
+        profile_colours(a, name, &pf);
         sf = &pf;
     }
     len = prefs_stage(&a->work, &a->conf, name, sf, a->buf, CONF_MAX + 1);
@@ -974,7 +987,7 @@ static int commit(struct app *a, int keep)
         set_status(a, msg);
         return 0;
     }
-    if (a->themed && gt_term_store(amconf_dos_io()->read, &prefs_dos_fs, a->am.val[AM_GTHEME], &a->f) == GT_TERM_FAIL) {
+    if (a->themed && gt_term_store(amconf_dos_io()->read, &prefs_dos_fs, a->f.am_gtheme, &a->f) == GT_TERM_FAIL) {
         set_status(a, "The theme's terminal colours could not be written.");
         return 0;
     }
@@ -1611,9 +1624,18 @@ static void pick_menu_theme(struct app *a)
     int at = pk_initial(themes.n, pg_themes_find(&themes, a->f.am_gtheme));
     int r = pk_result(themes.n, pk_run(a->scr, a->win, a->vi, a->ta, a->lay.font_w, a->lay.font_h,
                                        "Menu theme", themes.text, themes.n, at), 1);
-    if (r < 0 || !pg_themes_pick(&themes, r, a->f.am_gtheme, (int)sizeof a->f.am_gtheme))
+    const amconf_io *io = amconf_dos_io();
+    if (r < 0)
         return;
-    show_texts(a);
+    collect(a);
+    if (!pg_themes_pick(&themes, r, a->f.am_gtheme, (int)sizeof a->f.am_gtheme))
+        return;
+    /* S91: the colour rows follow the picked theme at once (the terminal will wear its colours), or the profile's
+     * own when that theme sets none; Save and Use then write edits to this theme, not the last saved one. */
+    if (a->themed)
+        profile_colours(a, a->prof, &a->f);
+    a->themed = gt_term_fields(io->read, io->fs->ctx, a->f.am_gtheme, &a->f);
+    show_fields(a);
     set_status(a, "Theme chosen: Save or Use writes it.");
 }
 
