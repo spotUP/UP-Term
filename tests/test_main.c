@@ -63,6 +63,7 @@ void suite_iclabel(void);
 void suite_richaa(void);
 void suite_iconfile(void);
 void suite_iconapply(void);
+void suite_dopusenv(void);
 void suite_iconpen(void);
 void suite_dopustb(void);
 void suite_menu_fontspec(void);
@@ -183,6 +184,7 @@ static const h_suite suites[] = {
     { "richaa", suite_richaa },
     { "iconfile", suite_iconfile },
     { "iconapply", suite_iconapply },
+    { "dopusenv", suite_dopusenv },
     { "iconpen", suite_iconpen },
     { "dopustb", suite_dopustb },
     { "menu_fontspec", suite_menu_fontspec },
