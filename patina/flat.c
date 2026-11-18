@@ -3928,6 +3928,11 @@ int main(void)
                 install_rc = install_all(r, &tm, &marker_live);
             }     /* S32-START-LOOK: LoadWB opened the screen */
             pens_sync(r, 0);
+            if (flat_dopus_rescan_due(r->st.held, r->dfound, d4_installed(r))) {
+                STG(FLAT_STG_SCAN);                     /* DOPUS-LATE-START: DOpus opens dopus5.library after the boot start */
+                dopus_scan(r);
+                dim_refresh(r);
+            }
             pens_run(r, 1);                             /* S32-STALE-HELD-PENS: a new screen forgets the old pens and obtains on it (icon pens synced first) */
             pt_start(&pen_tm, 1000000UL);
         }

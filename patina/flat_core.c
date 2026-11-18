@@ -571,6 +571,11 @@ int flat_install_due(int held, int installed, int last_rc)
     return !held && !installed && last_rc == FLAT_ERR_NOCLASS;
 }
 
+int flat_dopus_rescan_due(int held, int dfound, int d4_on)
+{
+    return !held && !dfound && !d4_on;
+}
+
 unsigned flat_marker_remaining(unsigned long written, unsigned long now)
 {
     unsigned long age = (now - written) & 0xFFFFFFFFul;

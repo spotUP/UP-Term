@@ -391,6 +391,11 @@ enum { FLAT_ERR_NOCLASS = -100 };
  * of the class); 0: an installed hook, a kill switch or any other failure (a foreign swap, memory) is final. */
 int flat_install_due(int held, int installed, int last_rc);
 
+/* DOPUS-LATE-START: patina-flat BOOT runs before Directory Opus opens dopus5.library, and the one scan at start found it
+ * absent. 1: scan again now (not held, the last scan found no library, no D4 hook installed); 0: a library that was found
+ * (hooked, or refused by the gate: final) or a kill switch. */
+int flat_dopus_rescan_due(int held, int dfound, int d4_on);
+
 /* Seconds the marker still has to live: FLAT_MARKER_SECS minus the age (now and written are seconds on any clock,
  * unsigned arithmetic so a wrapped clock still works), 0 when expired. */
 unsigned flat_marker_remaining(unsigned long written, unsigned long now);
