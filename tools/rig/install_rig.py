@@ -563,6 +563,7 @@ def stock_libs():
     paths.rig_only("install_rig.stock_libs (Assign LIBS: %sLibs)" % SYSVOL)
     run('Assign LIBS: %sLibs' % SYSVOL)
     run('Assign LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD')
+    run('Assign LIBS: %sClasses ADD' % SYSVOL)   # the boot's own Classes (rig.py: LIBS: DH0:Classes ADD): Palette 40.2 opens colorwheel.gadget there
     for line in amissl_libs():   # the AmiSSL of a machine that has it: UP-Term:bin/curl opens amisslmaster.library
         run(line.replace('Assign >NIL: ', 'Assign ', 1))
 
@@ -883,7 +884,10 @@ def _main(dest=None):
     check(out == shell_before, 'after Uninstall: the Shell icon as it was', '%r vs %r' % (out, shell_before))
     check(run('List >NIL: SYS:System/UP-Term.info')[0] != 0, 'after Uninstall: no UP-Term icon in SYS:System', '')
     check(run('List >NIL: "%s/VERSIONS"' % drawer)[0] != 0, 'after Uninstall: %s/VERSIONS is gone' % drawer, '')
-    check(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'after Uninstall: no UP-Term: assign', '')
+    # Uninstall leaves UP-Term: as a PATH assign to the deleted drawer (no lock, gone at the next boot), so running
+    # tasks that still open UP-Term: paths get an error, not an insert-volume requester
+    check(run('Assign >NIL: UP-Term: EXISTS')[0] != 0 or run('List >NIL: UP-Term:')[0] != 0,
+          'after Uninstall: no UP-Term: assign, or one that points at nothing', '')
     check(run('List >NIL: ENVARC:up-term/Dir')[0] != 0, 'after Uninstall: no ENVARC:up-term/Dir', '')
     check(run('Type S:Startup-Sequence')[1] == sseq_before, 'after Uninstall: S:Startup-Sequence as it was, byte for byte', '')
     rc, out = run('VTC:UPConsole STATUS')
@@ -951,6 +955,7 @@ def _libs():
     # DH0:Libs is where the rig's own ixemul.library and ixnet.library live
     run('Assign LIBS: VTC:libsA')
     run('Assign LIBS: %sLibs ADD' % SYSVOL)
+    run('Assign LIBS: %sClasses ADD' % SYSVOL)
     rc, real = run('Which LIBS:ixemul.library')
     real = real.strip()
     rc, realnet = run('Which LIBS:ixnet.library')
@@ -1354,11 +1359,16 @@ def check_startup_after_uninstall(ck, before_text, installed_text, now_text, lea
                '%s: the %s block is still in S:User-Startup (it still boots)' % (what, name))
 
 
-def base_uninstall(ck, before, expect_user_startup_clean=True, leaves=(), installed_text='', keep_assign=()):
+REBOOT_MSG = 'Reboot to finish removing UP-Term.'
+
+
+def base_uninstall(ck, before, expect_user_startup_clean=True, leaves=(), installed_text='', keep_assign=(), reboot_ok=False):
     """Uninstall of the base (which runs the Uninstall of the add-ons that need it) gives the rig back byte for byte
     (not when a stand-alone archive's block is still there: it is not the base's to take out). The base Uninstall
     always leaves the ;BEGIN AmiSSL block (BASE_STARTUP_LEAVES), so every case compares without it; installed_text
-    defaults to S:User-Startup as it is just before the Uninstall, which is what the Installs left."""
+    defaults to S:User-Startup as it is just before the Uninstall, which is what the Installs left. reboot_ok: patina-flat
+    stays resident (it will not unload while a patch is chained), so an empty SYS:UP-Term/bin is left; accepted only when
+    Uninstall printed REBOOT_MSG."""
     if expect_user_startup_clean and not installed_text:
         installed_text = run('Type S:User-Startup')[1]
     rc, out = run_long('rununinstall')
@@ -1371,6 +1381,8 @@ def base_uninstall(ck, before, expect_user_startup_clean=True, leaves=(), instal
     ck(all(t in keep_assign for t in left), 'after base Uninstall: no UP-Term: assign of the Install', 'left %s' % left)
     now = run('List SYS:UP-Term ALL')
     stamp = lambda r: (r[0], re.sub(r'\s(Today|Yesterday|\w+day|\d\d-\w{3}-\d\d)\s+\d\d:\d\d:\d\d', '', r[1]))   # a drawer's date moves with its contents
+    if reboot_ok and REBOOT_MSG in out and 'Directory "SYS:UP-Term/bin" is empty' in now[1] and '1 directory' in now[1]:
+        now = before.sys_upterm   # only the empty bin drawer is left, and Uninstall said to reboot
     ck(stamp(now) == stamp(before.sys_upterm), 'after base Uninstall: SYS:UP-Term as it was before Install',
        'now rc %s %s, before rc %s %s' % (now[0], now[1][:300], before.sys_upterm[0], before.sys_upterm[1][:300]))
     st = lib_state()
@@ -2052,13 +2064,30 @@ def case_legw(ck):
     later = [procs[n] for n in ('solidwin', 'do_launcher') if n in procs]
     ck(0 < flat and bool(later) and all(flat < n for n in later),
        'legw (d): patina-flat is process %d, below %s started in S:User-Startup (after IPrefs); the textual order is (a)' % (flat, later))
-    st = run('%s/bin/patina-flat STATUS' % dest)[1]
+    for _ in range(20):   # the record appears when the prefs are read; the process is listed before that (flat=absent for a while on KS 3.1)
+        st = run('%s/bin/patina-flat STATUS' % dest)[1]
+        if 'flat=absent' not in st:
+            break
+        time.sleep(3)
     ck(re.search(r'flat=(on|off) ', st) is not None, 'legw (d): the resident patch answers STATUS (stack held on this Kickstart)', st.strip()[:80])
+    pre_req = ami.requesters()   # a requester already open here is not Uninstall's
+    ck(not pre_req, 'legw (d): no System Request is open before Uninstall', '; '.join(map(ami.describe_requester, pre_req)))
+    ami.dismiss_requesters()
     base_uninstall(ck, before,
-                   keep_assign=('VTCX:Apps',) + tuple(t for t in upterm_targets(run('Assign UP-Term: EXISTS')[1]) if 'SYS:UP-Term' not in t))
+                   keep_assign=('VTCX:Apps',) + tuple(t for t in upterm_targets(run('Assign UP-Term: EXISTS')[1]) if 'SYS:UP-Term' not in t),
+                   reboot_ok=True)
     for icon in ('Patina', 'patina-index'):
         ck(run('List >NIL: SYS:WBStartup/%s.info' % icon)[0] != 0, 'legw (e): Uninstall removed SYS:WBStartup/%s.info' % icon)
     ck(run('Type S:Startup-Sequence')[1] == before.sseq, 'legw (e): S:Startup-Sequence is byte for byte the original')
+    time.sleep(5)   # a task that opens an UP-Term: path after the assign is gone raises a System Request
+    open_req = ami.requesters()
+    ck(not open_req, 'legw (f): no System Request is open after Uninstall', '; '.join(map(ami.describe_requester, open_req)))
+    if open_req:   # what still names UP-Term: when a task asks for it (written to the log for the diagnosis)
+        print('legw (f) ENV: %s' % run('Search ENV: UP-Term ALL')[1][:600])
+        print('legw (f) ENVARC: %s' % run('Search ENVARC: UP-Term ALL')[1][:600])
+        print('legw (f) assigns: %s' % run('Assign LIST')[1][:900])
+        print('legw (f) tasks: %s' % run('Status')[1][:600])
+    ami.dismiss_requesters()
 
 
 def case_table():
