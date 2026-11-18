@@ -87,6 +87,7 @@ UP-Term:UPConsole       = square-terminal
 UP-Term:UP-Term         = square-terminal
 ; Directory Opus 5.104 (DOpus5: assign; vendor/dopus5-5.104, VTCX:DOpus5 on rigs): every .info of the installed drawer, paths applied by ia_apply when the assign exists
 DOpus5:DirectoryOpus                                = app-window
+VTCX:DOpus5                                         = app-window
 DOpus5:Help                                         = life-buoy
 DOpus5:Help/DOpus5.guide                            = book-open
 DOpus5:Help/DOpusM2_ARexx.guide                     = scroll-text
