@@ -49,6 +49,8 @@
 #include <proto/intuition.h>
 #include <proto/graphics.h>
 #include "../tty/qmark.h"
+#define UPASSIGN_DOS
+#include "../config/upassign.h"
 #include "flat_core.h"
 #include "flat_shared.h"
 #include "libpatch.h"
@@ -3828,6 +3830,11 @@ int main(void)
     }
     if (is_boot(args) && !boot_wanted())
         return 0;
+    /* BOOT-REQUESTER: BOOT runs from S:Startup-Sequence, before S:User-Startup assigns UP-Term:, and the theme load
+       opened UP-Term:Patina/Themes/<name>.theme (wasabi snoop, rig 92). Make the assign from ENVARC:up-term/Dir first,
+       like vsh and UPConsole; any UP-Term: path left over is an error code, never a "Please insert volume" requester */
+    upassign_ensure();
+    ((struct Process *)FindTask(0))->pr_WindowPtr = (APTR)-1;
     flat_init(&st0);
     {   /* FLAT-C9: the switch and pens from the prefs (the one mapping desk apply uses too). Read here, before the
            guard: a DOS read inside Forbid waits and breaks it, and a second starter (User-Startup's BOOT line and

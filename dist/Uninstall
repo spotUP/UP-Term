@@ -178,8 +178,11 @@ EndIf
 Delete >NIL: ENVARC:up-term/Dir QUIET
 ; (UP-Term:VERSIONS goes with the drawer), then the assign itself
 Assign >NIL: UP-Term: EXISTS
+; Not removed: tasks still running (IPrefs, Patina, patina-flat) keep opening UP-Term: paths until the next boot, and with no assign
+; each open raises an insert-volume requester. A PATH assign (resolved at every use) holds no lock on the drawer, so it can be deleted, the boot
+; no longer makes it, and a path under it is a plain not-found error.
 If NOT WARN
-  Assign UP-Term:
+  Assign UP-Term: "$updest" PATH
 EndIf
 ; amiagent (an option of earlier kits), when Install put it in UP-Term:bin (its marker): stopped first (Ctrl-C, its
 ; own way out; Status finds it by the name it was loaded as, the README says
@@ -284,6 +287,12 @@ Else
     Delete >NIL: "$updest/#?" ALL QUIET
   Else
     Delete >NIL: "$updest" ALL QUIET
+  EndIf
+EndIf
+; patina-flat that would not unload (a patch still chained) holds bin: it stops at the next boot, which no longer starts it
+If EXISTS "$updest/bin"
+  If NOT "$upkeepvar" EQ "YES"
+    Echo "Reboot to finish removing UP-Term."
   EndIf
 EndIf
 UnSet upkeepvar
