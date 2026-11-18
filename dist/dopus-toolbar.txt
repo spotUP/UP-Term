@@ -51,4 +51,3 @@ Search.small        search            magnifying-glass
 SysPrefs.small      settings          gear
 Telephone.small     phone             phone
 Text.small          type              text-aa
-ToolbarArrow.small  chevron-down      caret-down

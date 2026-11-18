@@ -77,7 +77,13 @@ void dt_cmap(const gtheme *t, uint8_t rgb[DT_PENS][3])
 int dt_cmap_patch(uint8_t *buf, size_t len, const uint8_t rgb[DT_PENS][3])
 {
     size_t pos = 12, size;
-    if (len < 12 || memcmp(buf, "FORM", 4) != 0 || memcmp(buf + 8, "ILBM", 4) != 0)
+    if (len < 24 || memcmp(buf, "FORM", 4) != 0)
+        return 0;
+    if (memcmp(buf + 8, "ANIM", 4) == 0) {      /* the toolbar arrow: FORM ANIM, the CMAP lives in the first frame's FORM ILBM */
+        if (memcmp(buf + 12, "FORM", 4) != 0 || memcmp(buf + 20, "ILBM", 4) != 0)
+            return 0;
+        pos = 24;
+    } else if (memcmp(buf + 8, "ILBM", 4) != 0)
         return 0;
     while (pos + 8 <= len) {
         size = ((size_t)buf[pos + 4] << 24) | ((size_t)buf[pos + 5] << 16) | ((size_t)buf[pos + 6] << 8) | buf[pos + 7];

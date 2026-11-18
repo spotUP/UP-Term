@@ -144,6 +144,35 @@ def ilbm(w, h, pens):
     return chunk(b"FORM", b"ILBM" + chunk(b"BMHD", bmhd) + chunk(b"CMAP", cmap) + chunk(b"BODY", body))
 
 
+# The lister toolbar's "<<" arrow: DOpus opens DOpus5:Images/ToolbarArrow.image (and .image_frame, one pixel larger on every
+# side) by that fixed name, upstream FORM ANIM of 3 frames (a base ILBM, then two ANIM-5 deltas), 24x24 d8. Ours is the same
+# FORM ANIM shape with 3 identical frames (the deltas change nothing: all plane offsets 0), so whichever frame DOpus shows is
+# the flat chevron pair. Patina's theme apply copies the file of the picked set over the stock one (dopustb_dos.c).
+ARROW_NAMES = ("ToolbarArrow.image", "ToolbarArrow.image_frame")
+ARROW_GLYPH = ("chevrons-left", "caret-double-left")   # Lucide, Phosphor Fill: two chevrons pointing left, as upstream's
+
+
+def anhd(op, w, h, bits):
+    return chunk(b"ANHD", struct.pack(">BBHHhhIIBBI16x", op, 0, w, h, 0, 0, 0, 1, 1, 0, bits))
+
+
+def anim(w, h, pens):
+    """FORM ANIM of 3 identical frames of the w x h pens: ILBM (ANHD op 0, DPAN, CMAP, BODY), then 2 ANIM-5 deltas that change nothing."""
+    base = ilbm(w, h, pens)[12:]     # the ILBM's chunks: BMHD CMAP BODY
+    bmhd_end = 8 + 20
+    frame1 = b"ILBM" + base[:bmhd_end] + anhd(0, w, h, 0) + chunk(b"DPAN", struct.pack(">HH4x", 3, 2)) + base[bmhd_end:]
+    delta = b"ILBM" + anhd(5, w, h, 2) + chunk(b"DLTA", bytes(64))
+    return chunk(b"FORM", b"ANIM" + chunk(b"FORM", frame1) + chunk(b"FORM", delta) + chunk(b"FORM", delta))
+
+
+def arrow_files(svg, w, h):
+    """{file name: FORM ANIM bytes}: the chevrons in the set's w x h, and the _frame one in a ring of ground (pen 0) one pixel wide."""
+    cov = svg_raster.coverage(svg, w, h, STROKE_PX[w])
+    pens = [[PEN_OF_LEVEL[gl.level(cov[y][x])] for x in range(w)] for y in range(h)]
+    ring = [[0] * (w + 2)] + [[0] + r + [0] for r in pens] + [[0] * (w + 2)]
+    return {ARROW_NAMES[0]: anim(w, h, pens), ARROW_NAMES[1]: anim(w + 2, h + 2, ring)}
+
+
 def glyph(svg, w, h):
     cov = svg_raster.coverage(svg, w, h, STROKE_PX[w])
     return ilbm(w, h, [[PEN_OF_LEVEL[gl.level(cov[y][x])] for x in range(w)] for y in range(h)])
@@ -185,11 +214,17 @@ def main():
             if g not in by_name:
                 raise SystemExit("%s: unknown Lucide glyph: %s" % (table, g))
         svgs = {"outline": {name: tf.extractfile(by_name[g]).read().decode() for name, g, _ in rows}}
+        if ARROW_GLYPH[0] not in by_name:
+            raise SystemExit("unknown Lucide glyph: %s" % ARROW_GLYPH[0])
+        arrow = {"outline": tf.extractfile(by_name[ARROW_GLYPH[0]]).read().decode()}
     font = TTFont(ttf)
     cps = json.loads((pathlib.Path(ttf).parent / "codepoints.json").read_text())
     for name, _, g in rows:
         if g not in cps:
             raise SystemExit("%s: unknown Phosphor glyph: %s" % (table, g))
+    if ARROW_GLYPH[1] not in cps:
+        raise SystemExit("unknown Phosphor glyph: %s" % ARROW_GLYPH[1])
+    arrow["filled"] = phosphor_svg(font, cps[ARROW_GLYPH[1]])
     svgs["filled"] = {name: phosphor_svg(font, cps[g]) for name, _, g in rows}
     dest = pathlib.Path(dest)
     (dest / "Buttons").mkdir(parents=True, exist_ok=True)
@@ -206,6 +241,8 @@ def main():
             (dest / "Images" / sname / name).write_bytes(img)
             if selected_name(name, rows):
                 (dest / "Images" / sname / selected_name(name, rows)).write_bytes(img)
+        for fname, data in arrow_files(arrow[fam], w, h).items():
+            (dest / "Images" / sname / fname).write_bytes(data)
         (dest / "Buttons" / ("Patina-toolbar-" + sname)).write_bytes(rewrite_bank(upstream, sname))
     print("[OK] %d images x %d sets and Buttons/Patina-toolbar-<set> in %s" % (len(rows), len(sets()), dest))
 

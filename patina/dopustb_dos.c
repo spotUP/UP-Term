@@ -92,6 +92,76 @@ static int dtd_patch_file(const char *path, const uint8_t rgb[DT_PENS][3])
     return done;
 }
 
+#define DTD_ARROW_DIR "DOpus5:Images/"
+#define DTD_ARROW_ORIG "DOpus5:Images/Patina/orig/"
+static const char *const dtd_arrow_names[2] = { "ToolbarArrow.image", "ToolbarArrow.image_frame" };
+
+/* Copies src over dst (whole file, under 64 KB). A missing src copies nothing. Returns 1 when written. */
+static int dtd_copy(const char *src, const char *dst)
+{
+    BPTR in = Open((STRPTR)src, MODE_OLDFILE), out;
+    struct FileInfoBlock *fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    uint8_t *buf = 0;
+    int done = 0;
+    if (in && fib && ExamineFH(in, fib) && fib->fib_Size > 0 && fib->fib_Size < 65536L &&
+        (buf = (uint8_t *)AllocVec((ULONG)fib->fib_Size, MEMF_PUBLIC)) != 0 && Read(in, buf, fib->fib_Size) == fib->fib_Size &&
+        (out = Open((STRPTR)dst, MODE_NEWFILE)) != 0) {
+        done = Write(out, buf, fib->fib_Size) == fib->fib_Size;
+        Close(out);
+    }
+    if (buf)
+        FreeVec(buf);
+    if (fib)
+        FreeDosObject(DOS_FIB, fib);
+    if (in)
+        Close(in);
+    return done;
+}
+
+static int dtd_exists(const char *path)
+{
+    BPTR l = Lock((STRPTR)path, ACCESS_READ);
+    if (l)
+        UnLock(l);
+    return l != 0;
+}
+
+/* dir/name joined into out (160 bytes). */
+static void dtd_join(char *out, const char *dir, const char *name)
+{
+    strcpy(out, dir);
+    strcat(out, name);
+}
+
+/* Both arrow files: from(dir) over to(dir). Requesters off (pr_WindowPtr -1) for a missing volume. */
+static int dtd_arrow_copy(const char *from, const char *to, int save_orig)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR old = me->pr_WindowPtr;
+    char a[160], b[160], o[160];
+    int n, w = 0;
+    me->pr_WindowPtr = (APTR)-1;
+    for (n = 0; n < 2; n++) {
+        dtd_join(a, from, dtd_arrow_names[n]);
+        dtd_join(b, to, dtd_arrow_names[n]);
+        if (!dtd_exists(a))
+            continue;
+        if (save_orig) {       /* the stock file is saved once; an existing backup is never touched, so it never holds a flat file */
+            dtd_join(o, DTD_ARROW_ORIG, dtd_arrow_names[n]);
+            if (!dtd_exists(o) && dtd_exists(b) && !dtd_copy(b, o))
+                continue;
+        }
+        w += dtd_copy(a, b);
+    }
+    me->pr_WindowPtr = old;
+    return w;
+}
+
+int dopustb_arrow_restore(void)
+{
+    return dtd_arrow_copy(DTD_ARROW_ORIG, DTD_ARROW_DIR, 0);
+}
+
 /* Every brush of the set's drawer gets the theme's blend. Returns the number of files rewritten. */
 static int dtd_recolour(const char *set, const uint8_t rgb[DT_PENS][3], void *ud)
 {
@@ -122,6 +192,8 @@ static int dtd_recolour(const char *set, const uint8_t rgb[DT_PENS][3], void *ud
         FreeDosObject(DOS_FIB, fib);
     if (lock)
         UnLock(lock);
+    strcat(dir, "/");
+    dtd_arrow_copy(dir, DTD_ARROW_DIR, 1);       /* after the blend, so the arrow carries it too */
     return changed;
 }
 

@@ -101,6 +101,22 @@ static void test_cmap(void)
     CHECK_INT(dt_cmap_patch(file, len, rgb), 0);
     CHECK_INT(file[30], 0x55);
     CHECK_INT(dt_cmap_patch(file, 5, rgb), 0);
+    {   /* the toolbar arrow, FORM ANIM: the CMAP of the first frame's FORM ILBM is patched, a later frame has none */
+        uint8_t anim[12 + 12 + 8 + 24 + 8 + 4], cm[DT_PENS][3];
+        memset(anim, 0, sizeof anim);
+        memcpy(anim, "FORM", 4);
+        memcpy(anim + 8, "ANIM", 4);
+        memcpy(anim + 12, "FORM", 4);
+        memcpy(anim + 20, "ILBM", 4);
+        memcpy(anim + 24, "CMAP", 4);
+        anim[31] = 24;
+        memset(cm, 7, sizeof cm);
+        CHECK_INT(dt_cmap_patch(anim, sizeof anim, cm), 1);
+        CHECK(memcmp(anim + 32, cm, 24) == 0);
+        CHECK_INT(dt_cmap_patch(anim, sizeof anim, cm), 2);
+        memcpy(anim + 20, "ABCD", 4);                  /* a first frame that is not an ILBM is refused */
+        CHECK_INT(dt_cmap_patch(anim, sizeof anim, cm), 0);
+    }
 }
 
 /* The screen DOpus runs on comes from the reply of `dopus screen` (the PAL Workbench case has no DOPUS.1 screen). */

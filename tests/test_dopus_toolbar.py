@@ -43,6 +43,39 @@ def chunks(buf):
 
 @unittest.skipUnless(ARCHIVE.exists() and TGZ.exists() and TTF.exists(),
                      'vendored DOpus archive, build/lucide or build/phosphor missing (make lucide phosphor)')
+def walk(buf):
+    pos = 0
+    while pos < len(buf):
+        n = struct.unpack('>L', buf[pos + 4:pos + 8])[0]
+        yield buf[pos:pos + 8 + n + (n & 1)]
+        pos += 8 + n + (n & 1)
+
+
+def check_arrow(self, d, w, h):
+    """Each arrow file is a FORM ANIM of 3 ILBM frames: the first a depth 3, 8 pen, masking 2 image of the set's size (+2 for _frame)
+    with ink, the other two ANIM-5 deltas that change nothing."""
+    import gen_dopus_toolbar as gd
+    for name, grow in zip(gd.ARROW_NAMES, (0, 2)):
+        b = (d / name).read_bytes()
+        self.assertEqual((b[:4], b[8:12], struct.unpack('>L', b[4:8])[0]), (b'FORM', b'ANIM', len(b) - 8), name)
+        pos, frames = 12, []
+        while pos < len(b):
+            n = struct.unpack('>L', b[pos + 4:pos + 8])[0]
+            frames.append(b[pos + 8:pos + 8 + n])
+            pos += 8 + n + (n & 1)
+        self.assertEqual([f[:4] for f in frames], [b'ILBM'] * 3, name)
+        self.assertIn(b'DPAN', frames[0])
+        self.assertIn(b'CMAP' + struct.pack('>L', 24), frames[0])
+        self.assertEqual(frames[1], frames[2])
+        self.assertEqual(frames[1][4:8 + 4], b'ANHD' + struct.pack('>L', 40))
+        self.assertEqual(frames[1][12], 5)   # ANHD op 5
+        body = b''.join(c for c in walk(frames[0][4:]) if c[:4] in (b'BMHD', b'CMAP', b'BODY'))
+        img = b'FORM' + struct.pack('>L', 4 + len(body)) + b'ILBM' + body
+        iw, ih, depth, _, cmap, rows = ilbm_decode.decode(img)
+        self.assertEqual((iw, ih, depth), (w + grow, h + grow, 3), name)
+        self.assertTrue(sum(1 for r in rows for v in r if v) > 20, name)
+
+
 class DopusToolbar(unittest.TestCase):
     def test_generated_bank_is_complete_and_flat(self):
         self.assertEqual(hashlib.md5(ARCHIVE.read_bytes()).hexdigest(), MD5)
@@ -97,13 +130,15 @@ class DopusToolbar(unittest.TestCase):
             # every table row yields its image in every set, plus NAME_s.small for each row without its own _s row
             rows = gd.parse_map(TABLE)
             expect = sorted({r[0] for r in rows} | ({gd.selected_name(r[0], rows) for r in rows} - {None}))
+            arrows = sorted(gd.ARROW_NAMES)
             self.assertEqual(len(expect), len(rows) + sum(1 for r in rows if gd.selected_name(r[0], rows)))
             for name, _, _ in want:
-                self.assertEqual(sorted(p.name for p in (t / 'out' / 'Images' / name).iterdir()), expect, name)
+                self.assertEqual(sorted(p.name for p in (t / 'out' / 'Images' / name).iterdir()), sorted(expect + arrows), name)
+                check_arrow(self, t / 'out' / 'Images' / name, *[x for x in want if x[0] == name][0][1:])
             for name, w, h in want:
                 b = (t / 'out' / 'Buttons' / ('Patina-toolbar-' + name)).read_bytes()
                 self.assertIn(('dopus5:images/Patina/%s/' % name).encode(), b)
-                w2, h2, d2, _, _, rows2 = ilbm_decode.decode((t / 'out' / 'Images' / name / 'Directory').read_bytes() if (t / 'out' / 'Images' / name / 'Directory').exists() else next((t / 'out' / 'Images' / name).iterdir()).read_bytes())
+                w2, h2, d2, _, _, rows2 = ilbm_decode.decode((t / 'out' / 'Images' / name / 'Directory').read_bytes() if (t / 'out' / 'Images' / name / 'Directory').exists() else next(p for p in (t / 'out' / 'Images' / name).iterdir() if p.name not in gd.ARROW_NAMES).read_bytes())
                 self.assertEqual((w2, h2, d2), (w, h, 3), name)
                 self.assertTrue(any(v for r in rows2 for v in r), name)
                 # DT-8: partial-pixel share of the whole set under its ceiling (the font path is over every one); the
@@ -111,7 +146,7 @@ class DopusToolbar(unittest.TestCase):
                 if name in gd.HAND_SETS:
                     continue
                 part = tot = 0
-                for f in (t / 'out' / 'Images' / name).iterdir():
+                for f in (p for p in (t / 'out' / 'Images' / name).iterdir() if p.name not in gd.ARROW_NAMES):
                     lv = [v for r in ilbm_decode.decode(f.read_bytes())[5] for v in r]
                     tot += sum(1 for v in lv if v)
                     part += sum(1 for v in lv if v in (1, 2))
