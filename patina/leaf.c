@@ -219,6 +219,7 @@ static const char *list_why(long r)
     case LF_SET_LAST: return "the last profile cannot be deleted";
     case LF_SET_INVALID: return "not a usable name";
     case LF_SET_READONLY: return "the settings file is read only here: use UP-Term Prefs";
+    case LF_SET_FULL: return "the settings could not be saved: the disk is full or write protected";
     default: return "";
     }
 }
@@ -499,7 +500,7 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
         r = lf_setting_set_colour(amconf_dos_io(), s, entry, text, &failed);
         if (r == LF_SET_OK)
             return 1;
-        snprintf(why, sizeof why, "%s", r == LF_SET_INVALID ? "not a colour: use RRGGBB" : "");
+        snprintf(why, sizeof why, "%s", r == LF_SET_INVALID ? "not a colour: use RRGGBB" : list_why(r));
         ui->refused(ui->ctx, it->label, r, why);
         return 0;
     }
@@ -510,7 +511,7 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
     else
         r = lf_setting_step(amconf_dos_io(), s, &failed);
     if (r != LF_SET_OK) {
-        ui->refused(ui->ctx, it->label, r, r == LF_SET_READONLY ? "the settings file is read only here: use UP-Term Prefs" : "");
+        ui->refused(ui->ctx, it->label, r, list_why(r));
         return 0;
     }
     return 1;
