@@ -26,6 +26,22 @@ class PatinaDocs(unittest.TestCase):
         self.assertLess(quit_at, un.index('Delete >NIL: "$updest" ALL QUIET'))
         self.assertIn('vsh unstartup.sh Patina', read('dist/install.dos'))  # an older kit's startup block is still stripped
 
+    def test_uninstall_stops_a_wbstartup_patina_and_the_flat_patch_by_its_dir_name(self):
+        """W8b: Patina from SYS:WBStartup is no CLI process (Status/Break miss it) and holds UP-Term/bin with patina-gui and
+        patina-menu: `Patina QUIT` (by the drawer path, the assign is gone) runs before the drawer Delete; patina-flat runs
+        as ENVARC:up-term/Dir says (SYS:UP-Term/bin/...), so that name is kept before Dir is deleted and matched."""
+        un = read('dist/Uninstall')
+        quit_at = un.index('"$updest/bin/Patina" >NIL: QUIT')
+        self.assertLess(un.index('\n  Assign UP-Term:\n'), quit_at)
+        self.assertLess(quit_at, un.index('Delete >NIL: "$updest" ALL QUIET'))
+        keep = un.index('Copy >NIL: ENVARC:up-term/Dir ENV:upflatdir')
+        self.assertLess(keep, un.index('Delete >NIL: ENVARC:up-term/Dir QUIET'))
+        self.assertLess(un.index('Delete >NIL: ENVARC:up-term/Dir QUIET'), un.index('COM "$upflatdir/bin/patina-flat"'))
+        src = read('patina/patina.c')
+        main = src[src.index('int main(void)'):]
+        self.assertIn('quit_cli((const char *)GetArgStr())', main[:800])   # before ReadArgs: QUIT never starts a commodity
+        self.assertIn('rexx_send("PATINA", "QUIT"', src[src.index('static int quit_cli('):src.index('int main(void)')])
+
     def test_man_page_and_readme_cover_notices_and_safe_off(self):
         man = read('man/patina.1')
         for w in ('amnotify', 'PATINA.NOTIFY', 'NOTIFY', 'COUNT', 'CLEAR', 'cap:screen', 'safe-off', 'Reboot DRYRUN'):
