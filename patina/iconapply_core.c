@@ -192,7 +192,7 @@ int ia_walk_fits(ia_ctx *c, size_t plen, size_t nl, size_t cap, unsigned depth, 
 /* ---- apply / restore ---- */
 static void man_load(ia_ctx *c)
 {
-    long n = c->io->read(c->io->ctx, IA_MANIFEST, c->bak, IA_FILECAP);
+    long n = c->io->read(c->io->ctx, IA_MANIFEST, c->bak, IA_MANCAP);
     c->man.n = 0;
     if (n > 0) ia_man_parse(&c->man, (const char *)c->bak, (size_t)n);
 }
@@ -204,7 +204,7 @@ static int man_save(ia_ctx *c)
         c->io->remove(c->io->ctx, IA_MANIFEST);
         return 0;
     }
-    n = ia_man_format(&c->man, (char *)c->bak, IA_FILECAP);
+    n = ia_man_format(&c->man, (char *)c->bak, IA_MANCAP);
     return n ? c->io->write(c->io->ctx, IA_MANIFEST, c->bak, n) : -1;
 }
 
@@ -321,7 +321,7 @@ size_t ia_status(ia_ctx *c, char *out, size_t cap)
 {
     ia_man_stats st;
     int w;
-    if (c->io->read(c->io->ctx, IA_MANIFEST, c->bak, IA_FILECAP) == -1) {
+    if (c->io->read(c->io->ctx, IA_MANIFEST, c->bak, IA_MANCAP) == -1) {
         w = snprintf(out, cap, "icons=original\n");
     } else {
         man_load(c);
