@@ -23,9 +23,11 @@
 /* the dat path for the icon-style value ("outline" picks IA_DAT_OUTLINE; "filled", NULL and unknown values pick IA_DAT) */
 const char *ia_dat_for_style(const char *style);
 #define IA_MAXPATH    160
-/* manifest lines: defaults (12) + table path rows + the all-volume walk; a full manifest skips the write */
-#define IA_MAXENT     512
+/* manifest lines: defaults + table path rows + the all-volume walk (rig 92 held 692 icons: a 512 cap left 153 old, the walk order
+ * decided which). A full manifest still skips the write. */
+#define IA_MAXENT     2048
 #define IA_FORMCAP    4096      /* room for one li_form_build result (2 x 32x32 images are about 1.3 KB) */
+#define IA_MANCAP     262144    /* the manifest text buffer (c->bak), IA_MAXENT lines of about 100 bytes */
 #define IA_FILECAP    65536     /* biggest .info file handled (the size of each buffer the caller gives ia_ctx) */
 
 typedef struct ia_entry {
@@ -79,7 +81,7 @@ typedef struct ia_ctx {
     const ia_io *io;
     const li_dat *dat;
     int      variant;           /* li_pick_variant of the Workbench screen */
-    uint8_t *cur, *out, *bak;   /* three IA_FILECAP byte buffers */
+    uint8_t *cur, *out, *bak;   /* cur and out: IA_FILECAP bytes each; bak: IA_MANCAP bytes */
     ia_manifest man;
     li_file  lf_a, lf_b;        /* parsed-file scratch of apply_one and ia_restore (two li_file are ~4 KB: kept out of their frames) */
     /* OS 3.2+: the 16 icon slot colours (ip_colours of the current theme); then APPLY also writes our FORM ICON tail

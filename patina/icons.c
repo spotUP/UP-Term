@@ -450,12 +450,12 @@ int main(void)
         PutStr((STRPTR)TEMPLATE_TEXT);
         return 5;
     }
-    c = (ia_ctx *)AllocVec(sizeof *c + 4 * IA_FILECAP, MEMF_PUBLIC | MEMF_CLEAR);
+    c = (ia_ctx *)AllocVec(sizeof *c + 3 * IA_FILECAP + IA_MANCAP, MEMF_PUBLIC | MEMF_CLEAR);
     if (!c) return 10;
     c->cur = (uint8_t *)(c + 1);
     c->out = c->cur + IA_FILECAP;
     c->bak = c->out + IA_FILECAP;
-    g_chk = c->bak + IA_FILECAP;
+    g_chk = c->bak + IA_MANCAP;
     {
         static ia_io io;
         io.ctx = NULL; io.read = io_read; io.write = io_write; io.remove = io_remove; io.dflt = io_dflt; io.note = io_note;

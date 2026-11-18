@@ -113,7 +113,7 @@ static size_t make_dat(uint8_t *d, unsigned bias)
 
 static uint8_t g_dat[IA_FILECAP], g_tool[IA_FILECAP], g_drawer[IA_FILECAP];
 static long g_tool_n, g_drawer_n;
-static uint8_t g_cur[IA_FILECAP], g_out[IA_FILECAP], g_bak[IA_FILECAP];
+static uint8_t g_cur[IA_FILECAP], g_out[IA_FILECAP], g_bak[IA_MANCAP];
 static li_dat g_d, g_d2;            /* the Filled set and the Outline set (different images, same names) */
 static uint8_t g_dat2[IA_FILECAP];
 
@@ -182,6 +182,21 @@ static void test_pure(void)
     CI("cmd help", ia_parse_cmd("?"), IA_CMD_HELP);
     CI("cmd none", ia_parse_cmd(""), IA_CMD_NONE);
     CI("cmd prefix is not a command", ia_parse_cmd("APPLYX"), IA_CMD_NONE);
+
+    {   /* S91: a full-size volume set (rig 92: 692 icons) fits the manifest; a 512 cap left 153 icons on the old image */
+        static ia_manifest m, m2;
+        ia_entry e;
+        int i;
+        memset(&e, 0, sizeof e);
+        m.n = 0;
+        for (i = 0; i < 1200; i++) {
+            snprintf(e.path, sizeof e.path, "Work:Some/Deeper/Drawer/Icon%04d.info", i);
+            ia_man_put(&m, &e);
+        }
+        CI("manifest holds 1200 entries", m.n, 1200);
+        CI("manifest text of 1200 entries fits its buffer", ia_man_format(&m, (char *)g_bak, IA_MANCAP) > 0, 1);
+        CI("manifest text parses back whole", ia_man_parse(&m2, (const char *)g_bak, ia_man_format(&m, (char *)g_bak, IA_MANCAP)), 1200);
+    }
 }
 
 static void test_flow(void)
