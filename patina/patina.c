@@ -614,6 +614,32 @@ static int demo_cli(const char *a)
     return n == 0 ? 0 : 10;
 }
 
+/* `Patina QUIT`: the CLI form of the ARexx QUIT, for the Uninstall (a WBStartup-started Patina is no CLI process, so
+ * Break cannot reach it). Waits up to 10 s for the port to go. -1: not a QUIT line; 0 quit; 5 not running; 10 no answer. */
+static int quit_cli(const char *a)
+{
+    static char out[REXX_HOST_OUT];
+    int i;
+    while (*a == ' ' || *a == '\t')
+        a++;
+    if (!starts(a, "QUIT"))
+        return -1;
+    for (a += 4; *a == ' ' || *a == '\t' || *a == '\n'; a++)
+        ;
+    if (*a)
+        return -1;
+    if (!FindPort((STRPTR)"PATINA")) {
+        PutStr((STRPTR)"Patina is not running\n");
+        return 5;
+    }
+    out[0] = 0;
+    if (rexx_send("PATINA", "QUIT", out, (int)sizeof out) != 0)
+        return 10;
+    for (i = 0; i < 50 && FindPort((STRPTR)"PATINA"); i++)
+        Delay(10);
+    return FindPort((STRPTR)"PATINA") ? 10 : 0;
+}
+
 int main(void)
 {
     ULONG sigs, cxs, rxs, nos, nts, lps, wrs, cws, tks;
@@ -624,8 +650,10 @@ int main(void)
     int pri = 0;
     if ((ev = demo_cli((const char *)GetArgStr())) >= 0)
         return ev;
+    if ((ev = quit_cli((const char *)GetArgStr())) >= 0)
+        return ev;
     if (qmark_line((const char *)GetArgStr())) { /* `Patina ?` shows the template and ends */
-        PutStr((STRPTR)"CX_PRIORITY/K/N  |  DEMO [STOP|STATUS|n]\n");
+        PutStr((STRPTR)"CX_PRIORITY/K/N  |  DEMO [STOP|STATUS|n]  |  QUIT\n");
         return 0;
     }
     if ((rda = ReadArgs((STRPTR)"CX_PRIORITY/K/N", args, 0))) {
