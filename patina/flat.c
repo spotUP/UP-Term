@@ -442,6 +442,20 @@ static void c2_clone_note_empty(flatshared *r, struct impDraw *d, struct Image *
     r->cf_lwhich = which; r->cf_lsize = ((ULONG)im->Width << 8) | (ULONG)im->Height; r->cf_lnz = (ULONG)nz; r->cf_lmarks = mk;
 }
 
+/* S91 diagnostics: the facts of the last zoom clone draw per window state. Own function (flat budget). Called under cl_ss. */
+static void c2_zoom_note(flatshared *r, struct impDraw *d, struct Image *im)
+{
+    struct Layer *fl = d->imp_RPort->Layer;
+    ULONG *z;
+    if (!fl || !fl->Window)
+        return;
+    z = r->zc[(((struct Window *)fl->Window)->Flags & WFLG_WINDOWACTIVE) != 0];
+    z[0]++; z[1] = d->imp_State; z[2] = ((ULONG)im->Width << 8) | (ULONG)im->Height; z[3] = (ULONG)cl_in.band_rows & 0xFFFF;
+    z[4] = (((ULONG)cl_in.frame_pen & 0xFFFF) << 16) | ((ULONG)cl_in.text_pen & 0xFFFF);
+    z[5] = (((ULONG)cl_in.edge_pen & 0xFFFF) << 16) | ((ULONG)cl_in.dbg_glyph & 0xFFFF);
+    z[6] = (((ULONG)cl_in.dbg_gpen & 0xFFFF) << 16) | ((ULONG)cl_in.dbg_bpen & 0xFFFF);
+}
+
 /* The counters of a failed clone draw, by the reason the environment recorded (flat budget: a function of its own). */
 static void c2_clone_note_fail(flatshared *r, ULONG which, int got, int why)
 {
@@ -620,6 +634,8 @@ static int c2_clone(struct Hook *hk, Object *obj, Msg msg, int reg, ULONG which,
     }
     if (got && rc == FLAT_CLONE_FAIL && env.why == CLONE_WHY_NONE)
         c2_clone_note_empty(r, d, im, which);
+    if (got && which == FLAT_W_ZOOM && (rc == FLAT_CLONE_OK || rc == FLAT_CLONE_FAIL))
+        c2_zoom_note(r, d, im);
     if (got)
         ReleaseSemaphore(&cl_ss);
     if (rc == FLAT_CLONE_OK) {
@@ -648,6 +664,30 @@ static int c2_glyph(Object *obj, Msg msg, ULONG which, const c2_pens *p)
     return drawn;
 }
 #define NOWHICH 0xFFFFFFFFUL
+/* DOPUS-ARROW-INACTIVE: the arrow of a border gadget whose image has no OM_NEW record (made before the hook went in), from the
+ * pair's geometry. Edges are made absolute (RELBOTTOM / RELRIGHT add the window size) so a mixed pair still orders. Its own
+ * function: the extra locals stay out of c2_which_31's frame (flat budget). */
+static int c2_arrow_geom(struct Window *w, Object *obj)
+{
+    struct Gadget *g, *o;
+    int n, m, b = 0, e, oe, other = 0, greater = 0;
+    for (g = w ? w->FirstGadget : NULL, n = 0; g && n < 64 && !b; g = g->NextGadget, n++)
+        if ((b = flat_arrow_border(g->GadgetType, g->Activation, g->GadgetRender, g->SelectRender, obj)) != 0)
+            break;
+    if (!b)
+        return -1;
+    e = b == 1 ? g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? w->Height : 0) : g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? w->Width : 0);
+    for (o = w->FirstGadget, m = 0; o && m < 64; o = o->NextGadget, m++) {
+        if (o == g || !o->GadgetRender || flat_arrow_border(o->GadgetType, o->Activation, o->GadgetRender, o->SelectRender, o->GadgetRender) != b)
+            continue;
+        oe = b == 1 ? o->TopEdge + ((o->Flags & GFLG_RELBOTTOM) ? w->Height : 0) : o->LeftEdge + ((o->Flags & GFLG_RELRIGHT) ? w->Width : 0);
+        other = 1;
+        if (oe > e)
+            greater = 1;
+    }
+    return flat_arrow_which(b, other, greater);
+}
+
 /* Kickstart 3.1 sysiclass does not answer OM_GET: find the window gadget that renders this image. The layer
  * of the rastport belongs to the window being drawn; reading its gadget list from Intuition's own drawing
  * context needs no Forbid (the list only changes through Add/RemoveGList by the window's owner). NOWHICH when none does. */
@@ -662,6 +702,8 @@ static ULONG c2_which_31(Object *obj, struct impDraw *d)
         wh = flat_gadget_which(g->GadgetType, g->GadgetRender, g->SelectRender, obj);
     if (wh < 0)
         wh = img_lookup(obj, NULL);     /* DOPUS-ARROW-WHICH: an app-made arrow / zoom image, recorded at its OM_NEW */
+    if (wh < 0 && w)
+        wh = c2_arrow_geom(w, obj);    /* DOPUS-ARROW-INACTIVE: no record, no system gadget: the pair's geometry */
     if (wh < 0 && lay && !w)
         wh = c7_screen_which(lay, obj);
     return wh < 0 ? NOWHICH : (ULONG)wh;
@@ -683,8 +725,10 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     /* FLAT-OUTER-EDGE: the window's 1 px outer edge in the accent pen is NOT drawn here. Intuition repaints the four outer
      * border edges last in every frame redraw, as four 1 px RectFill calls through graphics.library, which erases anything
      * drawn from this hook. The ring is painted by the RectFill patch (flat_rf_c, below), which recolours exactly those fills. */
-    if (GetAttr(SYSIA_Which, obj, &which) == 0 && (which = c2_which_31(obj, d)) == NOWHICH)
+    if (GetAttr(SYSIA_Which, obj, &which) == 0 && (which = c2_which_31(obj, d)) == NOWHICH) {
+        r->nw_count++; r->nw_state = d->imp_State; r->nw_size = ((ULONG)im->Width << 8) | (ULONG)im->Height;     /* S91 diagnostic */
         return 0;
+    }
     raw_which = which;
     which = flat_which_alias(which);
     c2_get_pens(r, d, im, which, &pens);
@@ -2971,7 +3015,9 @@ static void print_status(void)
     WORD traw[2][5];
     unsigned long scmin = 0, schw = 0, scstk = 0, scno = 0, scb256 = 0, scb8a = 0, scb8b = 0, schdr = 0, scguard = 0, scdeep = 0;
     char sctask[16] = "";
-    unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
+    unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0, nwc = 0, nws = 0, nwz = 0;
+    ULONG zcc[2][7];
+    int zi;
     int apx = 0, sring[16][9], sn = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0, 0, 0 };
     unsigned long dbevel = 0, dface = 0, dnopix = 0, d5draws = 0, darrow = 0;
@@ -2998,6 +3044,7 @@ static void print_status(void)
         cdraws = r->cdraws; cfall = r->cfall;
         cfb = r->cf_busy; cfd = r->cf_nodri; cfm = r->cf_nobm; cfe = r->cf_empty; cfk = r->cf_mask;
         cfi = r->cf_ids; clw = r->cf_lwhich; cls = r->cf_lsize; cln = r->cf_lnz; clm = r->cf_lmarks;
+        nwc = r->nw_count; nws = r->nw_state; nwz = r->nw_size; memcpy(zcc, r->zc, sizeof zcc);
         apx = r->aspect_px; alooks = r->aspect_looks;
         memcpy(sring, r->sring, sizeof sring); sn = (int)(r->sring_n > 16 ? 16 : r->sring_n);
         lbeat = r->beat; lstage = r->stage; lref = r->refuse; lnref = r->nrefuse;
@@ -3164,6 +3211,32 @@ static void print_status(void)
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
+        n = 0;
+        put_word(line, &n, "nowhich n=");           put_num(line, &n, nwc);
+        put_word(line, &n, " last state=");         put_num(line, &n, nws);
+        put_word(line, &n, " w=");                  put_num(line, &n, nwz >> 8);
+        put_word(line, &n, " h=");                  put_num(line, &n, nwz & 255);
+        line[n] = 0;
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+        for (zi = 0; zi < 2; zi++) {
+            ULONG *z = zcc[zi];
+            n = 0;
+            put_word(line, &n, zi ? "zoom active draws=" : "zoom inactive draws="); put_num(line, &n, z[0]);
+            put_word(line, &n, " state=");          put_num(line, &n, z[1]);
+            put_word(line, &n, " w=");              put_num(line, &n, z[2] >> 8);
+            put_word(line, &n, " h=");              put_num(line, &n, z[2] & 255);
+            put_word(line, &n, " band=");           put_num(line, &n, z[3]);
+            put_word(line, &n, " frame=");          put_num(line, &n, z[4] >> 16);
+            put_word(line, &n, " text=");           put_num(line, &n, z[4] & 0xFFFF);
+            put_word(line, &n, " edge=");           put_num(line, &n, z[5] >> 16);
+            put_word(line, &n, " glyph=");          put_num(line, &n, z[5] & 0xFFFF);
+            put_word(line, &n, " gpen=");           put_num(line, &n, z[6] >> 16);
+            put_word(line, &n, " bpen=");           put_num(line, &n, z[6] & 0xFFFF);
+            line[n] = 0;
+            PutStr((STRPTR)line);
+            PutStr((STRPTR)"\n");
+        }
     }
     if (found) {                                    /* LUCIDE L7: the icon pens held on the Workbench screen */
         if (ipd_status_line(line, sizeof line)) {

@@ -214,7 +214,8 @@ int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long meth
 typedef struct flat_clone_in {
     unsigned long which, method, ids;
     int ox, oy, w, h, frame_pen, knob_pen, text_pen, band_rows, edge_pen;
+    int dbg_glyph, dbg_gpen, dbg_bpen;     /* out, diagnostics (S91): glyph pixels of the clone map, the pens chosen */
 } flat_clone_in;
-int flat_clone_draw_in(const flat_state *s, const flat_clone_in *in, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch);
+int flat_clone_draw_in(const flat_state *s, flat_clone_in *in, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch);
 /* scratch: FLAT_CLONE_SCRATCH bytes owned by the caller for the call. band_rows: box rows y < band_rows are filled with the frame/box pen, the rest with edge_pen (>= 0; -1 keeps the box pen); band_rows >= h paints the whole box as before. text_pen: >= 0 replaces the pen of every unselected glyph (active, inactive, disabled: S32-INACTIVE-BAR), the pen the title text uses on the band or the inactive tone of an inactive window arrow; -1 keeps flat_glyph_pen. */
 #endif

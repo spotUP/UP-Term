@@ -460,6 +460,22 @@ int flat_gadget_which(unsigned gadget_type, const void *gadget_render, const voi
     return flat_which_from_gtype(gadget_type);
 }
 
+int flat_arrow_border(unsigned gadget_type, unsigned activation, const void *gadget_render, const void *select_render, const void *image)
+{
+    if ((gadget_type & 0x8000u) || (gadget_type & 7u) != 5u || !image || (gadget_render != image && select_render != image))   /* GTYP_CUSTOMGADGET only */
+        return 0;
+    return (activation & 0x20u) ? 1 : (activation & 0x40u) ? 2 : 0;
+}
+
+int flat_arrow_which(int border, int has_other, int other_greater)
+{
+    if (!has_other || (border != 1 && border != 2))
+        return -1;
+    if (border == 1)
+        return other_greater ? FLAT_W_UP : FLAT_W_DOWN;
+    return other_greater ? FLAT_W_LEFT : FLAT_W_RIGHT;
+}
+
 int flat_img_record(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size)
 {
     int i, free_i = -1;

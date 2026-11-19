@@ -330,6 +330,16 @@ int flat_which_from_gtype(unsigned gadget_type);
  * so flat.c walks the screen's list with this too. */
 int flat_gadget_which(unsigned gadget_type, const void *gadget_render, const void *select_render, const void *image);
 
+/* DOPUS-ARROW-INACTIVE: the border a scroller-arrow gadget sits in, read from the gadget alone (no OM_NEW record needed): 1 right
+ * border (a vertical pair), 2 bottom border (a horizontal pair), 0 when it is not one. The gadget must be an app gadget (not
+ * GTYP_SYSGADGET) of type GTYP_CUSTOMGADGET (a buttongclass gadget; prop and string gadgets are 3 / 4) whose GadgetRender or
+ * SelectRender is `image`, with GACT_RIGHTBORDER (0x20) or GACT_BOTTOMBORDER (0x40) set in Activation. */
+int flat_arrow_border(unsigned gadget_type, unsigned activation, const void *gadget_render, const void *select_render, const void *image);
+/* The arrow of the gadget in `border` (flat_arrow_border's result): has_other = another such gadget sits in the same border,
+ * other_greater = one of them has a greater (effective, RELBOTTOM / RELRIGHT resolved) TopEdge / LeftEdge. Vertical: greater
+ * other -> UP else DOWN; horizontal: LEFT else RIGHT. -1 (stock draws) when it has no partner or border is 0. */
+int flat_arrow_which(int border, int has_other, int other_greater);
+
 /* DOPUS-ARROW-WHICH: Kickstart 3.1 sysiclass has no OM_GET, and an app-made scroller arrow (sysiclass image inside a buttongclass
  * gadget: DOpus listers, MultiView) is no Intuition system gadget, so flat_gadget_which never finds it. flat.c records the
  * SYSIA_Which / SYSIA_Size of every arrow image (LEFT 0x0A .. DOWN 0x0D) at OM_NEW in this fixed table, keyed by the object pointer,
