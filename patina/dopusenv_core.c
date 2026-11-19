@@ -72,3 +72,14 @@ static int ieq_prefix(const char *s, const char *pre)
 int de_is_ours(const char *cur) { return cur && (ieq_prefix(cur, DE_BANK_A) || ieq_prefix(cur, DE_BANK_B) || ieq_prefix(cur, DE_BANK_C)); }
 int de_may_replace(const char *cur) { return cur && (de_is_ours(cur) || (ieq_prefix(cur, DE_STOCK) && cur[sizeof(DE_STOCK) - 1] == 0)); }
 int de_may_restore(const char *cur) { return de_is_ours(cur); }
+
+/* FLATTEN SOURCE: the user's own bank to flatten from, or NULL when the stock flow applies. A custom path (not stock, not ours) is its own
+ * source. Our flattened copy (DE_BANK_C) goes back to the saved original, never to the copy; a saved path that is ours is never trusted. */
+const char *de_orig_pick(const char *cur, const char *saved)
+{
+    if (!cur || !cur[0]) return NULL;
+    if (ieq_prefix(cur, DE_BANK_A) || ieq_prefix(cur, DE_BANK_B)) return NULL;   /* the stock flat banks; DE_BANK_C also matches bank A */
+    if (ieq_prefix(cur, DE_BANK_C)) return (saved && saved[0] && !de_is_ours(saved)) ? saved : NULL;
+    if (de_is_ours(cur) || (ieq_prefix(cur, DE_STOCK) && cur[sizeof(DE_STOCK) - 1] == 0)) return NULL;
+    return cur;
+}

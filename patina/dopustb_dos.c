@@ -16,6 +16,7 @@
 #include "dopustb_dos.h"
 #include "dopustb_core.h"
 #include "dopusenv_core.h"
+#include "dopustb_bank_core.h"
 #include "desk_dos.h"
 #include "menu_font.h"
 #include "rexx_host.h"
@@ -178,83 +179,183 @@ static void dtd_env_recover(const char *name, const char *tmp, const char *old)
         DeleteFile((STRPTR)old);
 }
 
-/* Rewrites TBAR of one environment file to path; want_restore 1: only when the current path is ours (stock goes back), else only when it is
- * stock or ours and differs. The original stays intact until the new file is complete. Returns 1 when changed. */
-static int dtd_env_one(const char *name, const char *path, int want_restore)
+/* Whole file into a new AllocVec buffer of size * (1 + mul) + add bytes (caller FreeVecs); 0 when missing, empty or over DTD_ENV_MAX. */
+static uint8_t *dtd_slurp(const char *path, long mul, long add, long *size)
 {
-    char tmp[64], old[64], cur[DE_PATHMAX];
-    BPTR f;
+    BPTR f = Open((STRPTR)path, MODE_OLDFILE);
     struct FileInfoBlock *fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
-    uint8_t *in = 0, *out;
-    long len = 0, n;
-    int done = 0;
-    if (strlen(name) + 5 > sizeof tmp) {
-        if (fib)
-            FreeDosObject(DOS_FIB, fib);
-        return 0;
-    }
-    strcpy(tmp, name);
-    strcat(tmp, ".new");
-    strcpy(old, name);
-    strcat(old, ".old");
-    dtd_env_recover(name, tmp, old);
-    f = Open((STRPTR)name, MODE_OLDFILE);
+    uint8_t *buf = 0;
     if (f && fib && ExamineFH(f, fib) && fib->fib_Size > 0 && fib->fib_Size < DTD_ENV_MAX) {
-        len = fib->fib_Size;
-        in = (uint8_t *)AllocVec((ULONG)(2 * len + DE_PATHMAX), MEMF_PUBLIC);
-        if (in && Read(f, in, len) != len) {
-            FreeVec(in);
-            in = 0;
+        *size = fib->fib_Size;
+        buf = (uint8_t *)AllocVec((ULONG)(*size * (1 + mul) + add), MEMF_PUBLIC);
+        if (buf && Read(f, buf, *size) != *size) {
+            FreeVec(buf);
+            buf = 0;
         }
     }
     if (f)
         Close(f);
-    if (in && de_tbar_get(in, (size_t)len, cur, sizeof cur) == DE_OK &&
-        (want_restore ? de_may_restore(cur) : (de_may_replace(cur) && strcmp(cur, path) != 0))) {
-        out = in + len;
-        n = de_tbar_set(in, (size_t)len, path, out, (size_t)(len + DE_PATHMAX));
-        if (n > 0 && (f = Open((STRPTR)tmp, MODE_NEWFILE)) != 0) {
-            int ok = Write(f, out, n) == n;
-            Close(f);
-            if (ok && Rename((STRPTR)name, (STRPTR)old)) {
-                if (Rename((STRPTR)tmp, (STRPTR)name)) {
-                    DeleteFile((STRPTR)old);
-                    done = 1;
-                } else {
-                    Rename((STRPTR)old, (STRPTR)name);
-                }
-            }
-            if (!done)
-                DeleteFile((STRPTR)tmp);
-        }
-    }
-    if (in)
-        FreeVec(in);
     if (fib)
         FreeDosObject(DOS_FIB, fib);
+    return buf;
+}
+
+/* name.tmp written whole, then renamed over name (an existing name is replaced only after the new file is complete). 1 when done. */
+static int dtd_put(const char *name, const void *data, long n)
+{
+    char tmp[DE_PATHMAX + 8];
+    BPTR f;
+    int ok = 0;
+    if (strlen(name) + 5 > sizeof tmp)
+        return 0;
+    strcpy(tmp, name);
+    strcat(tmp, ".tmp");
+    if ((f = Open((STRPTR)tmp, MODE_NEWFILE)) != 0) {
+        ok = Write(f, (APTR)data, n) == n;
+        Close(f);
+    }
+    if (ok) {
+        DeleteFile((STRPTR)name);
+        ok = Rename((STRPTR)tmp, (STRPTR)name) != 0;
+    }
+    if (!ok)
+        DeleteFile((STRPTR)tmp);
+    return ok;
+}
+
+/* The saved original TBAR path of one env file: a text file name + ".orig" holding the path. out "" when none. */
+static void dtd_orig_get(const char *name, char *out)
+{
+    char rec[80];
+    BPTR f;
+    long n = 0;
+    out[0] = 0;
+    strcpy(rec, name);
+    strcat(rec, ".orig");
+    if ((f = Open((STRPTR)rec, MODE_OLDFILE)) != 0) {
+        n = Read(f, out, DE_PATHMAX - 1);
+        Close(f);
+    }
+    out[n > 0 ? n : 0] = 0;
+    for (n = 0; out[n]; n++)
+        if (out[n] == '\n' || out[n] == '\r') {
+            out[n] = 0;
+            break;
+        }
+}
+
+/* The user's bank at orig flattened for set into the dt_bank_name file (copy). The original is only read. 1 when the copy is complete. */
+static int dtd_bank_make(const char *orig, const char *set, char *copy)
+{
+    long len = 0, n;
+    uint8_t *in, *out;
+    int ok = 0;
+    if (dt_bank_name(orig, set, copy, DE_PATHMAX) != 0 || (in = dtd_slurp(orig, 2, 1024, &len)) == 0)
+        return 0;
+    out = in + len;                                    /* the button count is not cheap to get: output cap is len * 2 + 1024 */
+    n = dt_bank_flatten(in, len, set, out, len * 2 + 1024);
+    if (n > 0)
+        ok = dtd_put(copy, out, n);                    /* DTB_BAD / DTB_FULL: nothing written */
+    FreeVec(in);
+    return ok;
+}
+
+/* Rewrites TBAR of one environment file. want_restore 1: only when the current path is ours; the saved original (name.orig) goes back with
+ * its record and our copy removed, else stock. want_restore 0: a custom bank is flattened for set into our copy (original saved once, never
+ * written), a stock or our bank is pointed at path when it differs. The old env file stays intact until the new one is complete; on any
+ * failure TBAR is left alone. Returns 1 when changed. */
+static int dtd_env_one(const char *name, const char *path, const char *set, int want_restore)
+{
+    char tmp[64], old[64], rec[80], cur[DE_PATHMAX], saved[DE_PATHMAX], copy[DE_PATHMAX];
+    BPTR f;
+    uint8_t *in = 0, *out;
+    const char *orig = 0, *prev = 0, *target = path;
+    long len = 0, n;
+    int done = 0, made = 0;
+    if (strlen(name) + 5 > sizeof tmp)
+        return 0;
+    strcpy(tmp, name);
+    strcat(tmp, ".new");
+    strcpy(old, name);
+    strcat(old, ".old");
+    strcpy(rec, name);
+    strcat(rec, ".orig");
+    dtd_env_recover(name, tmp, old);
+    in = dtd_slurp(name, 1, DE_PATHMAX, &len);    /* output needs at most len + a longer path */
+    if (in && de_tbar_get(in, (size_t)len, cur, sizeof cur) == DE_OK) {
+        dtd_orig_get(name, saved);
+        orig = de_orig_pick(cur, saved);
+        if (orig && orig != cur)
+            prev = cur;                               /* cur is our flattened copy of orig */
+        if (want_restore) {
+            if (!de_may_restore(cur))
+                goto out_free;
+            if (orig)
+                target = orig;
+        } else if (orig) {
+            if (!dtd_bank_make(orig, set, copy))     /* unreadable or unparsable original: TBAR stays */
+                goto out_free;
+            made = 1;
+            if (orig == cur && !dtd_put(rec, cur, (long)strlen(cur))) {   /* the original is recorded before TBAR moves */
+                DeleteFile((STRPTR)copy);
+                goto out_free;
+            }
+            target = copy;
+        } else if (!(de_may_replace(cur) && strcmp(cur, path) != 0))
+            goto out_free;
+        if (!strcmp(cur, target))
+            done = made;                              /* same path: the copy was rewritten in place */
+        else {
+            out = in + len;
+            n = de_tbar_set(in, (size_t)len, target, out, (size_t)(len + DE_PATHMAX));
+            if (n > 0 && (f = Open((STRPTR)tmp, MODE_NEWFILE)) != 0) {
+                int ok = Write(f, out, n) == n;
+                Close(f);
+                if (ok && Rename((STRPTR)name, (STRPTR)old)) {
+                    if (Rename((STRPTR)tmp, (STRPTR)name)) {
+                        DeleteFile((STRPTR)old);
+                        done = 1;
+                    } else {
+                        Rename((STRPTR)old, (STRPTR)name);
+                    }
+                }
+                if (!done)
+                    DeleteFile((STRPTR)tmp);
+            }
+            if (!done && made && strcmp(copy, cur))
+                DeleteFile((STRPTR)copy);
+        }
+        if (done && prev && strcmp(prev, target))
+            DeleteFile((STRPTR)prev);                 /* the previous flattened copy, only ever ours (DE_BANK_C) */
+        if (done && want_restore && orig)
+            DeleteFile((STRPTR)rec);
+    }
+out_free:
+    if (in)
+        FreeVec(in);
     return done;
 }
 
-static int dtd_env_all(const char *path, int want_restore)
+static int dtd_env_all(const char *path, const char *set, int want_restore)
 {
     struct Process *me = (struct Process *)FindTask(0);
     APTR oldwin = me->pr_WindowPtr;
     int n, w = 0;
     me->pr_WindowPtr = (APTR)-1;
     for (n = 0; n < 2; n++)
-        w += dtd_env_one(dtd_env_files[n], path, want_restore);
+        w += dtd_env_one(dtd_env_files[n], path, set, want_restore);
     me->pr_WindowPtr = oldwin;
     return w;
 }
 
-int dopustb_env_apply(const char *bank)
+int dopustb_env_apply(const char *bank, const char *set)
 {
-    return dtd_env_all(bank, 0);
+    return dtd_env_all(bank, set, 0);
 }
 
 int dopustb_env_restore(void)
 {
-    return dtd_env_all(DE_STOCK, 1);
+    return dtd_env_all(DE_STOCK, "", 1);
 }
 
 /* Every brush of the set's drawer gets the theme's blend. Returns the number of files rewritten. */
@@ -291,7 +392,7 @@ static int dtd_recolour(const char *set, const uint8_t rgb[DT_PENS][3], void *ud
     dtd_arrow_copy(dir, DTD_ARROW_DIR, 1);       /* after the blend, so the arrow carries it too */
     strcpy(path, DOPUS_TOOLBAR_FLAT);            /* new listers read their bank from the environment files */
     strcat(path, set);
-    dopustb_env_apply(path);
+    dopustb_env_apply(path, set);
     return changed;
 }
 

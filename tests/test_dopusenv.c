@@ -101,4 +101,10 @@ void suite_dopusenv(void)
     CK("restore from our bank", de_may_restore("dopus5:buttons/patina-toolbar-filled-24"));
     CK("no restore of stock", !de_may_restore(DE_STOCK));
     CK("no restore of a user path", !de_may_restore("DH1:Mine/toolbar"));
+    CK("pick: custom is its own source", strcmp(de_orig_pick("DH1:Mine/toolbar", NULL), "DH1:Mine/toolbar") == 0);
+    CK("pick: custom wins over a stale record", strcmp(de_orig_pick("DH1:New", "DH1:Old"), "DH1:New") == 0);
+    CK("pick: stock and stock flat banks use the stock flow", !de_orig_pick(DE_STOCK, "DH1:Old") && !de_orig_pick("DOpus5:Buttons/Patina-toolbar-filled-24", "DH1:Old"));
+    CK("pick: copy goes back to the saved original", strcmp(de_orig_pick("DOpus5:Buttons/Patina-mybar-filled-24", "DH1:Mine/mybar"), "DH1:Mine/mybar") == 0);
+    CK("pick: copy without a usable record is stock flow", !de_orig_pick("DOpus5:Buttons/Patina-mybar-filled-24", NULL) && !de_orig_pick("DOpus5:Buttons/Patina-mybar-filled-24", "") && !de_orig_pick("DOpus5:Buttons/Patina-mybar-filled-24", "DOpus5:Buttons/Patina-mybar-outline-16"));
+    CK("pick: empty and NULL", !de_orig_pick("", "x") && !de_orig_pick(NULL, "x"));
 }

@@ -29,5 +29,7 @@ int de_is_ours(const char *cur);
 int de_may_replace(const char *cur);
 /* RESTORE: 1 only when cur is one of our banks (then write DE_STOCK back). */
 int de_may_restore(const char *cur);
+/* The user's bank to flatten from (cur when custom, saved when cur is our flattened copy), or NULL: stock flow. */
+const char *de_orig_pick(const char *cur, const char *saved);
 
 #endif
