@@ -15,6 +15,6 @@ int dopustb_arrow_restore(void);
 /* New listers take their toolbar from the TBAR chunk of DOpus5:Environment/default and workbench (stock PROGDIR:Buttons/toolbar). apply writes
  * bank there when the current path is stock or one of our banks; restore writes the stock path back when it is one of ours. A user's own path,
  * a missing volume or file, and any write failure leave the files as they were. Returns the number of files rewritten. */
-int dopustb_env_apply(const char *bank);
+int dopustb_env_apply(const char *bank, const char *set);
 int dopustb_env_restore(void);
 #endif
