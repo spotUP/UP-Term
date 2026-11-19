@@ -1826,12 +1826,16 @@ static int icl_box(flatshared *r, struct RastPort *rp, struct Window *w, CONST_S
 {
     struct TextExtent te;
     int il, it, ir, ib;
+    /* LISTER-AA: any RastPort on the window's layer (DOpus draws through its own copies), or the GZZ border layer (titles) */
+    int border = w->BorderRPort && rp->Layer == w->BorderRPort->Layer;
+    if (rp->Layer != w->WLayer && !border)
+        return 0;
     TextExtent(rp, str, count, &te);
     b[0] = rp->cp_x + te.te_Extent.MinX;
     b[1] = rp->cp_y + te.te_Extent.MinY;
     b[2] = te.te_Extent.MaxX - te.te_Extent.MinX + 1;
     b[3] = te.te_Extent.MaxY - te.te_Extent.MinY + 1;
-    if (w->Flags & WFLG_GIMMEZEROZERO) {
+    if ((w->Flags & WFLG_GIMMEZEROZERO) && !border) {
         il = 0; it = 0; ir = w->GZZWidth - 1; ib = w->GZZHeight - 1;
     } else {   /* the whole window box: titles are drawn in the border */
         il = 0; it = 0; ir = w->Width - 1; ib = w->Height - 1;
@@ -1898,7 +1902,7 @@ static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG
     if (!icl_ready || !rp->Layer || !rp->Layer->Window || !rp->Font || !rp->BitMap || count == 0)
         return 0;
     w = (struct Window *)rp->Layer->Window;
-    if (rp != w->RPort || !icl_box(r, rp, w, str, count, b))
+    if (!icl_box(r, rp, w, str, count, b))
         return 0;
     depth = (int)GetBitMapAttr(rp->BitMap, BMA_DEPTH);
     if (depth > 8 && !icl_cgx)
