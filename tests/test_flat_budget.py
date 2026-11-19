@@ -20,11 +20,13 @@ ENTRY_MAX = 64
 HELPER_MAX = 80
 CHAIN_MAX = 384
 HEADROOM_MIN = 64          # the deepest chain must leave this many bytes under CHAIN_MAX (S56-FLAT-HEADROOM)
-ENTRIES = ('_c2_disp_reg', '_d5_disp_reg', '_c2_disp_stk', '_c8_disp_reg', '_c8_disp_stk', '_flat_rf_c', '_flat_tx_c', '_flat_cg_c')
+ENTRIES = ('_c2_disp_reg', '_d5_disp_reg', '_c2_disp_stk', '_c8_disp_reg', '_c8_disp_stk', '_flat_rf_c', '_flat_tx_c', '_flat_cg_c',
+           '_flat_sr_c', '_flat_dr_c', '_flat_bb_c')
 # entry -> (the asm stub that calls it, the jsr operand that reaches it). The class dispatchers are reached through the
 # FLAT-UNLOAD-INFLIGHT gate (flat_dg.s): its plain `jsr` pushes one return address (4 bytes) on the caller's stack, counted here.
 DG = ('patina/flat_dg.s', '($44444444).l')
 STUBS = {'_flat_rf_c': ('patina/flat_rf.s', None), '_flat_cg_c': ('patina/flat_cg.s', None), '_flat_tx_c': ('patina/flat_tx.s', None),
+         '_flat_sr_c': ('patina/flat_mn.s', None), '_flat_dr_c': ('patina/flat_mn.s', None), '_flat_bb_c': ('patina/flat_mn.s', None),
          '_c2_disp_reg': DG, '_d5_disp_reg': DG, '_c2_disp_stk': DG, '_c8_disp_reg': DG, '_c8_disp_stk': DG}
 
 

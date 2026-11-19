@@ -100,6 +100,10 @@ static void aspect_update(flatshared *r, struct Screen *scr);
 typedef ULONG (*oldfn_reg)(__reg("a0") struct Hook *, __reg("a2") Object *, __reg("a1") Msg);
 typedef ULONG (*oldfn_stk)(struct Hook *, Object *, Msg);
 
+typedef void (*setrastfn)(__reg("a1") struct RastPort *, __reg("d0") ULONG, __reg("a6") struct Library *);
+typedef void (*drawfn)(__reg("a1") struct RastPort *, __reg("d0") LONG, __reg("d1") LONG, __reg("a6") struct Library *);
+typedef void (*bbfn)(__reg("a0") struct BitMap *, __reg("d0") LONG, __reg("d1") LONG, __reg("a1") struct RastPort *, __reg("d2") LONG,
+                     __reg("d3") LONG, __reg("d4") LONG, __reg("d5") LONG, __reg("d6") ULONG, __reg("a6") struct Library *);
 typedef void (*rectfn)(__reg("a1") struct RastPort *, __reg("d0") LONG, __reg("d1") LONG, __reg("d2") LONG, __reg("d3") LONG,
                        __reg("a6") struct Library *);
 
@@ -2079,6 +2083,7 @@ static int tx_remove(flatshared *r)
  * has a border, the rect is exactly one outer strip of the window (flat_outer_edge_match) and the caller lies in
  * Intuition's ROM code. Anything else runs the stock RectFill untouched. ---- */
 extern void flat_rf_tpl(void), flat_rf_tpl_end(void);
+extern void flat_sr_tpl(void), flat_sr_tpl_end(void), flat_dr_tpl(void), flat_dr_tpl_end(void), flat_bb_tpl(void), flat_bb_tpl_end(void);
 
 /* S32-KNOB-NONE-FRESH: XCON's scroller is a boopsi gadget (GadgetType GTYP_CUSTOMGADGET) of propgclass or a subclass. Walk OCLASS(g)
  * and cl_Super comparing cl_ID with PROPGCLASS: plain memory reads, no Intuition call (this runs inside graphics.library), depth bounded. */
@@ -2620,6 +2625,23 @@ static int rf_gbox(flatshared *r, struct RastPort *rp, const LONG *b)
     return 1;
 }
 
+/* FLAT-MENU-PANEL (owner 2026-11-19: "flat no outline and a shade lighter than the lister bg"): a ROM RectFill into the last
+ * Workbench pull-down panel bitmap (layerless, r->menu_bm) whose pen flat_menu_fill_pen gives the menu pen (the ground erases and
+ * edge strips) is drawn in it. Only that bitmap: a layerless RectFill hook without it broke the screen bar. 1 = handled. */
+static int rf_menu(flatshared *r, struct RastPort *rp, const LONG *b)
+{
+    UBYTE fg = rp->FgPen;
+    int pen = flat_menu_fill_pen((int)r->menu_pen, fg, (int)r->menu_back, (int)b[0], (int)b[1], (int)b[2], (int)b[3],
+                                 (int)GetBitMapAttr(rp->BitMap, BMA_WIDTH), (int)GetBitMapAttr(rp->BitMap, BMA_HEIGHT));
+    if (pen < 0)
+        return 0;
+    SetAPen(rp, (UBYTE)pen);
+    ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+    SetAPen(rp, fg);
+    r->mnhits++;
+    return 1;
+}
+
 void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG ret)
 {
     flatshared *r = g_r;
@@ -2633,6 +2655,10 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
     if (on && rp->Layer)
         w = (struct Window *)rp->Layer->Window;
     if (on && rp->AreaPtSz && rom && !w && ghost_menu(r, rp, b))
+        return;
+    /* a patterned fill only in the panel's stock ground pen: the separator's dotted punch through its bar image (rig 92: 00FE80DE,
+     * pattern 4444, pen 0, JAM1), so the holes show the menu pen */
+    if (on && rom && !rp->Layer && (!rp->AreaPtSz || rp->FgPen == r->menu_back) && rp->BitMap == r->menu_bm && rf_menu(r, rp, b))
         return;
     /* INSTALLER-BORDER-BUTTON (owner 2026-11-08): the erase of a Border-render push button (exact box, border_button_at) becomes the
      * rounded flat fill of the frame draw; its label comes next and the IM_DRAWFRAME after it draws no ring (c8_skip). No ROM gate:
@@ -2707,6 +2733,138 @@ static int rf_remove(flatshared *r)
         r->rslot = 0;
     }
     return rc;
+}
+
+/* FLAT-MENU-PANEL: Intuition 3.1 renders a pull-down panel into a layerless off-screen bitmap and blits it to the screen
+ * (rig 92 evidence: SetRast(pen 0) from 00FE8162, outline Move/Draw in pen 2 from 00FE7FC0/00FE7D84, panel blit from 00FE7C90).
+ * SetRast from the Intuition ROM, no layer, the active screen the Workbench and the bitmap not that screen's, fills with the menu
+ * pen (the held selection pen, flat_input_pen) and remembers the bitmap; Draw from the ROM into that bitmap draws in the menu pen,
+ * so the outline is gone. Item text, checkmarks and separators (images) are drawn by other calls and stay stock. */
+static int mn_wb_panel(flatshared *r, struct RastPort *rp, ULONG ret)
+{
+    struct Screen *sc = IntuitionBase->ActiveScreen;
+    if (!r->st.enabled || r->st.held || !rp || rp->Layer || !rp->BitMap || ret < r->irom_lo || ret >= r->irom_hi)
+        return 0;
+    return sc && (sc->Flags & SCREENTYPE) == WBENCHSCREEN && rp->BitMap != &sc->BitMap && rp->BitMap != sc->RastPort.BitMap;
+}
+
+void flat_sr_c(struct RastPort *rp, ULONG pen, ULONG ret)
+{
+    flatshared *r = g_r;
+    int menu;
+    if (mn_wb_panel(r, rp, ret)) {
+        menu = flat_input_pen(st_scr(r, NULL), rp->BitMap->Depth);
+        if (flat_menu_fill_pen(menu, (int)pen, (int)pen, 0, 0, 0, 0, 1, 1) >= 0) {
+            r->menu_bm = rp->BitMap;
+            r->menu_pen = menu;
+            r->menu_back = (LONG)pen;
+            r->mnhits++;
+            pen = (ULONG)menu;
+        }
+    }
+    ((setrastfn)r->msw.saved)(rp, pen, (struct Library *)GfxBase);
+}
+
+void flat_dr_c(struct RastPort *rp, LONG x, LONG y, ULONG ret)
+{
+    flatshared *r = g_r;
+    UBYTE fg;
+    if (!mn_wb_panel(r, rp, ret) || rp->BitMap != r->menu_bm || rp->FgPen == r->menu_pen) {
+        ((drawfn)r->nsw.saved)(rp, x, y, (struct Library *)GfxBase);
+        return;
+    }
+    fg = rp->FgPen;
+    SetAPen(rp, (UBYTE)r->menu_pen);
+    ((drawfn)r->nsw.saved)(rp, x, y, (struct Library *)GfxBase);
+    SetAPen(rp, fg);
+    r->mnhits++;
+}
+
+/* An item image (checkmark, Amiga key, separator) blitted from the ROM into that panel bitmap keeps the stock pen-0 ground: after
+ * the blit its pixels of the panel's stock ground pen (menu_back) take the menu pen. */
+void flat_bb_c(struct BitMap *src, LONG xs, LONG ys, struct RastPort *rp, LONG xd, LONG yd, LONG w, LONG h, ULONG mt, ULONG ret)
+{
+    flatshared *r = g_r;
+    LONG x, y;
+    UBYTE fg;
+    ((bbfn)r->bsw.saved)(src, (WORD)xs, (WORD)ys, rp, (WORD)xd, (WORD)yd, (WORD)w, (WORD)h, (UBYTE)mt, (struct Library *)GfxBase);
+    if (!mn_wb_panel(r, rp, ret) || rp->BitMap != r->menu_bm)
+        return;
+    /* ReadPixel/WritePixel: the panel bitmap is RTG on rig 92 (not BMF_STANDARD). Intuition's pen is put back after; a RastPort
+     * copy would break the gate stack budget. Images are small (item image, Amiga key, separator rows). */
+    fg = rp->FgPen;
+    SetAPen(rp, (ULONG)r->menu_pen);
+    for (y = yd; y < yd + h; y++)
+        for (x = xd; x < xd + w; x++)
+            if (ReadPixel(rp, x, y) == r->menu_back)
+                WritePixel(rp, x, y);
+    SetAPen(rp, fg);
+    r->mnhits++;
+}
+
+/* One graphics.library vector swap through a gate (as rf_install); after rf_install, which sets irom_lo/irom_hi and g_r. */
+static int mn_patch(flat_swap *sw, uintptr_t **slot, struct flat_gate **gate, int lvo, void *tpl, void *tpl_end)
+{
+    unsigned char *entry = (unsigned char *)GfxBase + lvo;
+    int rc;
+    if (!flat_jmp_target(entry))
+        return -100;
+    flat_swap_init(sw);
+    if (!*gate)
+        *gate = gate_make(tpl, tpl_end, 0);
+    if (!*gate)
+        return -101;
+    Forbid();
+    rc = flat_swap_install(sw, (uintptr_t *)(entry + 2), (uintptr_t)(*gate)->code);
+    if (rc == FLAT_OK) {
+        gate_open(*gate, sw->saved);
+        *slot = (uintptr_t *)(entry + 2);
+        libpatch_done((struct Library *)GfxBase);
+    }
+    Permit();
+    return rc;
+}
+
+static int mn_unpatch(flatshared *r, flat_swap *sw, uintptr_t **slot, struct flat_gate *gate)
+{
+    int rc = FLAT_NOT_INSTALLED;
+    if (!sw->installed)
+        return rc;
+    gate_close(gate);
+    Forbid();
+    rc = flat_swap_remove(sw, *slot, &r->st);
+    if (rc == FLAT_REMOVED)
+        libpatch_done((struct Library *)GfxBase);
+    Permit();
+    if (rc != FLAT_REMOVED)
+        gate_reopen(gate);
+    if (rc == FLAT_REMOVED) {
+        gate_wait(gate);
+        *slot = 0;
+    }
+    return rc;
+}
+
+static int mn_install(flatshared *r)
+{
+    if (!r->irom_hi)
+        return -100;
+    r->menu_bm = NULL;
+    if (mn_patch(&r->msw, &r->mslot, &r->mgate, FLAT_LVO_SETRAST, (void *)flat_sr_tpl, (void *)flat_sr_tpl_end) != FLAT_OK)
+        return -102;
+    if (mn_patch(&r->nsw, &r->nslot, &r->ngate, FLAT_LVO_DRAW, (void *)flat_dr_tpl, (void *)flat_dr_tpl_end) != FLAT_OK)
+        return -103;
+    return mn_patch(&r->bsw, &r->bslot, &r->bgate, FLAT_LVO_BLTBITMAPRASTPORT, (void *)flat_bb_tpl, (void *)flat_bb_tpl_end);
+}
+
+/* FLAT_STILL_CHAINED when either vector has another patch on top of ours (unload is refused, as for RectFill). */
+static int mn_remove(flatshared *r)
+{
+    if (mn_unpatch(r, &r->bsw, &r->bslot, r->bgate) == FLAT_STILL_CHAINED)
+        return FLAT_STILL_CHAINED;
+    if (mn_unpatch(r, &r->nsw, &r->nslot, r->ngate) == FLAT_STILL_CHAINED)
+        return FLAT_STILL_CHAINED;
+    return mn_unpatch(r, &r->msw, &r->mslot, r->mgate) == FLAT_STILL_CHAINED ? FLAT_STILL_CHAINED : FLAT_REMOVED;
 }
 
 /* ---- S74-TIME-ROW: gadtools.library CreateGadgetA patch (LVO -30). Workbench Time preferences builds its top row from a year
@@ -3026,7 +3184,7 @@ static void print_status(void)
     unsigned dver = 0, drev = 0;
     unsigned long dcalls = 0, dflat = 0, fcalls = 0, fflat = 0, fbusy = 0, fnostk = 0;
     int finst = 0, rinst = 0;
-    unsigned long rcalls = 0, rhits = 0, shits = 0, mhits = 0, bhits = 0, gbhits = 0, tcalls = 0, thits = 0, labels = 0, lskip = 0;
+    unsigned long rcalls = 0, rhits = 0, shits = 0, mhits = 0, mnhits = 0, mninst = 0, bhits = 0, gbhits = 0, tcalls = 0, thits = 0, labels = 0, lskip = 0;
     int tinst = 0;
     int cginst = 0, twhy = 0;   /* S74-TIME-ROW */
     unsigned long cgcalls = 0, trows = 0;
@@ -3055,7 +3213,7 @@ static void print_status(void)
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat; fbusy = r->fbusy; fnostk = r->fnostk;
         cginst = r->cgsw.installed; cgcalls = r->cgcalls; trows = r->trow.rows; twhy = r->trow.why;
         CopyMem(r->trow_raw, traw, sizeof traw);
-        rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits; gbhits = r->gbhits;
+        rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; mnhits = r->mnhits; mninst = r->msw.installed && r->nsw.installed && r->bsw.installed; bhits = r->bhits; gbhits = r->gbhits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits; labels = r->labels; lskip = r->lskip;
         scmin = r->cmin; schw = r->chw; scstk = r->cstk; scno = r->cnostk; memcpy(sctask, r->ctask, 16); sctask[15] = 0;
         scb256 = r->cb256; scb8a = r->cb8a; scb8b = r->cb8b; schdr = r->chdr; scguard = r->cguard; scdeep = r->cdeep;
@@ -3138,6 +3296,8 @@ static void print_status(void)
         put_word(line, &n, " hits=");               put_num(line, &n, rhits);
         put_word(line, &n, " shits=");              put_num(line, &n, shits);
         put_word(line, &n, " mhits=");              put_num(line, &n, mhits);
+        put_word(line, &n, " menu=");               put_num(line, &n, mninst);
+        put_word(line, &n, " mnhits=");             put_num(line, &n, mnhits);
         put_word(line, &n, " bhits=");              put_num(line, &n, bhits);
         put_word(line, &n, " gboxes=");             put_num(line, &n, gbhits);
         put_word(line, &n, " side=");               put_num(line, &n, (unsigned long)apx);
@@ -3882,6 +4042,8 @@ static int install_all(flatshared *r, poll_timer *tm, int *marker_live)
     }
     if (rf_install(r) != FLAT_OK)
         PutStr((STRPTR)"patina-flat: RectFill patch not installed\n");
+    else if (mn_install(r) != FLAT_OK)
+        PutStr((STRPTR)"patina-flat: menu panel patch not installed\n");
     icl_alloc();
     if (tx_install(r) != FLAT_OK)
         PutStr((STRPTR)"patina-flat: Text patch not installed\n");
@@ -4072,6 +4234,11 @@ int main(void)
             continue;
         }
         STG(FLAT_STG_RF_REMOVE);
+        if (mn_remove(r) == FLAT_STILL_CHAINED) {
+            refused(r, FLAT_REF_RECTFILL);
+            PutStr((STRPTR)"patina-flat: a patch is still chained on SetRast or Draw, not unloading\n");
+            continue;
+        }
         if (rf_remove(r) == FLAT_STILL_CHAINED) {
             refused(r, FLAT_REF_RECTFILL);
             PutStr((STRPTR)"patina-flat: a patch is still chained on RectFill, not unloading\n");

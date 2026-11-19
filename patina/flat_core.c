@@ -753,6 +753,19 @@ int flat_gm_pen(const flat_state *s, int depth, int rom, int window, int ptsz, u
     return s->pen_dimtext;
 }
 
+int flat_menu_fill_pen(int menu, int fg, int back, int x0, int y0, int x1, int y1, int lw, int lh)
+{
+    if (menu < 0 || fg == menu || x1 < x0 || y1 < y0)
+        return -1;
+    if (fg == back)
+        return menu;
+    if (x1 - x0 < 2 && (x0 <= 0 || x1 >= lw - 1) && 2 * (y1 - y0 + 1) >= lh)
+        return menu;                     /* left or right outline */
+    if (y1 - y0 < 2 && (y0 <= 0 || y1 >= lh - 1) && 2 * (x1 - x0 + 1) >= lw)
+        return menu;                     /* top or bottom outline */
+    return -1;
+}
+
 static int gm_pen_at(uint8_t *const *planes, int depth, int bpr, int x, int y)
 {
     int p, pen = 0;

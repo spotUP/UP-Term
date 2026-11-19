@@ -58,6 +58,16 @@ typedef struct flatshared {
     /* FLAT-BUTTON-FILL: the graphics.library Text patch (LVO -60) that draws a pressed button's label in pen_ptext */
     flat_swap tsw;
     uintptr_t *tslot;
+    /* FLAT-MENU-PANEL: the SetRast and Draw patches (pull-down panel ground and outline) and the last panel bitmap they saw */
+    flat_swap msw, nsw;
+    uintptr_t *mslot, *nslot;
+    struct flat_gate *mgate, *ngate;   /* never freed, as tgate/rgate */
+    struct BitMap *menu_bm;            /* the panel bitmap of the last Workbench menu SetRast; only compared, never dereferenced */
+    LONG menu_pen, menu_back;          /* the menu pen it filled with / the pen Intuition asked for (the panel ground) */
+    ULONG mnhits;                      /* panel grounds, outline lines and panel erases drawn in the menu pen (the sentinel) */
+    flat_swap bsw;                     /* the BltBitMapRastPort patch: item images blitted into that panel bitmap */
+    uintptr_t *bslot;
+    struct flat_gate *bgate;
     struct flat_gate *tgate, *rgate;   /* FLAT-UNLOAD-INFLIGHT: the never-freed entry blocks of the Text and RectFill patches (flat.c gate_make) */
     flat_tx tx;                 /* the armed pressed frame (flat_core.h) */
     flat_gh gh;                 /* FLAT-BUTTON-DISABLED-DIM: the recorded filled button boxes and labels (flat_core.h) */

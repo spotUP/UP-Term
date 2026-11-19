@@ -145,6 +145,9 @@ int flat_conv(unsigned intuition_version);
  * (flat_dopus_arrow_name) is drawn flat; every other image goes to the saved routine. */
 enum { FLAT_EL_DRAWBOX = 0, FLAT_EL_FIELDBOX = 1, FLAT_EL_BEVEL = 2, FLAT_EL_RENDERIMAGE = 3, FLAT_EL_COUNT = 4 };
 #define FLAT_LVO_TEXT (-60)         /* graphics.library Text (the pressed-button label patch, FLAT-BUTTON-FILL) */
+#define FLAT_LVO_SETRAST (-234)     /* graphics.library SetRast (FLAT-MENU-PANEL: the pull-down panel ground) */
+#define FLAT_LVO_DRAW (-246)        /* graphics.library Draw (FLAT-MENU-PANEL: the pull-down panel outline) */
+#define FLAT_LVO_BLTBITMAPRASTPORT (-606) /* graphics.library BltBitMapRastPort (FLAT-MENU-PANEL: item images in the panel) */
 #define FLAT_LVO_RECTFILL (-306)    /* graphics.library RectFill (the outer-edge patch) */
 #define FLAT_LVO_CREATEGADGETA (-30) /* gadtools.library CreateGadgetA (S74-TIME-ROW: the Time preferences top row) */
 #define FLAT_LVO_DRAWBOX (-696)
@@ -618,6 +621,11 @@ int flat_gm_pen(const flat_state *s, int depth, int rom, int window, int ptsz, u
  * to width by rows (bpr is the row modulo, which spans every plane in an interleaved bitmap), every pixel whose pen is not bg becomes pen dim. Refused (-1, nothing written) when the rect is empty or
  * fewer than half its pixels are bg (not a menu fill: leave it to the stock call); else the count of pixels recoloured. */
 long flat_gm_recolour(uint8_t *const *planes, int depth, int bpr, int width, int rows, int x0, int y0, int x1, int y1, int bg, int dim);
+/* FLAT-MENU-PANEL (owner 2026-11-19: "flat no outline and a shade lighter than the lister bg"): the pen for a ROM RectFill into a
+ * pull-down menu layer (no Window, not the screen bar) of lw x lh, rect x0,y0..x1,y1 in layer coordinates. The panel fill and the
+ * text erases (fg == back, the BARBLOCKPEN of the flat pens) and the outline strips along the layer edge (any other pen, at most
+ * 2 px thick, at least half the edge long) take the menu pen (the held selection pen, flat_input_pen); anything else -1: stock. */
+int flat_menu_fill_pen(int menu, int fg, int back, int x0, int y0, int x1, int y1, int lw, int lh);
 
 /* FLAT-BUTTON-FILL: the size of a frame draw. Only IM_DRAWFRAME carries Dimensions (a 0 side falls back to the image's);
  * IM_DRAW has no such field, its message words past the state are junk (3.1: 4096 x -17232). */

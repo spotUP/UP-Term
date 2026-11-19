@@ -612,6 +612,24 @@ static void test_dopus_box_outline(void)
     CHECK_INT(flat_dopus_box_draw(&s, 2, 3, 11, 8, 0, 0), 0);
 }
 
+/* FLAT-MENU-PANEL: in a 144 x 112 menu layer (rig 92 measure) the fill and erases (pen 0) and the 2 px side / 1 px top and bottom
+ * outline strips (pen 2) take the menu pen 4; a short strip or a mid-panel fill in another pen (a separator) stays stock. */
+static void test_menu_panel(void)
+{
+    CHECK_INT(flat_menu_fill_pen(4, 0, 0, 0, 0, 143, 111, 144, 112), 4);   /* panel fill */
+    CHECK_INT(flat_menu_fill_pen(4, 0, 0, 10, 20, 60, 28, 144, 112), 4);   /* text erase */
+    CHECK_INT(flat_menu_fill_pen(4, 2, 0, 0, 0, 1, 111, 144, 112), 4);     /* left outline */
+    CHECK_INT(flat_menu_fill_pen(4, 2, 0, 142, 0, 143, 111, 144, 112), 4); /* right outline */
+    CHECK_INT(flat_menu_fill_pen(4, 2, 0, 0, 0, 143, 0, 144, 112), 4);     /* top outline */
+    CHECK_INT(flat_menu_fill_pen(4, 2, 0, 0, 111, 143, 111, 144, 112), 4); /* bottom outline */
+    CHECK_INT(flat_menu_fill_pen(4, 2, 0, 4, 50, 139, 50, 144, 112), -1);  /* separator line inside: stock */
+    CHECK_INT(flat_menu_fill_pen(4, 2, 0, 0, 0, 1, 20, 144, 112), -1);     /* short edge piece: stock */
+    CHECK_INT(flat_menu_fill_pen(4, 2, 0, 0, 0, 2, 111, 144, 112), -1);    /* 3 px wide: not an outline */
+    CHECK_INT(flat_menu_fill_pen(-1, 0, 0, 0, 0, 143, 111, 144, 112), -1); /* no selection pen held */
+    CHECK_INT(flat_menu_fill_pen(4, 4, 0, 0, 0, 143, 111, 144, 112), -1);  /* already the menu pen */
+    CHECK_INT(flat_menu_fill_pen(4, 0, 0, 5, 0, 4, 9, 144, 112), -1);      /* empty rect */
+}
+
 /* OWNER-2026-11-10 INPUT-GROUND: the input ground is the held selection pen only; a string gadget is told by type, StringExtend flag
  * and presence; a frame is a string border only when every edge sits within 4 px of the gadget box (a group box is not). */
 static void test_input_ground(void)
@@ -4311,6 +4329,7 @@ void suite_flat_core(void)
     test_dopus_box_outline();
     test_dopus_no_ring();
     test_input_ground();
+    test_menu_panel();
     test_desk_flat_full();
     test_title_gadget_filter();
     test_dopus_path();
