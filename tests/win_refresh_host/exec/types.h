@@ -5,4 +5,5 @@ typedef unsigned long ULONG;
 typedef char *STRPTR;
 struct Task { int unused; };
 struct MsgPort { struct Task *mp_SigTask; };
+struct SignalSemaphore { int held; };
 #endif

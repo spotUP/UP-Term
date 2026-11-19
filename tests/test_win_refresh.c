@@ -38,13 +38,23 @@ static int listed(const struct Window *w)
     return 0;
 }
 
+static int g_layers_busy, g_unlocked_refresh;
+ULONG AttemptSemaphore(struct SignalSemaphore *s)
+{
+    if (g_layers_busy)
+        return 0;
+    s->held++;
+    return 1;
+}
+void ReleaseSemaphore(struct SignalSemaphore *s) { s->held--; }
+
 void UnlockIBase(ULONG l)
 {
     struct Window **pp;
     (void)l;
     g_unlocks++;
-    if (!g_unlink_on_unlock || g_unlocks < 2)
-        return;
+    if (!g_unlink_on_unlock || g_unlocks < 2 || g_scr.LayerInfo.Lock.held)
+        return;                                 /* CloseWindow deletes the layer under the LayerInfo lock: it waits while held */
     for (pp = &g_scr.FirstWindow; *pp; pp = &(*pp)->NextWindow)
         if (*pp == g_unlink_on_unlock) {
             *pp = g_unlink_on_unlock->NextWindow;
@@ -58,6 +68,8 @@ void RefreshWindowFrame(struct Window *w)
     int i;
     if (!listed(w))
         g_uaf++;                                /* a window closed behind our back */
+    if (!g_scr.LayerInfo.Lock.held)
+        g_unlocked_refresh++;
     for (i = 0; i < 4; i++)
         if (g_all[i] == w)
             g_refreshed[i]++;
@@ -70,6 +82,9 @@ static void reset(void)
     g_unlink_on_unlock = 0;
     g_unlocks = 0;
     win_refresh_count = 0;
+    g_layers_busy = 0;
+    g_unlocked_refresh = 0;
+    g_scr.LayerInfo.Lock.held = 0;
     IntuitionBase = &g_ib;
     g_ib.FirstScreen = &g_scr;
     g_scr.NextScreen = 0;
@@ -121,6 +136,18 @@ int main(void)
     check(g_refreshed[0] == 1 && g_refreshed[1] == 1, "own and Workbench windows refreshed when Workbench is ready");
     check(g_refreshed[2] == 0 && g_refreshed[3] == 0, "still no DOpus or portless window");
     check(done == 2 && win_refresh_count == 2, "returns 2 and win_refresh_count is 2");
+    /* FLAT-BOOT-FRAMES: win_refresh_all_frames repaints every window, DOpus's too, each under the LayerInfo lock */
+    reset();
+    g_unlink_on_unlock = &w_dopus;              /* a close attempted in the gap cannot complete while the lock is held */
+    done = win_refresh_all_frames();
+    check(g_uaf == 0, "all-frames: no use-after-free");
+    check(g_refreshed[0] == 1 && g_refreshed[1] == 1 && g_refreshed[2] == 1 && g_refreshed[3] == 1, "all-frames: every window refreshed");
+    check(g_unlocked_refresh == 0, "all-frames: each RefreshWindowFrame runs with the LayerInfo lock held");
+    check(done == 4 && g_scr.LayerInfo.Lock.held == 0, "all-frames: returns 4 and releases the lock");
+    reset();
+    g_layers_busy = 1;
+    done = win_refresh_all_frames();
+    check(done == 0 && g_refreshed[2] == 0, "all-frames: busy layers skip the window, never wait under IBase");
     if (g_fails) {
         printf("test_win_refresh: %d FAILED\n", g_fails);
         return 1;

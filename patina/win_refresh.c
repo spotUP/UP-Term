@@ -73,3 +73,45 @@ int win_refresh_frames(int wb_ready)
     }
     return done;
 }
+
+/* See win_refresh.h. The close guard is the screen's LayerInfo lock: CloseWindow deletes the window's layer under that lock
+ * before the Window is freed, so a window still listed while the lock is held stays valid through RefreshWindowFrame (which
+ * takes the same lock again, nested). Intuition's lock order puts LayerInfo before IBase, so the lock is only attempted
+ * (AttemptSemaphore never waits) while IBase is held for the alive check.
+ * shortcut: a screen whose layers are busy at that instant is skipped, retry if a skipped boot frame ever shows. */
+int win_refresh_all_frames(void)
+{
+    struct Window *list[REFRESH_MAX];
+    struct Screen *scr[REFRESH_MAX];
+    int n = 0, i, done = 0;
+    ULONG lock;
+    if (!IntuitionBase)
+        return 0;
+    lock = LockIBase(0);
+    {
+        struct Screen *s;
+        for (s = IntuitionBase->FirstScreen; s; s = s->NextScreen) {
+            struct Window *w;
+            for (w = s->FirstWindow; w && n < REFRESH_MAX; w = w->NextWindow) {
+                list[n] = w;
+                scr[n] = s;
+                n++;
+            }
+        }
+    }
+    UnlockIBase(lock);
+    for (i = 0; i < n; i++) {
+        int held = 0;
+        lock = LockIBase(0);
+        if (screen_alive(scr[i]) && window_alive(scr[i], list[i]))
+            held = AttemptSemaphore(&scr[i]->LayerInfo.Lock) != 0;
+        UnlockIBase(lock);
+        if (held) {
+            RefreshWindowFrame(list[i]);
+            ReleaseSemaphore(&scr[i]->LayerInfo.Lock);
+            win_refresh_count++;
+            done++;
+        }
+    }
+    return done;
+}

@@ -18,6 +18,10 @@ int window_alive(const struct Screen *scr, const struct Window *w);
  * each one; RefreshWindowFrame itself runs unlocked (it takes layer locks). Returns the number of frames refreshed
  * (win_refresh_count too: the reachability sentinel). */
 int win_refresh_frames(int wb_ready);
+/* Redraw the frame of every window on every screen, other tasks' too (patina-flat at hook install: a window opened before the
+ * hook, such as the Directory Opus boot lister, keeps its pre-hook frame otherwise). The screen's LayerInfo lock keeps each
+ * window from closing during its RefreshWindowFrame. Returns the number of frames refreshed. */
+int win_refresh_all_frames(void);
 extern unsigned long win_refresh_count;
 
 #endif

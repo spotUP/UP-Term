@@ -8,7 +8,21 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
 
+def boot_frames_after_pens():
+    """FLAT-BOOT-FRAMES: patina-flat must refresh the pre-hook frames only after pens_run obtained the Workbench pens; a refresh
+    from install_all drew the DOpus boot lister's zoom/depth with the own pens still 0 (all black)."""
+    src = open(os.path.join(ROOT, 'patina', 'flat.c')).read()
+    body = src[src.index('static int install_all('):src.index('int main(void)')]
+    main_src = src[src.index('int main(void)'):]
+    if 'win_refresh_all_frames' in body or main_src.find('win_refresh_all_frames') < main_src.find('dim_refresh(r);'):
+        print('[ERROR] flat.c: win_refresh_all_frames runs before the pens are obtained')
+        return 1
+    return 0
+
+
 def main():
+    if boot_frames_after_pens():
+        return 1
     cc = os.environ.get('CC', 'cc')
     with tempfile.TemporaryDirectory() as d:
         exe = os.path.join(d, 'twr')

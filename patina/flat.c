@@ -59,6 +59,7 @@
 #include "menu_font.h"
 #include "taskalive.h"
 #include "poll_timer.h"
+#include "win_refresh.h"
 #include "amconf_core.h"
 #include "amconf_dos.h"
 #include "desk_core.h"
@@ -3896,6 +3897,7 @@ int main(void)
     flatshared *r;
     poll_timer tm, pen_tm;
     int install_rc = FLAT_ERR_ARG;                      /* no install tried (held or no libraries) */
+    int frames_due = 0;     /* FLAT-BOOT-FRAMES: hooks just installed, the frames on screen still pre-hook */
     int marker_live = 0;
     flat_state st0;                                     /* the prefs' state, read before the instance guard */
     (void)ver;
@@ -3993,6 +3995,7 @@ int main(void)
             }
         } else {
             install_rc = install_all(r, &tm, &marker_live);
+            frames_due = install_rc == FLAT_OK;
         }
     }
     g_r = r;
@@ -4004,6 +4007,10 @@ int main(void)
         dim_refresh(r);
     } else
         draw_sync(r);
+    if (frames_due) {   /* FLAT-BOOT-FRAMES: after pens_run, a refresh before it draws with the own pens still 0 (all black) */
+        frames_due = 0;
+        win_refresh_all_frames();
+    }
     pt_start(&pen_tm, 1000000UL);                       /* the Workbench screen watch (pens_sync) */
     print_status();
     for (;;) {
@@ -4016,6 +4023,7 @@ int main(void)
             if (IntuitionBase && GfxBase && flat_install_due(r->st.held, install_rc == FLAT_OK, install_rc)) {
                 STG(FLAT_STG_INSTALL);
                 install_rc = install_all(r, &tm, &marker_live);
+                frames_due = install_rc == FLAT_OK;
             }     /* S32-START-LOOK: LoadWB opened the screen */
             pens_sync(r, 0);
             if (flat_dopus_rescan_due(r->st.held, r->dfound, d4_installed(r))) {
@@ -4024,6 +4032,10 @@ int main(void)
                 dim_refresh(r);
             }
             pens_run(r, 1);                             /* S32-STALE-HELD-PENS: a new screen forgets the old pens and obtains on it (icon pens synced first) */
+            if (frames_due) {                           /* FLAT-BOOT-FRAMES: the pens are in now */
+                frames_due = 0;
+                win_refresh_all_frames();
+            }
             pt_start(&pen_tm, 1000000UL);
         }
         if (marker_live && pt_fired(&tm, got)) {        /* 60 s without a crash: the start is safe */
