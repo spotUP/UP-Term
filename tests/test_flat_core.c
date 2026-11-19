@@ -3235,6 +3235,15 @@ static void test_boot_before_workbench_retries_install(void)
     CHECK_INT(flat_install_due(0, 0, -101), 0);                    /* out of memory is final */
 }
 
+/* DOPUS-LATE-START: boot starts patina-flat before DOpus opens dopus5.library; the 1 s watch rescans until it is found */
+static void test_dopus_late_start_rescans(void)
+{
+    CHECK_INT(flat_dopus_rescan_due(0, 0, 0), 1);                  /* library absent at the last scan */
+    CHECK_INT(flat_dopus_rescan_due(0, 1, 0), 0);                  /* found (even if the gate refused): final */
+    CHECK_INT(flat_dopus_rescan_due(0, 0, 1), 0);                  /* already hooked */
+    CHECK_INT(flat_dopus_rescan_due(FLAT_HELD_MARKER, 0, 0), 0);   /* a kill switch stays inert */
+}
+
 /* S32-CLONE-CLIP: the depth clone on 3.2 (LeftEdge -1, marker pens): the glyph at its stock columns 5-19, the right bevel
  * (image column 23) never a glyph line at column 22, the back window's BACKGROUND inside a hole, not solid */
 static void test_clone_clip_depth_marker(void)
@@ -4243,6 +4252,7 @@ void suite_flat_core(void)
     test_clone_clip_depth_marker();
     test_clone_band_rows_strip();
     test_boot_before_workbench_retries_install();
+    test_dopus_late_start_rescans();
     test_title_accent();
     test_scroller();
     test_gadget_is_prop();
