@@ -464,7 +464,7 @@ int flat_arrow_border(unsigned gadget_type, unsigned activation, const void *gad
 {
     if ((gadget_type & 0x8000u) || (gadget_type & 7u) != 5u || !image || (gadget_render != image && select_render != image))   /* GTYP_CUSTOMGADGET only */
         return 0;
-    return (activation & 0x20u) ? 1 : (activation & 0x40u) ? 2 : 0;
+    return (activation & 0x10u) ? 1 : (activation & 0x80u) ? 2 : 0;     /* GACT_RIGHTBORDER, GACT_BOTTOMBORDER (NDK intuition.h) */
 }
 
 int flat_arrow_which(int border, int has_other, int other_greater)

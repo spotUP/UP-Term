@@ -1447,14 +1447,16 @@ static void test_which_from_gtype(void)
     /* DOPUS-ARROW-INACTIVE: the arrow of a border gadget read from geometry (no OM_NEW record) */
     {
         int img, other, b;
-        CHECK_INT(flat_arrow_border(0x0005u, 0x0020u | 0x0002u, &img, 0, &img), 1);     /* right border pair member */
-        CHECK_INT(flat_arrow_border(0x0005u, 0x0040u, 0, &img, &img), 2);               /* bottom border, SelectRender */
+        CHECK_INT(flat_arrow_border(0x0005u, 0x0010u | 0x0002u, &img, 0, &img), 1);     /* right border pair member */
+        CHECK_INT(flat_arrow_border(0x0005u, 0x0080u, 0, &img, &img), 2);               /* bottom border, SelectRender */
         CHECK_INT(flat_arrow_border(0x0005u, 0x0002u, &img, 0, &img), 0);               /* no border flag */
-        CHECK_INT(flat_arrow_border(0x0003u, 0x0020u, &img, 0, &img), 0);               /* prop gadget */
-        CHECK_INT(flat_arrow_border(0x0004u, 0x0020u, &img, 0, &img), 0);               /* string gadget */
-        CHECK_INT(flat_arrow_border(0xc055u, 0x0020u, &img, 0, &img), 0);               /* system gadget */
-        CHECK_INT(flat_arrow_border(0x8005u, 0x0020u, &img, 0, &img), 0);               /* system flag set */
-        CHECK_INT(flat_arrow_border(0x0005u, 0x0020u, &other, 0, &img), 0);             /* image of another gadget */
+        CHECK_INT(flat_arrow_border(0x0005u, 0x0020u, &img, 0, &img), 0);               /* GACT_LEFTBORDER: not an arrow border */
+        CHECK_INT(flat_arrow_border(0x0005u, 0x0040u, &img, 0, &img), 0);               /* GACT_TOPBORDER */
+        CHECK_INT(flat_arrow_border(0x0003u, 0x0010u, &img, 0, &img), 0);               /* prop gadget */
+        CHECK_INT(flat_arrow_border(0x0004u, 0x0010u, &img, 0, &img), 0);               /* string gadget */
+        CHECK_INT(flat_arrow_border(0xc055u, 0x0010u, &img, 0, &img), 0);               /* system gadget */
+        CHECK_INT(flat_arrow_border(0x8005u, 0x0010u, &img, 0, &img), 0);               /* system flag set */
+        CHECK_INT(flat_arrow_border(0x0005u, 0x0010u, &other, 0, &img), 0);             /* image of another gadget */
         b = 1;
         CHECK_INT(flat_arrow_which(b, 1, 1), FLAT_W_UP);       /* a partner lies below: this is the up arrow */
         CHECK_INT(flat_arrow_which(b, 1, 0), FLAT_W_DOWN);
