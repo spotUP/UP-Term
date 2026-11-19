@@ -408,7 +408,7 @@ static void clone_paint(const flat_clone_in *in, const uint8_t *map, int gpen, i
             }
 }
 
-int flat_clone_draw_in(const flat_state *s, const flat_clone_in *in, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch)
+int flat_clone_draw_in(const flat_state *s, flat_clone_in *in, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch)
 {
     uint8_t *grid = scratch, *map = scratch + FLAT_CLONE_MAX * FLAT_CLONE_MAX;
     int state, gpen, bpen;
@@ -419,9 +419,11 @@ int flat_clone_draw_in(const flat_state *s, const flat_clone_in *in, flat_render
     memset(grid, 0, (size_t)(in->w * in->h));
     /* No glyph pixel is a failed clone, not a plain box: OS 3.2's sysiclass returns 1 from IM_DRAW for the window gadgets
      * yet puts nothing in our offscreen rastport, and drawing that empty map painted the active close/depth/zoom boxes solid. */
-    if (!render(rctx, in->ids, grid, in->w, in->h) || flat_clone_map(grid, in->w, in->h, map, flat_glyph_knob_gadget(in->which)) <= 0)
+    in->dbg_glyph = in->dbg_gpen = in->dbg_bpen = -1;
+    if (!render(rctx, in->ids, grid, in->w, in->h) || (in->dbg_glyph = flat_clone_map(grid, in->w, in->h, map, flat_glyph_knob_gadget(in->which))) <= 0)
         return FLAT_CLONE_FAIL;
     clone_pens(s, in, state, &gpen, &bpen);
+    in->dbg_gpen = gpen; in->dbg_bpen = bpen;
     clone_paint(in, map, gpen, bpen, fill, fctx);
     return FLAT_CLONE_OK;
 }

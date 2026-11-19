@@ -75,6 +75,10 @@ typedef struct flatshared {
     ULONG cf_mask;              /* bit (which & 31) set for every image that fell back (SYSIA_Which after flat_which_alias) */
     ULONG cf_ids;               /* bit (imp_State & 31) set for every empty clone */
     ULONG cf_lwhich, cf_lsize, cf_lnz, cf_lmarks;   /* the last empty clone: which, w << 8 | h, non-zero grid pixels, bit per mark value seen */
+    /* S91 diagnostics: c2_draw NOWHICH returns (count, last imp_State, last w << 8 | h) and the last FLAT_W_ZOOM clone draw per window state
+     * [0] inactive / [1] active: {draws, imp_State, w << 8 | h, band_rows, frame << 16 | text, edge << 16 | glyph pixels, gpen << 16 | bpen} (pens & 0xFFFF, 65535 = none) */
+    ULONG nw_count, nw_state, nw_size;
+    ULONG zc[2][7];
     /* FLAT-ASPECT-BORDERS: the cached side-line width for one screen (flat.c side_px) */
     flat_aspect_slot aspect_slot[FLAT_ASPECT_SLOTS];
     int aspect_px;              /* the Workbench screen's count (the status line) */
