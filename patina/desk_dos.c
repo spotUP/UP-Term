@@ -728,6 +728,7 @@ static void dk_icons_sync(int on, int outline)
         pl_start(PL_BIN_DIR "/patina-icons APPLY", PL_BIN_DIR "/patina-icons", 16384, "patina-icons");     /* its $STACK cookie (rule 6) */
     } else {
         desk_dos_icons_restore++;
+        dopustb_env_restore();                   /* new listers back on the stock toolbar */
         dopustb_arrow_restore();                 /* the DOpus toolbar arrow back to the stock file; shows at the next DOpus start */
         pl_start(PL_BIN_DIR "/patina-icons RESTORE", PL_BIN_DIR "/patina-icons", 16384, "patina-icons");
     }
