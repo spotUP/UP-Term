@@ -198,11 +198,16 @@ void suite_dopustb_bank(void)
 
     /* bank name */
     CI("name", dt_bank_name("SYS:Prefs/Buttons/toolbar", "filled-24", nm, sizeof nm), 0);
-    CK("name text", !strcmp(nm, "DOpus5:Buttons/Patina-toolbar-filled-24"));
+    CK("name text", !strcmp(nm, "DOpus5:Buttons/Patina-bank-toolbar-filled-24"));
     CK("name is ours", de_is_ours(nm));
     CI("name dh", dt_bank_name("DH0:Mine/My Bar", "outline-16", nm, sizeof nm), 0);
-    CK("name text 2", !strcmp(nm, "DOpus5:Buttons/Patina-My Bar-outline-16") && de_is_ours(nm));
+    CK("name text 2", !strcmp(nm, "DOpus5:Buttons/Patina-bank-My Bar-outline-16") && de_is_ours(nm));
     CI("name colon only", dt_bank_name("toolbar", "x", nm, sizeof nm), 0);
+    { /* a custom bank named toolbar must not collide with the stock flat bank */
+      static const char stock[] = "DOpus5:Buttons/Patina-toolbar-filled-24";
+      CI("name toolbar", dt_bank_name("System:Opus5/Buttons/toolbar", "filled-24", nm, sizeof nm), 0);
+      CK("toolbar copy ours, not stock flat", de_is_ours(nm) && strcmp(nm, stock) != 0 && strncmp(nm, DE_BANK_A, sizeof DE_BANK_A - 1) != 0 && strncmp(nm, DE_BANK_B, sizeof DE_BANK_B - 1) != 0);
+      CK("toolbar copy picks saved original", de_orig_pick(nm, "System:Opus5/Buttons/toolbar") && !strcmp(de_orig_pick(nm, "System:Opus5/Buttons/toolbar"), "System:Opus5/Buttons/toolbar")); }
     CI("name too small", dt_bank_name("a:b", "filled-24", nm, 10), -1);
     CI("name empty base", dt_bank_name("DH0:", "x", nm, sizeof nm), -1);
     CI("name empty set", dt_bank_name("DH0:a", "", nm, sizeof nm), -1);

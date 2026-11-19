@@ -12,7 +12,7 @@
 #define DE_STOCK     "PROGDIR:Buttons/toolbar"   /* what upstream ships */
 #define DE_BANK_A    "DOpus5:Buttons/Patina-toolbar-"
 #define DE_BANK_B    "PROGDIR:Buttons/Patina-toolbar-"
-#define DE_BANK_C    "DOpus5:Buttons/Patina-"   /* flattened copy of a user bank: Patina-<bank>-<set> (dt_bank_name) */
+#define DE_BANK_C    "DOpus5:Buttons/Patina-bank-"   /* flattened copy of a user bank: Patina-bank-<bank>-<set> (dt_bank_name); never matches bank A */
 
 enum { DE_OK = 0, DE_BAD = -1 /* not FORM EPUS, truncated, chunk past the end */, DE_NOTBAR = -2, DE_FULL = -3 /* output or path too small */ };
 

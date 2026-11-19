@@ -17,7 +17,7 @@ enum { DTB_BAD = -1 /* not FORM EPUS, truncated, chunk past the end, empty set *
  * failure. A button with a bad layout is copied unchanged. BTNW gets Borderless only when at least one button was rewritten. */
 long dt_bank_flatten(const unsigned char *in, long len, const char *set, unsigned char *out, long cap);
 
-/* "DOpus5:Buttons/Patina-<basename of tbar>-<set>" into out (NUL ended). The basename (after the last ':' or '/') is cut to
+/* "DOpus5:Buttons/Patina-bank-<basename of tbar>-<set>" into out (NUL ended). The basename (after the last ':' or '/') is cut to
  * 40 characters. 0, or -1 when tbar/set is empty or out is too small. de_is_ours (dopusenv_core) accepts the result. */
 int dt_bank_name(const char *tbar, const char *set, char *out, int cap);
 

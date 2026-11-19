@@ -171,7 +171,7 @@ long dt_bank_flatten(const unsigned char *in, long len, const char *set, unsigne
 
 int dt_bank_name(const char *tbar, const char *set, char *out, int cap)
 {
-    static const char pre[] = "DOpus5:Buttons/Patina-";
+    static const char pre[] = "DOpus5:Buttons/Patina-bank-";
     const char *base = tbar, *p;
     int n, bl, sl;
     if (!tbar || !set || !*tbar || !*set || !out) return -1;
