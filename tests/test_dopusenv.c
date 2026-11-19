@@ -93,6 +93,7 @@ void suite_dopusenv(void)
     CK("stock any case", de_may_replace("progdir:buttons/TOOLBAR"));
     CK("our bank A replaceable", de_may_replace("DOpus5:Buttons/Patina-toolbar-filled-32"));
     CK("our bank B replaceable", de_may_replace("PROGDIR:Buttons/Patina-toolbar-outline-16t"));
+    CK("flattened custom bank is ours", de_may_replace("DOpus5:Buttons/Patina-mybar-filled-24") && de_may_restore("dopus5:buttons/patina-mybar-outline-16"));
     CK("user path left alone", !de_may_replace("DH1:Mine/toolbar"));
     CK("stock lookalike left alone", !de_may_replace("PROGDIR:Buttons/toolbar2"));
     CK("user bank left alone", !de_may_replace("DOpus5:Buttons/Other"));

@@ -69,6 +69,6 @@ static int ieq_prefix(const char *s, const char *pre)
     return 1;
 }
 
-int de_is_ours(const char *cur) { return cur && (ieq_prefix(cur, DE_BANK_A) || ieq_prefix(cur, DE_BANK_B)); }
+int de_is_ours(const char *cur) { return cur && (ieq_prefix(cur, DE_BANK_A) || ieq_prefix(cur, DE_BANK_B) || ieq_prefix(cur, DE_BANK_C)); }
 int de_may_replace(const char *cur) { return cur && (de_is_ours(cur) || (ieq_prefix(cur, DE_STOCK) && cur[sizeof(DE_STOCK) - 1] == 0)); }
 int de_may_restore(const char *cur) { return de_is_ours(cur); }
