@@ -1464,6 +1464,18 @@ static void test_which_from_gtype(void)
         CHECK_INT(flat_arrow_which(0, 1, 1), -1);
         (void)other;
     }
+    /* DOPUS-ZOOM-HIJACK: a lister zoom gadget the app turned into a plain gadget */
+    {
+        int img, other;
+        CHECK_INT(flat_zoom_hijacked(0x0000u, 0x0010u | 0x0001u, &img, 0, &img, 0, 1), 1);   /* hijacked zoom */
+        CHECK_INT(flat_zoom_hijacked(0x0000u, 0x0010u, 0, &img, &img, 0, 1), 1);             /* SelectRender */
+        CHECK_INT(flat_zoom_hijacked(0x0000u, 0x0010u, &img, 0, &img, 1, 1), 0);             /* window still has a system zoom */
+        CHECK_INT(flat_zoom_hijacked(0x0000u, 0x0010u, &img, 0, &img, 0, 0), 0);             /* no depth gadget */
+        CHECK_INT(flat_zoom_hijacked(0x0000u, 0x0001u, &img, 0, &img, 0, 1), 0);             /* not in the top border */
+        CHECK_INT(flat_zoom_hijacked(0x0000u, 0x0010u, &other, 0, &img, 0, 1), 0);           /* image of another gadget */
+        CHECK_INT(flat_zoom_hijacked(0x8060u, 0x0010u, &img, 0, &img, 0, 1), 0);             /* system gadget: the existing path */
+        (void)other;
+    }
     /* DOPUS-ARROW-WHICH: an app-made arrow (not a system gadget) resolves through the table recorded at OM_NEW */
     {
         flat_img_rec tab[FLAT_IMG_RECS];

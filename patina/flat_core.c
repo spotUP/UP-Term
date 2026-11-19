@@ -476,6 +476,11 @@ int flat_arrow_which(int border, int has_other, int other_greater)
     return other_greater ? FLAT_W_LEFT : FLAT_W_RIGHT;
 }
 
+int flat_zoom_hijacked(unsigned gadget_type, unsigned activation, const void *gadget_render, const void *select_render, const void *image, int has_sys_zoom, int has_sys_depth)
+{
+    return !(gadget_type & 0x8000u) && image && (gadget_render == image || select_render == image) && (activation & 0x10u) && !has_sys_zoom && has_sys_depth;   /* GACT_TOPBORDER */
+}
+
 int flat_img_record(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size)
 {
     int i, free_i = -1;

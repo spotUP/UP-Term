@@ -340,6 +340,12 @@ int flat_arrow_border(unsigned gadget_type, unsigned activation, const void *gad
  * other -> UP else DOWN; horizontal: LEFT else RIGHT. -1 (stock draws) when it has no partner or border is 0. */
 int flat_arrow_which(int border, int has_other, int other_greater);
 
+/* DOPUS-ZOOM-HIJACK: DOpus clears GTYP_SYSGADGET and the system type of a lister's zoom gadget (lister_window.c) but leaves its image
+ * (sysiclass ZOOMIMAGE) and its GACT_TOPBORDER (0x10). Such a gadget is the zoom when: it is no system gadget, `image` is its
+ * GadgetRender or SelectRender, Activation has GACT_TOPBORDER, the window has no system GTYP_WZOOM gadget left (has_sys_zoom 0) and
+ * does have a system GTYP_WDEPTH gadget (has_sys_depth 1). Returns 1 then, else 0. */
+int flat_zoom_hijacked(unsigned gadget_type, unsigned activation, const void *gadget_render, const void *select_render, const void *image, int has_sys_zoom, int has_sys_depth);
+
 /* DOPUS-ARROW-WHICH: Kickstart 3.1 sysiclass has no OM_GET, and an app-made scroller arrow (sysiclass image inside a buttongclass
  * gadget: DOpus listers, MultiView) is no Intuition system gadget, so flat_gadget_which never finds it. flat.c records the
  * SYSIA_Which / SYSIA_Size of every arrow image (LEFT 0x0A .. DOWN 0x0D) at OM_NEW in this fixed table, keyed by the object pointer,

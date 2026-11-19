@@ -688,6 +688,21 @@ static int c2_arrow_geom(struct Window *w, Object *obj)
     return flat_arrow_which(b, other, greater);
 }
 
+/* DOPUS-ZOOM-HIJACK: the zoom image of a gadget the app turned into a plain one. Own function (flat budget). */
+static int c2_zoom_geom(struct Window *w, Object *obj)
+{
+    struct Gadget *g, *h = NULL;
+    int n, z = 0, d = 0;
+    for (g = w->FirstGadget, n = 0; g && n < 64; g = g->NextGadget, n++) {
+        if (g->GadgetType & 0x8000u) {
+            z |= (g->GadgetType & 0xF0u) == 0x60u;
+            d |= (g->GadgetType & 0xF0u) == 0x40u;
+        } else if (!h && (g->GadgetRender == obj || g->SelectRender == obj))
+            h = g;
+    }
+    return h && flat_zoom_hijacked(h->GadgetType, h->Activation, h->GadgetRender, h->SelectRender, obj, z, d) ? FLAT_W_ZOOM : -1;
+}
+
 /* Kickstart 3.1 sysiclass does not answer OM_GET: find the window gadget that renders this image. The layer
  * of the rastport belongs to the window being drawn; reading its gadget list from Intuition's own drawing
  * context needs no Forbid (the list only changes through Add/RemoveGList by the window's owner). NOWHICH when none does. */
@@ -704,6 +719,8 @@ static ULONG c2_which_31(Object *obj, struct impDraw *d)
         wh = img_lookup(obj, NULL);     /* DOPUS-ARROW-WHICH: an app-made arrow / zoom image, recorded at its OM_NEW */
     if (wh < 0 && w)
         wh = c2_arrow_geom(w, obj);    /* DOPUS-ARROW-INACTIVE: no record, no system gadget: the pair's geometry */
+    if (wh < 0 && w)
+        wh = c2_zoom_geom(w, obj);     /* DOPUS-ZOOM-HIJACK: the app cleared the zoom gadget's system type */
     if (wh < 0 && lay && !w)
         wh = c7_screen_which(lay, obj);
     return wh < 0 ? NOWHICH : (ULONG)wh;
