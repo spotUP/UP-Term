@@ -94,7 +94,8 @@ static int dtd_patch_file(const char *path, const uint8_t rgb[DT_PENS][3])
 }
 
 #define DTD_ARROW_DIR "DOpus5:Images/"
-#define DTD_ARROW_ORIG "DOpus5:Images/Patina/orig/"
+#define DTD_ARROW_ORIG_DIR "DOpus5:Images/Patina/orig"
+#define DTD_ARROW_ORIG DTD_ARROW_ORIG_DIR "/"
 static const char *const dtd_arrow_names[2] = { "ToolbarArrow.image", "ToolbarArrow.image_frame" };
 
 /* Copies src over dst (whole file, under 64 KB). A missing src copies nothing. Returns 1 when written. */
@@ -142,6 +143,8 @@ static int dtd_arrow_copy(const char *from, const char *to, int save_orig)
     char a[160], b[160], o[160];
     int n, w = 0;
     me->pr_WindowPtr = (APTR)-1;
+    if (save_orig)
+        UnLock(CreateDir((STRPTR)DTD_ARROW_ORIG_DIR));       /* fails when the drawer exists, which is fine */
     for (n = 0; n < 2; n++) {
         dtd_join(a, from, dtd_arrow_names[n]);
         dtd_join(b, to, dtd_arrow_names[n]);
