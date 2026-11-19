@@ -15,6 +15,7 @@
 #include <proto/graphics.h>
 #include "dopustb_dos.h"
 #include "dopustb_core.h"
+#include "dopusenv_core.h"
 #include "desk_dos.h"
 #include "menu_font.h"
 #include "rexx_host.h"
@@ -92,6 +93,170 @@ static int dtd_patch_file(const char *path, const uint8_t rgb[DT_PENS][3])
     return done;
 }
 
+#define DTD_ARROW_DIR "DOpus5:Images/"
+#define DTD_ARROW_ORIG "DOpus5:Images/Patina/orig/"
+static const char *const dtd_arrow_names[2] = { "ToolbarArrow.image", "ToolbarArrow.image_frame" };
+
+/* Copies src over dst (whole file, under 64 KB). A missing src copies nothing. Returns 1 when written. */
+static int dtd_copy(const char *src, const char *dst)
+{
+    BPTR in = Open((STRPTR)src, MODE_OLDFILE), out;
+    struct FileInfoBlock *fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    uint8_t *buf = 0;
+    int done = 0;
+    if (in && fib && ExamineFH(in, fib) && fib->fib_Size > 0 && fib->fib_Size < 65536L &&
+        (buf = (uint8_t *)AllocVec((ULONG)fib->fib_Size, MEMF_PUBLIC)) != 0 && Read(in, buf, fib->fib_Size) == fib->fib_Size &&
+        (out = Open((STRPTR)dst, MODE_NEWFILE)) != 0) {
+        done = Write(out, buf, fib->fib_Size) == fib->fib_Size;
+        Close(out);
+    }
+    if (buf)
+        FreeVec(buf);
+    if (fib)
+        FreeDosObject(DOS_FIB, fib);
+    if (in)
+        Close(in);
+    return done;
+}
+
+static int dtd_exists(const char *path)
+{
+    BPTR l = Lock((STRPTR)path, ACCESS_READ);
+    if (l)
+        UnLock(l);
+    return l != 0;
+}
+
+/* dir/name joined into out (160 bytes). */
+static void dtd_join(char *out, const char *dir, const char *name)
+{
+    strcpy(out, dir);
+    strcat(out, name);
+}
+
+/* Both arrow files: from(dir) over to(dir). Requesters off (pr_WindowPtr -1) for a missing volume. */
+static int dtd_arrow_copy(const char *from, const char *to, int save_orig)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR old = me->pr_WindowPtr;
+    char a[160], b[160], o[160];
+    int n, w = 0;
+    me->pr_WindowPtr = (APTR)-1;
+    for (n = 0; n < 2; n++) {
+        dtd_join(a, from, dtd_arrow_names[n]);
+        dtd_join(b, to, dtd_arrow_names[n]);
+        if (!dtd_exists(a))
+            continue;
+        if (save_orig) {       /* the stock file is saved once; an existing backup is never touched, so it never holds a flat file */
+            dtd_join(o, DTD_ARROW_ORIG, dtd_arrow_names[n]);
+            if (!dtd_exists(o) && dtd_exists(b) && !dtd_copy(b, o))
+                continue;
+        }
+        w += dtd_copy(a, b);
+    }
+    me->pr_WindowPtr = old;
+    return w;
+}
+
+int dopustb_arrow_restore(void)
+{
+    return dtd_arrow_copy(DTD_ARROW_ORIG, DTD_ARROW_DIR, 0);
+}
+
+/* ---- the default lister toolbar in the DOpus environment files (plan s91 toolbar) ---- */
+#define DTD_ENV_MAX 65536L
+static const char *const dtd_env_files[2] = { "DOpus5:Environment/default", "DOpus5:Environment/workbench" };
+
+/* A crash between the renames leaves name missing with name.old present (or a stray name.new): put the old file back, drop the new one. */
+static void dtd_env_recover(const char *name, const char *tmp, const char *old)
+{
+    if (!dtd_exists(name) && dtd_exists(old))
+        Rename((STRPTR)old, (STRPTR)name);
+    if (dtd_exists(tmp))
+        DeleteFile((STRPTR)tmp);
+    if (dtd_exists(old) && dtd_exists(name))
+        DeleteFile((STRPTR)old);
+}
+
+/* Rewrites TBAR of one environment file to path; want_restore 1: only when the current path is ours (stock goes back), else only when it is
+ * stock or ours and differs. The original stays intact until the new file is complete. Returns 1 when changed. */
+static int dtd_env_one(const char *name, const char *path, int want_restore)
+{
+    char tmp[64], old[64], cur[DE_PATHMAX];
+    BPTR f;
+    struct FileInfoBlock *fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    uint8_t *in = 0, *out;
+    long len = 0, n;
+    int done = 0;
+    if (strlen(name) + 5 > sizeof tmp) {
+        if (fib)
+            FreeDosObject(DOS_FIB, fib);
+        return 0;
+    }
+    strcpy(tmp, name);
+    strcat(tmp, ".new");
+    strcpy(old, name);
+    strcat(old, ".old");
+    dtd_env_recover(name, tmp, old);
+    f = Open((STRPTR)name, MODE_OLDFILE);
+    if (f && fib && ExamineFH(f, fib) && fib->fib_Size > 0 && fib->fib_Size < DTD_ENV_MAX) {
+        len = fib->fib_Size;
+        in = (uint8_t *)AllocVec((ULONG)(2 * len + DE_PATHMAX), MEMF_PUBLIC);
+        if (in && Read(f, in, len) != len) {
+            FreeVec(in);
+            in = 0;
+        }
+    }
+    if (f)
+        Close(f);
+    if (in && de_tbar_get(in, (size_t)len, cur, sizeof cur) == DE_OK &&
+        (want_restore ? de_may_restore(cur) : (de_may_replace(cur) && strcmp(cur, path) != 0))) {
+        out = in + len;
+        n = de_tbar_set(in, (size_t)len, path, out, (size_t)(len + DE_PATHMAX));
+        if (n > 0 && (f = Open((STRPTR)tmp, MODE_NEWFILE)) != 0) {
+            int ok = Write(f, out, n) == n;
+            Close(f);
+            if (ok && Rename((STRPTR)name, (STRPTR)old)) {
+                if (Rename((STRPTR)tmp, (STRPTR)name)) {
+                    DeleteFile((STRPTR)old);
+                    done = 1;
+                } else {
+                    Rename((STRPTR)old, (STRPTR)name);
+                }
+            }
+            if (!done)
+                DeleteFile((STRPTR)tmp);
+        }
+    }
+    if (in)
+        FreeVec(in);
+    if (fib)
+        FreeDosObject(DOS_FIB, fib);
+    return done;
+}
+
+static int dtd_env_all(const char *path, int want_restore)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR oldwin = me->pr_WindowPtr;
+    int n, w = 0;
+    me->pr_WindowPtr = (APTR)-1;
+    for (n = 0; n < 2; n++)
+        w += dtd_env_one(dtd_env_files[n], path, want_restore);
+    me->pr_WindowPtr = oldwin;
+    return w;
+}
+
+int dopustb_env_apply(const char *bank)
+{
+    return dtd_env_all(bank, 0);
+}
+
+int dopustb_env_restore(void)
+{
+    return dtd_env_all(DE_STOCK, 1);
+}
+
 /* Every brush of the set's drawer gets the theme's blend. Returns the number of files rewritten. */
 static int dtd_recolour(const char *set, const uint8_t rgb[DT_PENS][3], void *ud)
 {
@@ -122,6 +287,11 @@ static int dtd_recolour(const char *set, const uint8_t rgb[DT_PENS][3], void *ud
         FreeDosObject(DOS_FIB, fib);
     if (lock)
         UnLock(lock);
+    strcat(dir, "/");
+    dtd_arrow_copy(dir, DTD_ARROW_DIR, 1);       /* after the blend, so the arrow carries it too */
+    strcpy(path, DOPUS_TOOLBAR_FLAT);            /* new listers read their bank from the environment files */
+    strcat(path, set);
+    dopustb_env_apply(path);
     return changed;
 }
 
