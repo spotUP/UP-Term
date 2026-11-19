@@ -85,9 +85,11 @@ static void g_size(plan *g)
     }
 }
 
+/* owner 2026-11-19: a small box in the lower left corner; the old 2-row bar read as a stray line */
 static void g_iconify(plan *g)
 {
-    put(g, g->ix0, g->iy1 - 1, g->ix1, g->iy1, g->fg);
+    int q = imax(3, imin(g->ix1 - g->ix0 + 1, g->iy1 - g->iy0 + 1) * 2 / 3);
+    box(g, g->ix0, g->iy1 - q + 1, g->ix0 + q - 1, g->iy1, g->fg);
 }
 
 /* DOPUS-LOCK (O2/O3): a solid padlock, no inverted box. Visual units: a column is 1, a row is g->side. Body = the lower half of the
