@@ -341,10 +341,11 @@ int flat_arrow_border(unsigned gadget_type, unsigned activation, const void *gad
 int flat_arrow_which(int border, int has_other, int other_greater);
 
 /* DOPUS-ZOOM-HIJACK: DOpus clears GTYP_SYSGADGET and the system type of a lister's zoom gadget (lister_window.c) but leaves its image
- * (sysiclass ZOOMIMAGE) and its GACT_TOPBORDER (0x10). Such a gadget is the zoom when: it is no system gadget, `image` is its
- * GadgetRender or SelectRender, Activation has GACT_TOPBORDER, the window has no system GTYP_WZOOM gadget left (has_sys_zoom 0) and
- * does have a system GTYP_WDEPTH gadget (has_sys_depth 1). Returns 1 then, else 0. */
-int flat_zoom_hijacked(unsigned gadget_type, unsigned activation, const void *gadget_render, const void *select_render, const void *image, int has_sys_zoom, int has_sys_depth);
+ * (sysiclass ZOOMIMAGE). Measured on rig 92: the hijacked gadget keeps no GACT_TOPBORDER (Activation 0x8001), so the title border is
+ * read from geometry. Such a gadget is the zoom when: it is no system gadget, `image` is its GadgetRender or SelectRender, its box
+ * lies inside the window's top border (top = TopEdge with RELBOTTOM resolved, >= 0, top + height <= border_top), the window has no
+ * system GTYP_WZOOM gadget left (has_sys_zoom 0) and has a system GTYP_WDEPTH gadget (has_sys_depth 1). Returns 1 then, else 0. */
+int flat_zoom_hijacked(unsigned gadget_type, const void *gadget_render, const void *select_render, const void *image, int top, int height, int border_top, int has_sys_zoom, int has_sys_depth);
 
 /* DOPUS-ARROW-WHICH: Kickstart 3.1 sysiclass has no OM_GET, and an app-made scroller arrow (sysiclass image inside a buttongclass
  * gadget: DOpus listers, MultiView) is no Intuition system gadget, so flat_gadget_which never finds it. flat.c records the

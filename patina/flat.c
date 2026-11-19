@@ -700,7 +700,7 @@ static int c2_zoom_geom(struct Window *w, Object *obj)
         } else if (!h && (g->GadgetRender == obj || g->SelectRender == obj))
             h = g;
     }
-    return h && flat_zoom_hijacked(h->GadgetType, h->Activation, h->GadgetRender, h->SelectRender, obj, z, d) ? FLAT_W_ZOOM : -1;
+    return h && flat_zoom_hijacked(h->GadgetType, h->GadgetRender, h->SelectRender, obj, h->TopEdge + ((h->Flags & GFLG_RELBOTTOM) ? w->Height : 0), h->Height, w->BorderTop, z, d) ? FLAT_W_ZOOM : -1;
 }
 
 /* Kickstart 3.1 sysiclass does not answer OM_GET: find the window gadget that renders this image. The layer
