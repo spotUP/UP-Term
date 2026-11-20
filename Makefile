@@ -235,7 +235,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
-TEST_PY_ONLY := put_skips lha_prestart dist_name_len win_refresh gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_patina_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free dopus_toolbar flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list patina_rows_buffer flat_single_instance flat_clone_stack flat_hook_locks flat_unload_inflight uterm_wiring
+TEST_PY_ONLY := put_skips lha_prestart dist_name_len win_refresh gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_patina_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free dopus_toolbar flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list patina_rows_buffer flat_single_instance flat_clone_stack flat_hook_locks flat_unload_inflight uterm_wiring rig_warn_stale_build rig_softreset
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 # the icon rows import fontTools: they run in the repo .venv like the icon generators (VENV_PY, below)
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS)) | $(VENV_FONTTOOLS)
@@ -278,6 +278,8 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS)) | $(VENV_FONTTOOLS)
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = icat_stderr ]; then python3 -I tests/test_icat_stderr.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = help_man_sync ]; then python3 -I tests/test_help_man_sync.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uterm_wiring ]; then python3 -I tests/test_uterm_wiring.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_warn_stale_build ]; then python3 -I tests/test_rig_warn_stale_build.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_softreset ]; then python3 -I tests/test_rig_softreset.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_real_drawer ]; then python3 -I tests/test_installer_rig_real_drawer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = flat_on_hang ]; then python3 -I tests/test_flat_on_hang_wild_call.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = flat_single_instance ]; then python3 -I tests/test_flat_single_instance.py; fi
