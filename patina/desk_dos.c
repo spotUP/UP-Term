@@ -284,6 +284,45 @@ static void dk_wait_palette(const unsigned char *pal, long len)
     }
 }
 
+/* AGA-BOOT-DEADLOCK: the colours of a palette.prefs set straight on the Workbench viewport (LoadRGB32, gfx 39; KS 3.1 is 40), pen by
+ * pen as IPrefs would (desk_palette_rgb, the inverse of desk_palette_landed). Nothing is written, so IPrefs does not reset the screen.
+ * The pen map (DrawInfo pens) cannot change live; it stays as the file in force has it. Returns how many pens were set. */
+unsigned long desk_dos_live_palettes;
+static int dk_live_palette(const unsigned char *pal, long len)
+{
+    static ULONG tab[1 + 3 * 256 + 1];
+    int i, n = 0, depth, cnt;
+    struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
+    struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
+    struct Screen *scr = IntuitionBase && GfxBase ? ipd_lock_wb_screen() : 0;
+    if (scr) {
+        depth = scr->RastPort.BitMap->Depth;
+        cnt = depth >= 8 ? 256 : 1 << depth;
+        GetRGB32(scr->ViewPort.ColorMap, 0, (ULONG)cnt, tab + 1);   /* pens the file has no entry for keep their colour */
+        for (i = 0; i < cnt; i++) {
+            long c = desk_palette_rgb(pal, len, i, depth);
+            if (c < 0)
+                continue;
+            tab[1 + 3 * i] = ((c >> 16) & 255) * 0x01010101UL;
+            tab[2 + 3 * i] = ((c >> 8) & 255) * 0x01010101UL;
+            tab[3 + 3 * i] = (c & 255) * 0x01010101UL;
+            n++;
+        }
+        tab[0] = ((ULONG)cnt << 16) | 0;   /* cnt colours from pen 0 */
+        tab[1 + 3 * cnt] = 0;
+        if (n)
+            LoadRGB32(&scr->ViewPort, tab);
+        UnlockPubScreen(0, scr);
+    }
+    if (n)
+        desk_dos_live_palettes++;
+    if (GfxBase)
+        CloseLibrary((struct Library *)GfxBase);
+    if (IntuitionBase)
+        CloseLibrary((struct Library *)IntuitionBase);
+    return n;
+}
+
 unsigned long desk_dos_pal31_puts;
 static int dk_put_palette(const unsigned char *buf, long len)
 {
@@ -1889,8 +1928,7 @@ int desk_dos_start_apply(void)
     gtheme th;
     unsigned mask, plan;
     unsigned char sv[2], pens[DK_SLOTS];
-    unsigned short live[DK_SLOTS];
-    int flat, depth, saved = -1, gsaved = -1, was, nlive = 0, icon_text;
+    int flat, depth, saved = -1, gsaved = -1, was, icon_text;
     unsigned long idle = 0;
     long wblen, patlen, len, pallen, curlen, ptrlen = 0, fontlen = 0, flen;
     int ic_act = DK_IC_NONE, ic_snap = 0;
@@ -1959,20 +1997,19 @@ int desk_dos_start_apply(void)
      * Workbench screen. Please close the..."), so our windows close around them, as dk_apply closes them around a reset. With
      * plan 0 the palette already matches (a fresh ENV: always plans the WB bit when flat), so dk_flat_pens writes nothing. */
     was = -1;
-    if (plan) {
+    if (plan & ~DESK_START_PALETTE) {   /* the palette part writes no file, so it alone resets nothing */
         idle = dk_iprefs_idle_mask();
         desk_dos_wb_closes++;
         was = dk_windows_close();
     }
     if (plan & DESK_START_PALETTE) {
-        struct Screen *before = dk_wb_screen(live, &nlive);
-        dk_orig_save(1u << DT_PALETTE, 0);
-        UnLock(CreateDir((STRPTR)DK_WORK));
-        if (dk_put_palette(pal, pallen)) {
-            desk_dos_start_writes++;
-            if (desk_pens_reset(live, nlive, flat, dk_screen_depth()))
-                dk_wait_reset(before, flat, dk_screen_depth());
-        }
+        /* AGA-BOOT-DEADLOCK: no palette.prefs write at boot. The write made IPrefs reset the Workbench (close, reopen); DOpus's
+         * LockPubScreen in that gap ran ROM OpenWorkBench (holding IBase+$B3A) and waited on intuition lock 4, which IPrefs held
+         * while it spun for $B3A = 0, and the planar AGA boot froze. The theme colours go live on the screen instead; a theme pick
+         * (dk_apply) still writes the file.
+         * shortcut: a later IPrefs reset from another prefs file brings back the file's colours until Patina applies again; write
+         * the file after boot (outside the IPrefs/DOpus start race) if that matters. */
+        am_sentinel("PATINA_DESK_START_LIVE_PAL", (long)dk_live_palette(pal, pallen));
         dk_live_want = 1;
         dk_live_flat = flat;
         desk_dos_dopus_sends++;
@@ -2015,7 +2052,7 @@ int desk_dos_start_apply(void)
         if (!dk_pending_mask())
             DeleteFile((STRPTR)DK_WBPEND);   /* no confirm owns the Workbench.prefs snapshot */
     }
-    if (plan) {
+    if (plan & ~DESK_START_PALETTE) {
         dk_wait_iprefs(idle);
         dk_windows_open(was);
     }

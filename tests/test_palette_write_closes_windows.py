@@ -51,6 +51,12 @@ class PaletteWriteClosesWindows(unittest.TestCase):
         self.assertIn("dk_flat_pens", callers)
         self.assertIn("dk_apply", callers)
 
+    def test_boot_start_writes_no_palette(self):
+        # AGA-BOOT-DEADLOCK: a boot palette.prefs write made IPrefs reset the Workbench while DOpus started (planar AGA froze)
+        b = body(SRC, "int desk_dos_start_apply(void)")
+        self.assertNotIn("dk_put_palette(", b, "the boot start-apply writes palette.prefs again: IPrefs resets the Workbench at boot")
+        self.assertIn("dk_live_palette(pal, pallen)", b, "the boot theme colours no longer go live on the Workbench screen")
+
 
 if __name__ == "__main__":
     sys.exit(unittest.main())
