@@ -186,6 +186,20 @@ static int dk_put(const char *editor, const char *work, const unsigned char *buf
     return 1;
 }
 
+/* AGA-BOOT-DEADLOCK (font, pattern, pointer): every IPrefs-watched ENV: write resets the Workbench (iprefs-case2), and a reset while
+ * Directory Opus runs can deadlock planar AGA (DOpus's LockPubScreen in the gap runs ROM OpenWorkBench against IPrefs, s91-agafreeze).
+ * The boot start-apply writes these parts to ENVARC: only: no notification, no reset; the next boot's IPrefs reads them before the
+ * Workbench opens. shortcut: the first boot after a fresh install shows the stock font / pattern / pointer until the next boot; a
+ * pre-LoadWB writer (the Startup-Sequence patina-flat block) could bring them to the first boot if that matters. */
+unsigned long desk_dos_start_arc_writes;
+static int dk_put_boot(const char *arc, const unsigned char *buf, long len)
+{
+    if (len <= 0 || !dk_write(arc, buf, len))
+        return 0;
+    am_sentinel("PATINA_DESK_START_ARC", (long)++desk_dos_start_arc_writes);
+    return 1;
+}
+
 /* may SYS:Prefs/Pointer be fed the 3.2 pointer prefs: version 47+ (desk_pointer_editor_ok) */
 /* FLAT-P1-2: icontrol.prefs with the geometry of the border size, both copies; a file that does not fit the buffer is left alone */
 #define DK_IC_BUF 8192
@@ -1921,6 +1935,8 @@ static void dk_start_persist(unsigned plan, int flat)
         am_sentinel("PATINA_DESK_START_PERSISTS", (long)desk_dos_start_persists);
 }
 
+#define DK_START_ARC (DESK_START_POINTER | DESK_START_FONT | DESK_START_PATTERN)   /* written to ENVARC: only at boot */
+#define DK_START_RESETS (~(DESK_START_PALETTE | DK_START_ARC))                       /* the parts whose boot write resets the Workbench */
 int desk_dos_start_apply(void)
 {
     static unsigned char wb[DK_BUF], pat[DK_BUF], out[DK_BUF], pal[DK_BUF], pcur[8192], pnew[8192], fcur[DK_BUF], fnew[DK_BUF];
@@ -1997,7 +2013,7 @@ int desk_dos_start_apply(void)
      * Workbench screen. Please close the..."), so our windows close around them, as dk_apply closes them around a reset. With
      * plan 0 the palette already matches (a fresh ENV: always plans the WB bit when flat), so dk_flat_pens writes nothing. */
     was = -1;
-    if (plan & ~DESK_START_PALETTE) {   /* the palette part writes no file, so it alone resets nothing */
+    if (plan & DK_START_RESETS) {   /* palette, pointer, font and pattern write no ENV: file at boot, so they reset nothing */
         idle = dk_iprefs_idle_mask();
         desk_dos_wb_closes++;
         was = dk_windows_close();
@@ -2017,16 +2033,13 @@ int desk_dos_start_apply(void)
     }
     if (plan & DESK_START_POINTER) {
         dk_orig_save(1u << DT_POINTER, 0);
-        UnLock(CreateDir((STRPTR)DK_WORK));
-        if (dk_put("Pointer", DK_WORK "/pointer.prefs", pnew, ptrlen))
+        if (dk_put_boot("ENVARC:Sys/pointer.prefs", pnew, ptrlen))
             desk_dos_start_writes++;
     }
     if (plan & DESK_START_FONT) {
         dk_orig_save(1u << DT_FONT, 0);
-        UnLock(CreateDir((STRPTR)DK_WORK));
-        if (dk_put("Font", DK_WORK "/font.prefs", fnew, fontlen))
+        if (dk_put_boot("ENVARC:Sys/font.prefs", fnew, fontlen))
             desk_dos_start_writes++;
-        dk_wait_iprefs(idle);   /* the Font editor resets the Workbench screen too */
     }
     if (plan & DESK_START_ICONTROL) {
         dk_orig_save(1u << DT_ICONTROL, 0);
@@ -2042,8 +2055,7 @@ int desk_dos_start_apply(void)
     if (plan & DESK_START_PATTERN) {
         len = desk_wbpattern(&th, depth, patlen > 0 ? pat : 0, patlen > 0 ? patlen : 0, out, sizeof out);
         dk_orig_save(1u << DT_WBPATTERN, 0);
-        UnLock(CreateDir((STRPTR)DK_WORK));
-        if (dk_put("WBPattern", DK_WORK "/wbpattern.prefs", out, len))
+        if (dk_put_boot("ENVARC:Sys/wbpattern.prefs", out, len))
             desk_dos_start_writes++;
     }
     if (plan & DESK_START_WB) {
@@ -2052,11 +2064,11 @@ int desk_dos_start_apply(void)
         if (!dk_pending_mask())
             DeleteFile((STRPTR)DK_WBPEND);   /* no confirm owns the Workbench.prefs snapshot */
     }
-    if (plan & ~DESK_START_PALETTE) {
+    if (plan & DK_START_RESETS) {
         dk_wait_iprefs(idle);
         dk_windows_open(was);
     }
-    dk_start_persist(plan, flat);
+    dk_start_persist(plan & ~DK_START_ARC, flat);   /* ENV: still holds the old bytes of the ENVARC:-only parts: no copy over them */
     if (dk_live_want)
         dk_live_pens(dk_live_want > 0 ? &th : 0, dk_live_flat);
     am_sentinel("PATINA_DESK_START_WRITES", (long)desk_dos_start_writes);

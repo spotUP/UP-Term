@@ -23,7 +23,7 @@ print('PASS: dk_put skips the editor when the bytes equal ENV:Sys')
 # S82-START-PERSIST: the start apply copies what it wrote to ENVARC: (skipping equal bytes), so the next boot plans 0
 p = re.search(r'^static void dk_start_persist\(.*?^\}', SRC, re.S | re.M)
 a = re.search(r'^int desk_dos_start_apply\(void\).*?^\}', SRC, re.S | re.M)
-if not p or not a or 'dk_start_persist(plan, flat);' not in a.group(0):
+if not p or not a or 'dk_start_persist(plan & ~DK_START_ARC, flat);' not in a.group(0):
     sys.exit('FAIL: desk_dos_start_apply does not persist its writes to ENVARC: (dk_start_persist)')
 pb = p.group(0)
 if 'desk_start_persist_mask(' not in pb or 'dk_pending_mask()' not in pb or not (0 <= pb.find('dk_files_equal(') < pb.find('dk_stream_copy(')):

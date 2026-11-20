@@ -57,6 +57,15 @@ class PaletteWriteClosesWindows(unittest.TestCase):
         self.assertNotIn("dk_put_palette(", b, "the boot start-apply writes palette.prefs again: IPrefs resets the Workbench at boot")
         self.assertIn("dk_live_palette(pal, pallen)", b, "the boot theme colours no longer go live on the Workbench screen")
 
+    def test_boot_start_resets_no_workbench_for_font(self):
+        # AGA-BOOT-DEADLOCK: a boot font/pattern/pointer USE made IPrefs reset the Workbench while DOpus ran (planar AGA froze)
+        b = body(SRC, "int desk_dos_start_apply(void)")
+        for editor in ('"Font"', '"WBPattern"', '"Pointer"'):
+            self.assertNotIn("dk_put(" + editor, b, "the boot start-apply feeds the %s editor: IPrefs resets the Workbench at boot" % editor)
+        for name in ("font", "wbpattern", "pointer"):
+            self.assertIn('dk_put_boot("ENVARC:Sys/%s.prefs"' % name, b, "the boot %s part no longer lands in ENVARC: for the next boot" % name)
+        self.assertIn("dk_start_persist(plan & ~DK_START_ARC", b, "the start persist copies the old ENV: bytes over the ENVARC:-only parts")
+
 
 if __name__ == "__main__":
     sys.exit(unittest.main())
