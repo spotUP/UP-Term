@@ -3534,13 +3534,11 @@ static void tw_open_editor(void)
 }
 
 /* TE-SWATCH-BUGS (S61 hunt): Right on a picker row of the Swatches page opens its colour list. A swatch row lists the
- * picker entries (the theme colours and Custom), the Terminal Palette row lists its 16 entries. Fails on purpose until
- * choice_setting searches the editor rows too. */
+ * Red, Green, Blue bar rows (S88/S89) and the picker entries (the theme colours and Custom); the Terminal Palette row lists
+ * its 16 entries, each followed by its three bars. */
 /* Owner bug A (s61): no swatch can be recoloured. Every picker row on the
  * Swatches page must open its colour list, a built-in swatch (swatch0 =
- * "background") as well as one added with Add Swatch. Fails on main on
- * purpose: choice_setting (patina/menu_tree.c) only searches ids below
- * sd_nsettings, so editor rows never get a list. */
+ * "background") as well as one added with Add Swatch. */
 static void every_swatch_row_opens_its_colour_list(void)
 {
     mn_item it[MN_MAX_ITEMS];
@@ -3548,15 +3546,15 @@ static void every_swatch_row_opens_its_colour_list(void)
     CHECK(parse("[menu]\nsettings.theme = Theme Editor | settings:theme\nsettings.theme.swatches = Swatches | settings:theme-swatches\n"));
     tw_open_editor();
     nb = mn_children(&km, "settings.theme.swatches.swatch0", it, MN_MAX_ITEMS);
-    CHECK_INT(nb, SD_PICK_CUSTOM + 1);
+    CHECK_INT(nb, SD_PICK_BARS + SD_PICK_CUSTOM + 1);
     CHECK(gte_swatch_add("added", 0x808080UL) >= 0);
     na = mn_children(&km, "settings.theme.swatches.swatch12", it, MN_MAX_ITEMS);
-    CHECK_INT(na, SD_PICK_CUSTOM + 1);
+    CHECK_INT(na, SD_PICK_BARS + SD_PICK_CUSTOM + 1);
 }
 
 /* Owner bug C (s61): "Terminal Palette" on the Swatches page shows one entry
  * named "palette". Plan line 192: it is the 16 v1 terminal colours, reused rows.
- * Fails on main on purpose, same cause as every_swatch_row_opens_its_colour_list. */
+ * (Was red on purpose until choice_setting searched the editor rows; fixed since, counts updated for the S89 bar rows.) */
 static void terminal_palette_row_lists_its_16_colours(void)
 {
     mn_item it[MN_MAX_ITEMS];
@@ -3564,7 +3562,7 @@ static void terminal_palette_row_lists_its_16_colours(void)
     CHECK(parse("[menu]\nsettings.theme = Theme Editor | settings:theme\nsettings.theme.swatches = Swatches | settings:theme-swatches\n"));
     tw_open_editor();
     np = mn_children(&km, "settings.theme.swatches.palette", it, MN_MAX_ITEMS);
-    CHECK_INT(np, 16);
+    CHECK_INT(np, 16 * (1 + 3));   /* S89: each entry, then its Red, Green, Blue bars */
 }
 
 /* A group or element colour row lists the open theme's swatches (element rows: Follow group first), then Expression... */
