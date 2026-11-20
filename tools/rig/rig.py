@@ -1523,7 +1523,9 @@ def setup():
     stage_amissl(RIG / "vtc", M060)
     stage_ixemul(RIG / "vtc", NOFPU)
     stage_screennotify(RIG / "vtc")
-    warn_stale_build([src for src, dst in program_pairs(RIG / "vtc", ROOT / "build/amiga")])
+    # refresh_programs rebuilds the programs that differ from VTC:; a stale one that already matches stays as it is
+    warn_stale_build([src for src, dst in program_pairs(RIG / "vtc", ROOT / "build/amiga")
+                      if not dst.is_file() or dst.read_bytes() == src.read_bytes()])
     refresh_programs(RIG / "vtc", ROOT / "build/amiga")   # the files build_drift checks, as install copies them
     refresh_kit_shadows(RIG / "vtc")
     stale = build_drift(RIG / "vtc")
@@ -1904,7 +1906,7 @@ def warn_stale_build(files, run=None):
     tracked = run(["git", "ls-files", "*.c", "*.h", "*.S", "Makefile"], cwd=ROOT, capture_output=True, text=True).stdout.split()
     newer = [((ROOT / f).stat().st_mtime, f) for f in tracked if (ROOT / f).is_file() and (ROOT / f).stat().st_mtime > oldest]
     src = "newest source newer: %s" % max(newer)[1] if newer else "no tracked source file is newer (a dependency changed)"
-    print("[WARN] build/amiga is stale, staging it anyway: %s; %s" % (", ".join(t.rsplit("/", 1)[1] for t in stale), src))
+    print("[WARN] build/amiga is stale and the rig keeps it (run make amiga): %s; %s" % (", ".join(t.rsplit("/", 1)[1] for t in stale), src))
     return [t.rsplit("/", 1)[1] for t in stale]
 
 def refresh_programs(vtc, built, required=()):
