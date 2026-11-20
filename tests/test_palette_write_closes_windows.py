@@ -67,5 +67,46 @@ class PaletteWriteClosesWindows(unittest.TestCase):
         self.assertIn("dk_start_persist(plan & ~DK_START_ARC", b, "the start persist copies the old ENV: bytes over the ENVARC:-only parts")
 
 
+class RuntimePickUnderDopusResetsNothing(unittest.TestCase):
+    """S92-DKAPPLY: a runtime theme pick (dk_apply) wrote palette/pattern/pointer/font/icontrol into ENV:, IPrefs reset the Workbench and
+    DOpus raced the close/reopen (the AGA-BOOT-DEADLOCK race at runtime). Invariant: with DOpus up no pick writes an ENV: file IPrefs
+    watches; the colours go live, the files go to ENVARC: only."""
+
+    def test_apply_sets_arc_only_when_dopus_runs(self):
+        b = body(SRC, "int desk_dos_apply(const gtheme *th, char *why, int cap)")
+        flag = b.find("dk_arc_only = rexx_port_exists(DOPUS_PORT)")
+        self.assertNotEqual(flag, -1, "desk_dos_apply does not switch to ENVARC:-only writes while DOpus runs")
+        self.assertLess(flag, b.index("dk_apply(th, why, cap)"), "the DOpus check comes after dk_apply's writes")
+        self.assertLess(b.index("dk_wbborder()"), b.index("dk_arc_only = 0"), "dk_wbborder's Workbench.prefs write runs outside the DOpus guard")
+        self.assertIn("if (r > 0 && !arc)\n        dk_confirm_ask", b, "the Keep/Revert confirm runs under DOpus: its Revert resets the Workbench")
+        r = body(SRC, "int desk_dos_flat_pens_refresh(void)")
+        self.assertLess(r.index("dk_arc_only = rexx_port_exists(DOPUS_PORT)"), r.index("dk_flat_pens(&th)"))
+
+    def test_put_writes_envarc_only(self):
+        b = body(SRC, "static int dk_put(const char *editor, const char *work, const unsigned char *buf, long len)")
+        arc = b.find("if (dk_arc_only)")
+        self.assertNotEqual(arc, -1, "dk_put feeds the stock editor (ENV: write, Workbench reset) while DOpus runs")
+        self.assertLess(arc, b.index("dk_editor(editor, work)"))
+        self.assertIn('strcpy(env, "ENVARC:Sys/")', b[arc:b.index("dk_editor(editor, work)")])
+
+    def test_palette_goes_live_under_dopus(self):
+        b = body(SRC, "static int dk_put_palette(const unsigned char *buf, long len)")
+        self.assertIn("dk_arc_only)\n        am_sentinel(\"PATINA_DESK_ARC_LIVE_PAL\", (long)dk_live_palette(buf, len))", b,
+                      "the pick's colours do not reach the screen without the IPrefs reset")
+        i = body(SRC, "static int dk_icontrol(int thin, const gtheme *th)")
+        self.assertIn('(dk_arc_only || dk_write("ENV:Sys/icontrol.prefs"', i, "icontrol.prefs still lands in ENV: under DOpus")
+
+    def test_no_reset_bracket_under_dopus(self):
+        b = body(SRC, "static int dk_apply(const gtheme *th, char *why, int cap)")
+        z = b.find("if (dk_arc_only)\n        reset = old_ws = 0;")
+        self.assertNotEqual(z, -1, "dk_apply closes windows and waits for a Workbench reset that must not happen under DOpus")
+        self.assertLess(z, b.index("if (reset || old_ws) {"))
+        f = body(SRC, "static int dk_flat_pens(const gtheme *th)")
+        self.assertIn("int reset = !dk_arc_only && desk_pens_reset(", f)
+        self.assertIn("dk_put_palette(buf, len) && !dk_arc_only", f, "dk_flat_pens waits out a reset that never comes under DOpus")
+        o = body(SRC, "static void dk_orig_off(unsigned desk_mask, int flat)")
+        self.assertIn("if (off && !dk_arc_only)\n        dk_restore_targets(off, DK_ORIG);", o, "switching a part off restores ENV: via editors under DOpus")
+
+
 if __name__ == "__main__":
     sys.exit(unittest.main())

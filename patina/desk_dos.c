@@ -166,10 +166,21 @@ static int dk_screen_depth(void)
  * here as well made IPrefs open it on the change notice while the editor wrote it: "Error accessing file
  * ENV:Sys/Pointer.prefs, object is in use" (Program Error of SYS:Prefs/Pointer). */
 static int dk_files_equal(const char *a, const char *b);
+static int dk_put_boot(const char *arc, const unsigned char *buf, long len);
+/* S92-DKAPPLY: 1 while a runtime pick runs with Directory Opus up (desk_dos_apply, desk_dos_flat_pens_refresh). Owner rule: never reset the
+ * Workbench while DOpus runs (its LockPubScreen in the IPrefs reset gap deadlocks planar AGA, AGA-BOOT-DEADLOCK). Every ENV: write IPrefs
+ * watches resets it (iprefs-case2), so dk_put, dk_put_palette and dk_icontrol write ENVARC: only and the colours go live, as the boot
+ * start-apply does. shortcut: the pen map, font, pattern and pointer show from the next boot; a pick with DOpus closed applies them now. */
+static int dk_arc_only;
 unsigned long desk_dos_put_skips;
 static int dk_put(const char *editor, const char *work, const unsigned char *buf, long len)
 {
     char env[48];
+    if (dk_arc_only) {
+        strcpy(env, "ENVARC:Sys/");
+        strcat(env, strrchr(work, '/') + 1);
+        return dk_put_boot(env, buf, len);
+    }
     if (len <= 0 || !dk_write(work, buf, len))
         return 0;
     /* S82-SKIP-UNCHANGED: IPrefs resets the Workbench on every USE, identical bytes too (iprefs-case2), so equal bytes are not fed */
@@ -214,7 +225,7 @@ static int dk_icontrol(int thin, const gtheme *th)
         return 0;
     desk_geometry_bar(thin, gt_look_bar_height(th), geom);
     n = desk_icontrol(len > 0 ? cur : 0, len > 0 ? len : 0, geom, out, sizeof out);
-    return n > 0 && dk_write("ENVARC:Sys/icontrol.prefs", out, n) && dk_write("ENV:Sys/icontrol.prefs", out, n);
+    return n > 0 && dk_write("ENVARC:Sys/icontrol.prefs", out, n) && (dk_arc_only || dk_write("ENV:Sys/icontrol.prefs", out, n));
 }
 
 /* FLAT-P1-2 off: the snapshot dk_snapshot took before the thin write goes back over both copies (a copy that did not exist then is deleted) */
@@ -224,7 +235,7 @@ static int dk_icontrol_restore(void)
     static const char *const files[2] = { "ENVARC:Sys/icontrol.prefs", "ENV:Sys/icontrol.prefs" };
     char name[96];
     int i, ok = 1;
-    for (i = 0; i < 2; i++) {
+    for (i = 0; i < 2 - dk_arc_only; i++) {   /* S92-DKAPPLY: ENVARC: alone under DOpus */
         long len;
         dk_copy_name(files[i], name);
         len = dk_read(name, buf, sizeof buf);
@@ -350,9 +361,13 @@ static int dk_put_palette(const unsigned char *buf, long len)
          * the work copy never equalled ENV: (S82-SKIP-UNCHANGED never fired). The safe bytes go to ENV: directly, as
          * dk_palette_31_start already does; running the editor and then copying would reset the Workbench twice. */
         ok = dk_put(0, DK_WORK "/palette.prefs", buf, len);
-    } else
+    } else if (dk_arc_only)
+        ok = dk_put(0, DK_WORK "/palette.prefs", buf, len);   /* S92-DKAPPLY: ENVARC: alone, no editor run */
+    else
         ok = dk_put("Palette", DK_WORK "/palette.prefs", buf, len);
-    if (ok)
+    if (ok && dk_arc_only)
+        am_sentinel("PATINA_DESK_ARC_LIVE_PAL", (long)dk_live_palette(buf, len));   /* nothing resets: the colours go on the screen now */
+    else if (ok)
         dk_wait_palette(buf, len);
     return ok;
 }
@@ -685,6 +700,8 @@ static int dk_apply(const gtheme *th, char *why, int cap)
         wb_before = dk_wb_screen(live, &nlive);
         reset = desk_pens_reset(live, nlive, flat_pens, depth);
     }
+    if (dk_arc_only)
+        reset = old_ws = 0;   /* S92-DKAPPLY: no ENV: write follows, so no Workbench reset to close the windows around or wait for */
     if (reset || old_ws) {
         desk_dos_wb_closes++;
         was = dk_windows_close();
@@ -1079,12 +1096,12 @@ static int dk_flat_pens(const gtheme *th)
     if (sync && len > 0) {
         /* RL15-IPREFS-SYSREQ: a pen map change resets the Workbench screen; with our windows open IPrefs' CloseWorkBench fails, its
          * "System Request" (Retry/Cancel) stays up and every wait below runs to its timeout. Same rule as dk_apply: close first. */
-        int reset = desk_pens_reset(live, nlive, flat, depth), was = 0;
+        int reset = !dk_arc_only && desk_pens_reset(live, nlive, flat, depth), was = 0;
         idle = dk_iprefs_idle_mask();
         desk_dos_flat_pens_writes++;
         if (reset)
             was = dk_windows_close();
-        if (dk_put_palette(buf, len)) {
+        if (dk_put_palette(buf, len) && !dk_arc_only) {
             dk_wait_reset(before, flat, depth);
             dk_wait_iprefs(idle);
         }
@@ -1104,7 +1121,8 @@ static int dk_flat_pens(const gtheme *th)
     } else if (restore) {
         plen = dk_read(DK_FLAT_PAT, prev, sizeof prev);
         if (plen < 0) {
-            DeleteFile((STRPTR)"ENV:Sys/wbpattern.prefs");
+            if (!dk_arc_only)
+                DeleteFile((STRPTR)"ENV:Sys/wbpattern.prefs");
             DeleteFile((STRPTR)"ENVARC:Sys/wbpattern.prefs");
         } else {
             dk_put("WBPattern", DK_WORK "/wbpattern.prefs", prev, plen);
@@ -1453,7 +1471,9 @@ int desk_dos_flat_pens_refresh(void)
         return 0;
     gt_dos_load_current(&th);
     dk_live_want = 0;
+    dk_arc_only = rexx_port_exists(DOPUS_PORT);   /* S92-DKAPPLY */
     done = dk_flat_pens(&th);
+    dk_arc_only = 0;
     if (dk_live_want)
         dk_live_pens(dk_live_want > 0 ? &th : 0, dk_live_flat);
     return done;
@@ -1461,11 +1481,14 @@ int desk_dos_flat_pens_refresh(void)
 
 int desk_dos_apply(const gtheme *th, char *why, int cap)
 {
-    int r;
+    int r, arc;
     dk_live_want = 0;
     dk_pic_ask = 1;
     dk_pic_answer = -1;
     dk_dopus_pic[0][0] = dk_dopus_pic[1][0] = 0;
+    /* S92-DKAPPLY: with DOpus up no part of this pick may reset the Workbench (dk_arc_only); no DOpus: the full apply with its reset */
+    arc = dk_arc_only = rexx_port_exists(DOPUS_PORT);
+    am_sentinel("PATINA_DESK_ARC_ONLY", (long)arc);
     r = dk_apply(th, why, cap);
     if (!(r > 0 && (r & (1 << DT_PALETTE))) && dk_flat_pens(th) && r >= 0)
         r |= 1 << DT_PALETTE;   /* the theme colours are in the palette and DOpus has them: no wb_pens_apply */
@@ -1491,7 +1514,8 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
         amconf_return(ap);
     }
     dk_wbborder();
-    if (r <= 0 && !dk_pending_mask())
+    dk_arc_only = 0;
+    if ((r <= 0 || arc) && !dk_pending_mask())
         DeleteFile((STRPTR)DK_WBPEND);   /* nothing to confirm: the Workbench.prefs snapshot has no owner */
     if (dk_live_want)
         dk_live_pens(dk_live_want > 0 ? th : 0, dk_live_flat);
@@ -1501,7 +1525,8 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     am_sentinel("PATINA_DESK_ENV_FIX_FAILS", (long)desk_dos_env_fix_fails);
     am_sentinel("PATINA_DESK_ENV_FIX_ERR", (long)desk_dos_env_fix_err);
     am_sentinel("PATINA_DESK_CONFIRM_ASKS", (long)desk_dos_confirm_asks);
-    if (r > 0)
+    /* S92-DKAPPLY: no Keep/Revert under DOpus: the pick is in ENVARC: already and a Revert (editor runs into ENV:) would reset the Workbench */
+    if (r > 0 && !arc)
         dk_confirm_ask((unsigned)r);
     return r;
 }
@@ -1816,12 +1841,15 @@ static void dk_orig_off(unsigned desk_mask, int flat)
     n = desk_persist_pairs(off, wb, env, arc, 8);
     for (i = 0; i < n; i++)
         dk_orig_restore_arc(env[i], arc[i]);
-    if (off)
+    /* S92-DKAPPLY: under DOpus the ENVARC: originals above are all: the ENV: restore below (editor runs) would reset the Workbench */
+    if (off && !dk_arc_only)
         dk_restore_targets(off, DK_ORIG);
     if (wb) {
         desk_copy_name(DK_ORIG, DESK_WBPREFS_ENV, name, sizeof name);
         wbfix = dk_exists(name);
-        if (wbfix)
+        if (dk_arc_only)
+            wbfix = 0;   /* S92-DKAPPLY: ENVARC: has the original; no editor run, no Workbench reset under DOpus */
+        else if (wbfix)
             dk_editor("Workbench", name);
         else
             dk_wb_absent();
