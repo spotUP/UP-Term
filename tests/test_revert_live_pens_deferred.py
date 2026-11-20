@@ -58,6 +58,21 @@ class RevertLivePensDeferred(unittest.TestCase):
         self.assertGreater(b.rfind("UnlockPubScreen(", 0, w), b.rfind("ipd_lock_wb_screen()", 0, w),
                            "dk_live_pens holds the Workbench visitor lock across ipd_role_write (holder semaphore, list lock): KS 3.2 freeze")
 
+    def test_role_write_unowned_pen_goes_direct(self):
+        """FLAT-PEN5-MAGENTA (rig 98, KS 3.1 planar depth 4): the holder owned no role pens and every pen was shared, so
+        ipd_role_write answered 0 for 4-7 and nobody wrote them (pen 6 stayed ff00ff in the lister antialias). A pen the holder
+        does not own and nobody holds exclusive answers -2; dk_live_pens writes every < 0 answer directly."""
+        dos = (ROOT / "patina" / "iconpen_dos.c").read_text()
+        rw = body(dos, "int ipd_role_write(int pen, uc_u32 rgb)")
+        k = rw.index("ipd_pen_not_exclusive(")
+        self.assertIn("ok = -2", rw[k:], "ipd_role_write: no -2 for a pen the holder does not own")
+        self.assertGreater(k, rw.index("ip_role_claim("), "the holder's own claim must come first")
+        ne = body(dos, "static int ipd_pen_not_exclusive(struct ColorMap *cm, int pen)")
+        self.assertIn("PRECISION_EXACT", ne, "ObtainPen fails on every pen in use: only an exact ObtainBestPen finds a shared one")
+        self.assertIn("ReleasePen(", ne)
+        b = body(SRC, "static void dk_live_pens(const gtheme *th, int flat)")
+        self.assertRegex(b, r"ipd_role_write\(pens\[i\], cols\[i\]\)\) < 0\)", "dk_live_pens: direct write on every answer < 0")
+
 
 if __name__ == "__main__":
     sys.exit(unittest.main())

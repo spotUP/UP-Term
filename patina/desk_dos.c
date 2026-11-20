@@ -950,7 +950,8 @@ static void dk_live_pens(const gtheme *th, int flat)
     struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
     struct Screen *scr = IntuitionBase && GfxBase ? ipd_lock_wb_screen() : 0;
-    int pens[4], n = 0, i, depth = 0, direct = 0;
+    int pens[4], rw[4], n = 0, i, depth = 0, direct = 0;
+    long code;
     uc_u32 cols[4];
     long slen = -1;
     if (scr) {
@@ -971,7 +972,8 @@ static void dk_live_pens(const gtheme *th, int flat)
      * lock of ours: a visitor lock held across LockPubScreenList waited out an IPrefs Workbench reset (KS 3.2, timeout Revert) and the
      * guest froze. Lock order: holder semaphore, list lock; a screen lock only around the direct write, never across the list lock. */
     for (i = 0; i < n; i++)
-        if (ipd_role_write(pens[i], cols[i]) < 0)   /* S57-PENS47-UNOWNED: the holder owns 4-7; no holder running = the old direct write */
+        if ((rw[i] = ipd_role_write(pens[i], cols[i])) < 0)   /* S57-PENS47-UNOWNED: the holder owns 4-7; no holder (-1) or a pen it does not own
+                                                     * that nobody holds exclusive (-2, FLAT-PEN5-MAGENTA) = the old direct write */
             direct |= 1 << i;
     if (direct && (scr = ipd_lock_wb_screen()) != 0) {
         for (i = 0; i < n; i++)
@@ -982,6 +984,10 @@ static void dk_live_pens(const gtheme *th, int flat)
     }
     if (n > 0)
         desk_dos_live_pens++;
+    /* FLAT-PEN5-MAGENTA: digit per role pen = ipd_role_write + 2 (0 direct: unowned, 1 direct: no holder, 2 skipped: another client's exclusive, 3 holder wrote), 9 first */
+    for (i = 0, code = 9; i < n; i++)
+        code = code * 10 + (rw[i] + 2);
+    am_sentinel("PATINA_DESK_LIVE_ROLE", code);
     if (GfxBase)
         CloseLibrary((struct Library *)GfxBase);
     if (IntuitionBase)

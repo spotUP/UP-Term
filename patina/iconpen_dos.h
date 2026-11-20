@@ -114,7 +114,9 @@ void ipd_resync(void);
 /* A theme switch: rewrite the held pens 32..47 with SetRGB32 from the new theme (ip_recolour). Does nothing when no record exists. */
 void ipd_recolour(void);
 /* S57-PENS47-UNOWNED: write a live role pen (4-7) through the holder: 1 written (the holder owns it), 0 not ours or not on the
- * Workbench screen the pens are held on (skipped), -1 no holder runs (the caller writes it directly, as before) */
+ * Workbench screen the pens are held on (skipped), -1 no holder runs (the caller writes it directly, as before), -2 the holder does
+ * not own the pen and no other client holds it exclusive (free, or shared by ObtainBestPen users; the caller writes it directly,
+ * FLAT-PEN5-MAGENTA) */
 int ipd_role_write(int pen, uc_u32 rgb);
 /* "pens-held N refs=M screens=K applies=A" (K = other screens holding pens, A = plans applied to them) from the record; no record reads "pens-held 0 refs=0 screens=0 applies=0". Needs no library. Returns the length. */
 int ipd_status_line(char *out, size_t cap);

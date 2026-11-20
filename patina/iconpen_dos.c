@@ -67,6 +67,25 @@ int ipd_pen_is_free(struct ColorMap *cm, int pen)
     return 1;
 }
 
+/* FLAT-PEN5-MAGENTA: 1 when no client holds `pen` exclusive: free, or shared (ObtainBestPen users; ObtainPen fails on any pen in use,
+ * so an exact-colour ObtainBestPen that hands back this very pen is the shared test; exclusive pens are never matched). The obtain is
+ * released at once. A pen another client took exclusive (a Patina menu's 4-7) answers 0; so does a shared pen whose exact colour
+ * another shared pen also has (lower number first): skipped, as before. */
+static int ipd_pen_not_exclusive(struct ColorMap *cm, int pen)
+{
+    ULONG c[3];
+    LONG got;
+    if (!cm)
+        return 0;
+    if (ipd_pen_is_free(cm, pen))
+        return 1;
+    GetRGB32(cm, (ULONG)pen, 1, c);
+    got = ObtainBestPen(cm, c[0], c[1], c[2], OBP_Precision, PRECISION_EXACT, OBP_FailIfBad, TRUE, TAG_DONE);
+    if (got >= 0)
+        ReleasePen(cm, (ULONG)got);
+    return got == (LONG)pen;
+}
+
 static int pen_is_free(void *ctx, int pen)
 {
     return ipd_pen_is_free(((pen_ctx *)ctx)->cur, pen);
@@ -559,6 +578,9 @@ int ipd_role_write(int pen, uc_u32 rgb)
     if (sc && sc == r->t.slot[0].sh.h.screen && ip_role_claim(&r->t.slot[0].sh.h, pen, rgb)) {
         SetRGB32(&sc->ViewPort, (ULONG)pen, ip_scale32((unsigned)(rgb >> 16)), ip_scale32((unsigned)(rgb >> 8)), ip_scale32((unsigned)rgb));
         ok = 1;
+    } else if (sc && ipd_pen_not_exclusive(sc->ViewPort.ColorMap, pen)) {
+        ok = -2;   /* FLAT-PEN5-MAGENTA: the holder does not own it (no role pens planned, or ObtainBestPen users shared it first) and
+                    * no other client holds it exclusive: the caller writes it, or 4-7 stay graphics defaults (pen 6 ff00ff) */
     }
     UnlockPubScreenList();
     ReleaseSemaphore(&r->ss);
