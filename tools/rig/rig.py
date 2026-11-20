@@ -1523,6 +1523,7 @@ def setup():
     stage_amissl(RIG / "vtc", M060)
     stage_ixemul(RIG / "vtc", NOFPU)
     stage_screennotify(RIG / "vtc")
+    warn_stale_build([src for src, dst in program_pairs(RIG / "vtc", ROOT / "build/amiga")])
     refresh_programs(RIG / "vtc", ROOT / "build/amiga")   # the files build_drift checks, as install copies them
     refresh_kit_shadows(RIG / "vtc")
     stale = build_drift(RIG / "vtc")
@@ -1887,6 +1888,24 @@ def ensure_built(files, run=None):
         sys.exit("[ERROR] make failed for stale program(s) %s, not pushing them:\n%s"
                  % (", ".join(t.rsplit("/", 1)[1] for t in stale), (r.stdout + r.stderr)[-1500:]))
     return stale
+
+def warn_stale_build(files, run=None):
+    """[WARN] before staging: the build/amiga programs in `files` that make's graph (`make -q`, as ensure_built) says are
+    older than their sources, with the newest tracked source file newer than the oldest of them. Rule: make's graph
+    decides staleness; the named source is the newest tracked .c/.h/.S/Makefile by mtime (shortcut: not per-binary, so it
+    may be a file another binary builds from). Warns only, never blocks. Returns the stale names."""
+    run = run or subprocess.run
+    own = (ROOT / "build/amiga").resolve()
+    targets = ["build/amiga/" + n for n in sorted({f.name for f in map(pathlib.Path, files) if f.is_file() and f.resolve().parent == own})]
+    stale = paths.stale_targets(targets, run, ROOT)
+    if not stale:
+        return []
+    oldest = min((ROOT / t).stat().st_mtime for t in stale)
+    tracked = run(["git", "ls-files", "*.c", "*.h", "*.S", "Makefile"], cwd=ROOT, capture_output=True, text=True).stdout.split()
+    newer = [((ROOT / f).stat().st_mtime, f) for f in tracked if (ROOT / f).is_file() and (ROOT / f).stat().st_mtime > oldest]
+    src = "newest source newer: %s" % max(newer)[1] if newer else "no tracked source file is newer (a dependency changed)"
+    print("[WARN] build/amiga is stale, staging it anyway: %s; %s" % (", ".join(t.rsplit("/", 1)[1] for t in stale), src))
+    return [t.rsplit("/", 1)[1] for t in stale]
 
 def refresh_programs(vtc, built, required=()):
     """Copies every program of program_pairs that differs (or, for the `required` names, is absent from VTC: itself).
