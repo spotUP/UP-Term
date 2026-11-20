@@ -75,6 +75,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
   rig.py start --debugger   FS-UAE's console debugger (console_debugger = 1) on a FIFO: stdout/stderr in
                   build/rig<N>/debugger.log, input from build/rig<N>/debugger.in
   rig.py dbg "<line>"   one debugger line to that FIFO, e.g. "w 0 <addr> 4 W" (memwatch on writes), "g"
+  rig.py softreset  SIGUSR2 to this rig's fs-uae: soft reset, works when the Amiga is hung (needs the patched build, see tools/rig/fsuae-debug.patch)
   rig.py dbgbreak   SIGUSR1 to this rig's fs-uae: enter the console debugger (needs a debug build, UPTERM_FSUAE=<binary>)
   rig.py wasabi on|off|snoop|debug|guru|ps   call trace, debug output, Guru, tasks (tools/rig/wasabi.py)
 
@@ -1667,6 +1668,26 @@ def dbgbreak():
     for pid in pids:
         os.kill(pid, signal.SIGUSR1)
     print("rig: SIGUSR1 sent to %s" % pids)
+
+def softreset():
+    """rig.py softreset: SIGUSR2 into this rig's FS-UAE, which soft-resets the Amiga from its own frame loop (works when the
+    Amiga is hung). Needs the patched build (tools/rig/fsuae-debug.patch); an unpatched fs-uae would die on SIGUSR2, so refuse."""
+    procs = [l.split(None, 1) for l in mine()]
+    if not procs:
+        sys.exit("rig: no FS-UAE running for %s" % CFG)
+    for pid, cmd in procs:
+        exe = cmd.split()[0]  # shortcut: a binary path with spaces is not found, reported as unpatched
+        try:
+            patched = SOFTRESET_MARKER in pathlib.Path(exe).read_bytes()
+        except OSError:
+            patched = False
+        if not patched:
+            sys.exit("rig: pid %s runs an fs-uae without the soft reset patch (tools/rig/fsuae-debug.patch, UPTERM_FSUAE=<patched binary>); not signalling" % pid)
+    for pid, _ in procs:
+        os.kill(int(pid), signal.SIGUSR2)
+    print("rig: SIGUSR2 (soft reset) sent to %s" % [int(p) for p, _ in procs])
+
+SOFTRESET_MARKER = b"fsuae-softreset-v1"
 
 def fsuae_stdio():
     """stdin, stdout, stderr for the FS-UAE process: the debugger FIFO and log with --debugger, else null."""
@@ -3326,7 +3347,7 @@ def main(argv):
     """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
     cmds = {"setup": setup, "start": start, "stop": stop_command, "clear": clear, "gc": gc, "reboot": reboot, "install": install, "kit-restore": kit_restore,
-            "status": status, "upterm-sync": upterm_sync_command, "logwatch": logwatch, "serialwatch": serialwatch, "muforce": muforce, "dbg": dbg, "dbgbreak": dbgbreak, "watchdog": watchdog, "hold": hold, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
+            "status": status, "upterm-sync": upterm_sync_command, "logwatch": logwatch, "serialwatch": serialwatch, "muforce": muforce, "dbg": dbg, "dbgbreak": dbgbreak, "softreset": softreset, "watchdog": watchdog, "hold": hold, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
             "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg"), "dopus": dopus}
     helps = ("--help", "-h", "help", "?")
     if len(argv) > 1 and (argv[1] in helps or (argv[1] in cmds and any(a in helps for a in argv[2:]))):

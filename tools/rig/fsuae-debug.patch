@@ -1,3 +1,34 @@
+diff --git a/src/od-fs/input.cpp b/src/od-fs/input.cpp
+index aaac1e8af..1d6464534 100644
+--- a/src/od-fs/input.cpp
++++ b/src/od-fs/input.cpp
+@@ -1,3 +1,4 @@
++#include <signal.h>
+ #include "sysconfig.h"
+ #include "sysdeps.h"
+ 
+@@ -6,6 +7,7 @@
+ #include "inputdevice.h"
+ #include "moduleripper.h"
+ #include "options.h"
++#include "uae.h"
+ #include "xwin.h"
+ #include "uae/fs.h"
+ 
+@@ -163,7 +165,13 @@ int amiga_send_input_event(int input_event, int state)
+ 
+ } // extern "C"
+ 
++extern volatile sig_atomic_t fsuae_softreset_requested;
++
+ bool handle_events (void) {
++    if (fsuae_softreset_requested) {
++        fsuae_softreset_requested = 0;
++        uae_reset(0, 1);  // soft reset, keyboard reset: same call as amiga_reset(0)
++    }
+ #ifdef DEBUG_SYNC
+     static int count = 0;
+     write_sync_log(" -- event handler for frame -- frame=%d\n", count);
 diff --git a/src/od-fs/stubs.cpp b/src/od-fs/stubs.cpp
 index b82cc255d..c5723765a 100644
 --- a/src/od-fs/stubs.cpp
@@ -12,19 +43,26 @@ index b82cc255d..c5723765a 100644
  
  void logging_init(void) {
 diff --git a/src/od-fs/uaemisc.cpp b/src/od-fs/uaemisc.cpp
-index de3577d63..607f25c82 100644
+index de3577d63..f70a349fc 100644
 --- a/src/od-fs/uaemisc.cpp
 +++ b/src/od-fs/uaemisc.cpp
-@@ -248,8 +248,12 @@ static RETSIGTYPE sigbrkhandler (int foo)
+@@ -248,8 +248,19 @@ static RETSIGTYPE sigbrkhandler (int foo)
  }
  #endif
  
 +extern void activate_debugger (void);
 +static void sigusr1_debugger (int) { activate_debugger (); }
 +
++/* SIGUSR2: only set a flag (async-signal-safe); handle_events () in input.cpp does the soft reset on the emulation thread. */
++volatile sig_atomic_t fsuae_softreset_requested;
++/* rig.py softreset greps the binary for this string to know the build handles SIGUSR2 */
++extern const char fsuae_softreset_marker[] = "fsuae-softreset-v1";
++static void sigusr2_softreset (int) { fsuae_softreset_requested = 1; }
++
  void setup_brkhandler (void)
  {
 +    signal (SIGUSR1, sigusr1_debugger);
++    signal (SIGUSR2, sigusr2_softreset);
      /*
  #if defined(__unix) && !defined(__NeXT__)
      struct sigaction sa;

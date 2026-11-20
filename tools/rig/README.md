@@ -260,3 +260,11 @@ Other groups (one line each; docstrings say more):
 The exact command and prerequisites for each (which `make` target builds its
 probe, whether it needs a fresh boot) are in the table in `RULES.md`,
 section "Commands".
+
+## Soft reset of a hung rig
+
+`UPTERM_RIG=<n> python3 tools/rig/rig.py softreset` sends SIGUSR2 to the rig's fs-uae, which soft-resets the Amiga from its own
+frame loop (the signal handler only sets a flag). It needs no guest, so it works when the Amiga is hung. It needs the patched
+build: apply `tools/rig/fsuae-debug.patch` (`git apply`, in `Emulators/fs-uae`), build, and start the rig with
+`UPTERM_FSUAE=<that binary>`. On an unpatched fs-uae (which would die on SIGUSR2) it prints why and exits non-zero without signalling.
+Test: `python3 tests/test_rig_softreset.py` (needs an existing `build/amiga` directory).
