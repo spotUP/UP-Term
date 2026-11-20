@@ -31,7 +31,8 @@ class FlatPrefsNotify(unittest.TestCase):
         self.assertIn("dk_flat_sync_theme(&th, changed_only);", body(src, "static void dk_flat_sync_with(int changed_only)"))
         w = body(src, "static void dk_flat_sync_theme(const gtheme *thp, int changed_only)")
         self.assertRegex(w, r"!changed_only \|\| memcmp\(&next, &r->st, sizeof next\) != 0")
-        self.assertIn('pl_start(PL_BIN_DIR "/patina-flat BOOT"', w)
+        self.assertIn("dk_flat_start(flat, gad);", w)
+        self.assertIn('pl_start(PL_BIN_DIR "/patina-flat BOOT"', body(src, "static void dk_flat_start(int flat, int gad)"))
         self.assertIn("void desk_dos_flat_sync(void);", (ROOT / "patina/desk_dos.h").read_text())
 
     def test_desk_apply_still_writes_unconditionally(self):

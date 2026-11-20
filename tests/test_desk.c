@@ -1759,7 +1759,7 @@ static void test_desk_palette_31_wired(void)
     CHECK_INT(put != 0 && strstr(put, "desk_palette_31safe(") != 0, 1);
     for (puts = 0, p = (char *)src; (p = strstr(p, "dk_put_palette(")) != 0; p++)
         puts++;
-    CHECK_INT(puts, 4); /* the definition, the theme apply, the flat-pens sync, the start write */
+    CHECK_INT(puts, 3); /* the definition, the theme apply, the flat-pens sync (the boot start writes none: 838a3ffe, AGA-BOOT-DEADLOCK) */
     p = strstr((char *)src, "static void dk_orig_restore_arc(");
     CHECK_INT(p != 0 && strstr(p, "dk_palette_31_fix(name)") != 0 && strstr(p, "dk_palette_31_fix(name)") < strstr(p, "dk_stream_copy(name, arc)"), 1);
     p = strstr((char *)src, "static void dk_restore_targets(");
