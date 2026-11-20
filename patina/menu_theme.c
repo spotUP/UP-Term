@@ -412,7 +412,16 @@ int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char
         line[k] = 0;
         sent++;
         if (send(DOPUS_PORT, line, 0, 0, ud) == -1)
-            break;
+            return sent;
+    }
+    /* S92b-TBCOLOUR (rig 98): Opus remaps a brush once (dopus5 images.c:1732) and the environment toolbar holds the remap from its
+     * display open, before our pens; a lister on that bank shares it (lister_toolbar.c:744), so no `lister set` remaps again. Hide
+     * closes the display, which frees that cache (display.c:797); Reveal reopens it and remaps against the pens in force now.
+     * `wait` makes Hide post IPC_HIDE before Reveal posts IPC_SHOW on the same main port. (`dopus hide` is no command: rc 0, no-op.) */
+    if (tb && tb->force) {
+        sent += 2;
+        if (send(DOPUS_PORT, "command wait Hide", 0, 0, ud) != -1)
+            send(DOPUS_PORT, "command wait Reveal", 0, 0, ud);
     }
     return sent;
 }

@@ -4322,6 +4322,7 @@ static void dopus_theme_send_follows_the_lister_font(void)
     ops.outline = dopus_tb_outline;
     ops.font_exists = font_present;
     ops.ud = &t;
+    ops.force = 0;
     for (i = 0; i < 4; i++) {
         char want[64];
         int sets = i == 0 || i == 2;   /* first apply and a different font set it; the same font again and a missing font do not */
@@ -4357,6 +4358,7 @@ static void dopus_theme_send_picks_the_set_and_recolours(void)
     ops.outline = dopus_tb_outline;
     ops.font_exists = 0;
     ops.ud = &t;
+    ops.force = 0;
 
     memset(&t, 0, sizeof t);
     t.prefs = &prefs;
@@ -4415,6 +4417,28 @@ static void dopus_theme_send_picks_the_set_and_recolours(void)
             CHECK_INT(n, t.changed ? 1 : 0);
         }
     }
+
+    /* S92b-TBCOLOUR: force (the boot apply) sets the bank again with no brush changed, then Hide + Reveal so Opus remaps the
+     * environment toolbar against the live pens; without force the last line stays the refresh */
+    for (i = 0; i < 2; i++) {
+        memset(&t, 0, sizeof t);
+        t.prefs = &prefs;
+        t.font_h = 12;
+        t.rx = t.ry = 1;
+        ops.force = i;
+        memset(&r, 0, sizeof r);
+        r.screen = "Workbench 800 600 4 0";
+        r.all = "1";
+        strcpy(r.tb[1], DOPUS_TOOLBAR_FLAT "filled-32");
+        CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r, &ops), (long)r.n);
+        CHECK_INT(sent_line(&r, "lister set 1 toolbar " DOPUS_TOOLBAR_FLAT "filled-32"), i);
+        if (i) {
+            CHECK_STR(r.line[r.n - 2], "command wait Hide");
+            CHECK_STR(r.line[r.n - 1], "command wait Reveal");
+        } else
+            CHECK_STR(r.line[r.n - 1], "dopus refresh lister");
+    }
+    ops.force = 0;
 }
 
 /* Workbench pens 0-3 on a theme switch (menu_theme.h wb_pens_plan): gt_contrast of pen 0 against pen 1 (floor GT_FLOOR_TEXT) */

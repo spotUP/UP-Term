@@ -103,7 +103,7 @@ typedef struct {
     int (*outline)(void *ud);
     int (*font_exists)(void *ud, const char *name);   /* 1 when FONTS: holds the font; NULL = the lister font is left alone */
     void *ud;
-    int force;   /* S92-TBCOLOUR: 1 = set our bank again even with unchanged brushes, so Opus remaps them against the pens in force now */
+    int force;   /* S92-TBCOLOUR: 1 = set our bank again even with unchanged brushes, then Hide + Reveal Opus so it remaps them against the pens in force now */
 } dopus_tb_ops;
 
 /* Asks DOPUS_PORT "dopus screen" first (send(port, line, result, cap, ud); result NULL = no reply wanted), then switches every lister whose
