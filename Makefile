@@ -291,6 +291,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS)) | $(VENV_FONTTOOLS)
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = wb_absent ]; then python3 -I tests/test_wb_absent_restore.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = palette_closes ]; then python3 -I tests/test_palette_write_closes_windows.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = revert_live_pens ]; then python3 -I tests/test_revert_live_pens_deferred.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = boot_dopus_after_pens ]; then python3 -I tests/test_boot_dopus_after_pens.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_open_menu ]; then python3 -I tests/test_patina_gui_rig_open_menu.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_chip_pens ]; then python3 -I tests/test_gui_chip_pens.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_setup_breaks ]; then python3 -I tests/test_gui_rig_setup_breaks_any_copy.py; fi

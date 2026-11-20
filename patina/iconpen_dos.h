@@ -118,6 +118,10 @@ void ipd_recolour(void);
  * not own the pen and no other client holds it exclusive (free, or shared by ObtainBestPen users; the caller writes it directly,
  * FLAT-PEN5-MAGENTA) */
 int ipd_role_write(int pen, uc_u32 rgb);
+/* S92-TBCOLOUR: icon slots 8..15 are pens 8..15 at depth 4 and 5 (ip_fold). A Workbench ColorMap with no free pen (nfree 0) leaves the
+ * holder none of them, so they keep the graphics defaults (pen 10 7f007f magenta in every file icon). Writes each slot the holder does
+ * not hold straight onto its pen when no client holds it exclusive (the ipd_role_write -2 rule). Returns the pens written. */
+int ipd_icon_pens_direct(void);
 /* "pens-held N refs=M screens=K applies=A" (K = other screens holding pens, A = plans applied to them) from the record; no record reads "pens-held 0 refs=0 screens=0 applies=0". Needs no library. Returns the length. */
 int ipd_status_line(char *out, size_t cap);
 

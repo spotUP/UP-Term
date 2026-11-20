@@ -587,6 +587,32 @@ int ipd_role_write(int pen, uc_u32 rgb)
     return ok;
 }
 
+int ipd_icon_pens_direct(void)
+{
+    ipd_rec *r = find_rec(0);
+    uint8_t rgb[IP_PENS][3];
+    struct List *pl;
+    struct Screen *sc;
+    ip_holder *h = r ? &r->t.slot[0].sh.h : 0;
+    int i, depth, n = 0;
+    ipd_icon_rgb(rgb);              /* DOS reads: before any lock */
+    if (r)
+        ObtainSemaphore(&r->ss);
+    pl = LockPubScreenList();
+    sc = ipd_wb_screen_in(pl);
+    depth = sc ? ip_screen_depth(sc->BitMap.Depth, (sc->ViewPort.Modes & EXTRA_HALFBRITE) != 0) : 0;
+    if (depth == 4 || depth == 5)
+        for (i = 8; i < IP_PENS; i++)
+            if (!(h && sc == h->screen && i >= h->first && i < h->first + h->count && h->have[i - h->first]) && ipd_pen_not_exclusive(sc->ViewPort.ColorMap, i)) {
+                SetRGB32(&sc->ViewPort, (ULONG)i, ip_scale32(rgb[i][0]), ip_scale32(rgb[i][1]), ip_scale32(rgb[i][2]));
+                n++;
+            }
+    UnlockPubScreenList();
+    if (r)
+        ReleaseSemaphore(&r->ss);
+    return n;
+}
+
 int ipd_status_line(char *out, size_t cap)
 {
     ip_shared s;

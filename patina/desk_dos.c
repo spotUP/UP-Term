@@ -529,12 +529,17 @@ static long dk_dopus_send(const char *port, const char *line, char *result, int 
 
 /* S85k: after a Workbench reset Directory Opus reopens its display on its own 1 s timer (dopus5 event_loop.c:924); until then its
  * screen query fails and dopus_theme_send sends nothing. Wait for the display (at most DK_RESET_SECS), then send the theme. */
-void desk_dos_dopus_theme(const gtheme *th)
+static void desk_dos_dopus_wait(void)
 {
     char reply[160];
     int i;
     for (i = 0; i < DK_RESET_SECS * 4 && rexx_send(DOPUS_PORT, "dopus screen", reply, sizeof reply) > 0; i++)
         Delay(12);
+}
+
+void desk_dos_dopus_theme(const gtheme *th)
+{
+    desk_dos_dopus_wait();
     dopus_theme_send(th, dk_dopus_send, 0, &dopustb_dos_ops);
 }
 
@@ -984,6 +989,8 @@ static void dk_live_pens(const gtheme *th, int flat)
     }
     if (n > 0)
         desk_dos_live_pens++;
+    if (th)   /* S92-TBCOLOUR: after the last-four write of dk_live_palette (12-15); no screen lock of ours is held here */
+        am_sentinel("PATINA_DESK_ICON_PENS", (long)ipd_icon_pens_direct());
     /* FLAT-PEN5-MAGENTA: digit per role pen = ipd_role_write + 2 (0 direct: unowned, 1 direct: no holder, 2 skipped: another client's exclusive, 3 holder wrote), 9 first */
     for (i = 0, code = 9; i < n; i++)
         code = code * 10 + (rw[i] + 2);
@@ -2034,8 +2041,6 @@ int desk_dos_start_apply(void)
         am_sentinel("PATINA_DESK_START_LIVE_PAL", (long)dk_live_palette(pal, pallen));
         dk_live_want = 1;
         dk_live_flat = flat;
-        desk_dos_dopus_sends++;
-        desk_dos_dopus_theme(&th);
     }
     if (plan & DESK_START_POINTER) {
         dk_orig_save(1u << DT_POINTER, 0);
@@ -2077,6 +2082,15 @@ int desk_dos_start_apply(void)
     dk_start_persist(plan & ~DK_START_ARC, flat);   /* ENV: still holds the old bytes of the ENVARC:-only parts: no copy over them */
     if (dk_live_want)
         dk_live_pens(dk_live_want > 0 ? &th : 0, dk_live_flat);
+    if (plan & DESK_START_PALETTE) {
+        /* S92-TBCOLOUR: after every pen is final (dk_live_palette, dk_live_pens, the icon pens 8..15): Opus remaps a brush once, against
+         * the pens of that moment; forced so the bank a lister kept from its saved layout is set again and remapped. */
+        dopus_tb_ops tb = dopustb_dos_ops;
+        tb.force = 1;
+        desk_dos_dopus_sends++;
+        desk_dos_dopus_wait();
+        dopus_theme_send(&th, dk_dopus_send, 0, &tb);
+    }
     am_sentinel("PATINA_DESK_START_WRITES", (long)desk_dos_start_writes);
     return (int)plan;
 }

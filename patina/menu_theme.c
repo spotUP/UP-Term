@@ -402,7 +402,7 @@ int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char
         dt_cmap(th, rgb);
         changed = tb->recolour(name, (const unsigned char (*)[3])rgb, tb->ud);
     }
-    sent += dopus_toolbar_flat(send, ud, bank, changed > 0);   /* before the refresh, the last line of dopus_theme_commands */
+    sent += dopus_toolbar_flat(send, ud, bank, changed > 0 || (tb && tb->force));   /* before the refresh, the last line of dopus_theme_commands */
     n = dopus_theme_commands(th, cmds, sizeof cmds, !on_wb, dopus_lister_font(th, tb, font, (int)sizeof font));
     while (i < n) {
         for (k = 0; i < n && cmds[i] != '\n'; i++)
