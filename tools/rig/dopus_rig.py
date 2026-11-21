@@ -56,7 +56,10 @@ def target(args):
 # ;BEGIN DOpus5 block written. The system's real sequence is S:Startup-Sequence (DH0:S, assigned by the wrapper); it
 # already runs S:User-Startup, so the Installer finds nothing to change there. Gadget 91 is Abort Install, not Skip.
 # The ids are the page's, without the askdir page's 89, 93, 94.
-STARTUP_SEQUENCE = "S:Startup-Sequence"
+# The Installer edits whatever file this names, and on the 3.2 tree it inserted "IF EXISTS s:user-startup ... EndIF" into the
+# middle of an Echo line of the real S:Startup-Sequence (the stray EndIF ended If Warn early: boot died, ENV: never assigned).
+# So it is pointed at a RAM scratch file the script creates; the real sequence is never touched (S92b, rig 96 --os32).
+STARTUP_SEQUENCE = "RAM:dopus-startup-scratch"
 STARTUP_PAGE = {1, 2, 90, 91, 92, 96, 97, 98, 99, 100}
 
 
@@ -177,7 +180,7 @@ def script_text():
     3.2 tree only SYS:Install/Installer, off the path: `Installer` was "Unknown command" and the run ended at once. Called
     by a path, Status COM does not list it as "Installer" and drive() took the copy phase for the end; the path
     keeps the bare name."""
-    return 'CD VTCX:%s\nIf EXISTS SYS:Install/Installer\n  Path SYS:Install ADD\nEndIf\nInstaller "Install DOpus5" NOLOG\n' % TREE
+    return 'Echo >%s "; scratch"\nCD VTCX:%s\nIf EXISTS SYS:Install/Installer\n  Path SYS:Install ADD\nEndIf\nInstaller "Install DOpus5" NOLOG\n' % (STARTUP_SEQUENCE, TREE)
 
 
 def main():
