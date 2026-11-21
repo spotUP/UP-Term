@@ -2129,6 +2129,37 @@ static void test_desk_start_prefs_on_writes_border_gauge_backdrop(void)
 /* S31-START-PALETTE (rig 96): desktop-theme + desktop-palette on (the installer's full look), a stock palette in ENV:: the start writes
  * the theme colours (before, only a theme pick did, and the Workbench kept grey/orange under the theme backdrop); a second start
  * writes nothing; the palette part off, or the desktop theme off, leaves the colours to dk_flat_pens */
+/* REVERT-PENS03 (rig 97, S92b): the boot puts tokyo-night's pens 0-3 live only (AGA-BOOT-DEADLOCK), so the snapshot a timeout Revert restores
+ * held no tokyo-night colours; pens 4-11 went back, pens 0-3 stayed white. The revert now rebuilds the previous theme's palette from the
+ * restored file and puts it live. */
+static void test_revert_rebuilds_previous_theme_pens03(void)
+{
+    static const unsigned short stock[8] = { 0xaaa, 0x000, 0xfff, 0x68b, 0xe44, 0x5d5, 0x04d, 0xe90 };
+    static unsigned char base[1024], out[1024];
+    gtheme all[SHIPPED_MAX], *tokyo = 0;
+    unsigned char pens[DK_SLOTS];
+    int n = load_all(all, SHIPPED_MAX), i;
+    long len, m;
+    for (i = 0; i < n; i++)
+        if (!strcmp(all[i].name, "tokyo-night"))
+            tokyo = &all[i];
+    CHECK(tokyo != 0);
+    if (!tokyo)
+        return;
+    desk_pens_for(1, pens);
+    len = desk_palette_live(stock, 8, 3, pens, base, sizeof base);   /* the file the revert restored: stock colours */
+    CHECK(len > 0);
+    m = desk_revert_palette(tokyo, 1, 1, 8, base, len, out, sizeof out);
+    CHECK(m > 0);
+    for (i = 0; i < 4; i++)
+        CHECK_INT(desk_palette_rgb(out, m, i, 8), (long)desk_pen_colour(tokyo, i, 1));
+    CHECK(desk_palette_rgb(out, m, 0, 8) != 0xaaaaaaL);
+    /* no previous theme (older snapshot), palette part off, or no file: nothing to put live */
+    CHECK_INT(desk_revert_palette(0, 1, 1, 8, base, len, out, sizeof out), 0);
+    CHECK_INT(desk_revert_palette(tokyo, 1, 0, 8, base, len, out, sizeof out), 0);
+    CHECK_INT(desk_revert_palette(tokyo, 1, 1, 8, base, 0, out, sizeof out), 0);
+}
+
 static void test_desk_start_prefs_on_writes_theme_palette(void)
 {
     static const char on[] = "[profile default]\ndesktop-theme = on\ndesktop-palette = on\nflat-system-look = on\n";
@@ -2364,6 +2395,7 @@ void suite_desk(void)
     test_desk_filename_pen();
     test_desk_live_baseline_ignores_menu();
     test_revert_puts_previous_theme_line_and_pens47_back();
+    test_revert_rebuilds_previous_theme_pens03();
     test_desk_flat_pens_key();
     test_desk_flat_pens_stale_file();
     test_desk_flat_start_refresh();

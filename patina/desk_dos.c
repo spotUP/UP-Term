@@ -1818,6 +1818,23 @@ void desk_dos_revert(void)
     }
     if (mask)
         dk_restore_targets(mask, DK_REVERT);
+    if (dk_rv_theme && ((mask >> DT_PALETTE) & 1)) {
+        /* REVERT-PENS03: the restored file may not hold the previous theme's pens 0-3 (the boot set them live only); put them live, as the
+         * boot does (dk_live_palette: no file write, no reset). After the reset and the windows reopen, before dk_live_pens (S92-TBCOLOUR). */
+        static unsigned char base[DK_BUF], pal[DK_BUF];
+        unsigned char pens[DK_SLOTS];
+        am_prefs *ap;
+        int flat, palette, depth = dk_screen_depth();
+        long len;
+        ap = amconf_borrow();
+        flat = amconf_desk_flat_pens(ap);
+        palette = (amconf_desk_mask(ap) >> DT_PALETTE) & 1;
+        amconf_return(ap);
+        desk_pens_for(flat, pens);
+        len = dk_palette_base(0, pens, depth, base, sizeof base);
+        len = desk_revert_palette(dk_rv_theme, flat, palette, depth, base, len, pal, sizeof pal);
+        am_sentinel("PATINA_DESK_REVERT_LIVE_PAL", len > 0 ? (long)dk_live_palette(pal, len) : -1L);
+    }
     if (dk_live_want)   /* S66-FREEZE-LIVEPENS: windows open again, the reset done; the apply's order (desk_dos_apply) */
         dk_live_pens(dk_live_want > 0 ? dk_rv_theme : 0, dk_live_flat);
     dk_live_want = 0;

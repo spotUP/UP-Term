@@ -1485,6 +1485,14 @@ int desk_revert_role_pens(const gtheme *prev, int flat, int palette, int depth, 
     return desk_live_follow(prev, flat, (unsigned)palette << DT_PALETTE, depth, pens, rgb);
 }
 
+long desk_revert_palette(const gtheme *prev, int flat, int palette, int depth, const unsigned char *base, long baselen,
+                         unsigned char *out, long cap)
+{
+    if (!prev || !palette || !base || baselen <= 0)
+        return 0;
+    return desk_palette_theme(base, baselen, prev, depth, flat, out, cap);
+}
+
 unsigned desk_marker_parse(const char *buf, long len)
 {
     long hl = (long)strlen(MARKER_HEAD), pos;

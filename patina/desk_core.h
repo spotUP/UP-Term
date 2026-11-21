@@ -258,6 +258,11 @@ int desk_revert_theme_parse(const char *buf, long len, char *name, int cap);
  * else the text length written to out for a held name, or 0 = delete the file (no name held, or it does not fit). */
 long desk_revert_theme_take(char *held, int pending, char *out, int cap);
 int desk_revert_role_pens(const gtheme *prev, int flat, int palette, int depth, int pens[4], uc_u32 rgb[4]);
+/* REVERT-PENS03: the boot puts the theme's pens 0-3 live only (AGA-BOOT-DEADLOCK), so the palette.prefs a Revert restores need not hold
+ * the previous theme's colours. desk_revert_palette: base (the restored palette.prefs) with the previous theme's colours
+ * (desk_palette_theme), for the caller to put live; 0 when there is no previous theme, the palette part is off, or no base. */
+long desk_revert_palette(const gtheme *prev, int flat, int palette, int depth, const unsigned char *base, long baselen,
+                         unsigned char *out, long cap);
 /* FP-3 (R1.9): the files whose T:patina-revert snapshot copies the on-disk marker ENVARC:Patina/pending-revert keeps, so a reboot (T: is gone) can still
  * revert an unconfirmed apply: the desk_snapshot list of mask, plus ENV:Sys/Workbench.prefs when wbprefs (the border/gauge write). Returns the count. */
 int desk_pending_files(unsigned mask, int wbprefs, const char **list, int cap);
