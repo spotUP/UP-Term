@@ -172,6 +172,14 @@ def start_cmd():
     return cmd
 
 
+def script_text():
+    """The Execute script: CD to the unpacked tree, run the Installer by its bare name. The 3.1 tree has C:Installer; the
+    3.2 tree only SYS:Install/Installer, off the path: `Installer` was "Unknown command" and the run ended at once. Called
+    by a path, Status COM does not list it as "Installer" and drive() took the copy phase for the end; the path
+    keeps the bare name."""
+    return 'CD VTCX:%s\nIf EXISTS SYS:Install/Installer\n  Path SYS:Install ADD\nEndIf\nInstaller "Install DOpus5" NOLOG\n' % TREE
+
+
 def main():
     label, _ = target(system_args())
     print("[DOPUS] target: " + label)
@@ -194,7 +202,7 @@ def main():
         shutil.rmtree(p) if p.is_dir() else p.unlink(missing_ok=True)
     (vtc / TREE).mkdir(parents=True)
     subprocess.run(["lha", "xq", str(ARCHIVE)], cwd=vtc / TREE, check=True)
-    (vtc / SCRIPT).write_text('CD VTCX:%s\nInstaller "Install DOpus5" NOLOG\n' % TREE)
+    (vtc / SCRIPT).write_text(script_text())
     try:
         subprocess.run(start_cmd(), check=True)
         if ir.run('Assign >NIL: DOpus5: EXISTS')[0] == 0:
