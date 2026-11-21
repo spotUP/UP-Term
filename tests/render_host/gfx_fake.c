@@ -727,6 +727,11 @@ ULONG ObtainPen(struct ColorMap *cm, ULONG n, ULONG r, ULONG g, ULONG b, LONG f)
         return (ULONG)-1; /* a used-up colour map: no pen of one's own */
     return n == (ULONG)-1 ? 9 : n;
 }
+LONG FindColor(struct ColorMap *cm, ULONG r, ULONG g, ULONG b, LONG max)
+{
+    (void)cm; (void)r; (void)g; (void)b; (void)max;
+    return 0; /* no host test reads a found pen's colour */
+}
 LONG ObtainBestPenA(struct ColorMap *cm, ULONG r, ULONG g, ULONG b, CONST struct TagItem *t)
 {
     (void)cm;

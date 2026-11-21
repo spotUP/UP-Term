@@ -6,6 +6,8 @@
 
 #include "gthemes_core.h"
 
+struct Screen;
+
 /* Apply th to the desktop for every part the amconf switches enable (amconf_desk_mask; 0 = master off, nothing is read
  * or written). The old files are copied to T:patina-revert/ first. Returns the mask applied, 0 when off, -1 when the
  * theme is refused (desk_check; why gets the text) or a write failed. ENVARC: is never written (persist is R1.10). */
@@ -25,6 +27,9 @@ extern unsigned long desk_dos_start_plans, desk_dos_start_writes;
 void desk_dos_flat_sync(void);
 int desk_dos_flat_ensure(void);           /* FLAT-ABSENT-AT-BOOT: start patina-flat when a flat switch is on and none runs */
 int desk_dos_flat_wanted(void);           /* 1 when a flat switch (flat look or flat gadgets) is on in the prefs */
+/* S92-PENS-BOOT-ORDER: 1 when patina-flat's holder owns scr's pens 4-15 (ip_holder_owns_roles): a client there picks pens with
+ * vr_pen_find and obtains none, or it takes them before the holder's exclusive ObtainPen and the holder gets nothing */
+int desk_dos_holder_owns(const struct Screen *scr);
 extern unsigned long desk_dos_flat_starts;
 /* TE-6.2: write the version-5 flat_state fields of a theme that is not saved (the editor's live preview) */
 void desk_dos_flat_preview(const struct gtheme *th);

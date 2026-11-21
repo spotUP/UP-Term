@@ -44,6 +44,7 @@ struct menu_text {
     struct Library *cgx;
     int truecolor;
     pen_cache pens;
+    int find;       /* S92-PENS-BOOT-ORDER: the pens are found, not owned (mt_pens_find) */
     int height, base;
     long aa_drawn;
     int aa;         /* ui-antialias: bitmap glyphs corner-filled (icl_coverage) and drawn through aa_ink on every screen */
@@ -93,7 +94,8 @@ static void pen_release_fn(void *u, long pen)
 
 static long pen_best_fn(void *u, unsigned long rgb, int exact)
 {
-    return vr_pen_best(((menu_text *)u)->scr->ViewPort.ColorMap, rgb, exact);
+    menu_text *m = (menu_text *)u;
+    return (m->find ? vr_pen_find : vr_pen_best)(m->scr->ViewPort.ColorMap, rgb, exact);
 }
 
 static LONG pen_of(menu_text *m, ULONG rgb)
@@ -103,8 +105,16 @@ static LONG pen_of(menu_text *m, ULONG rgb)
 
 void mt_theme_changed(menu_text *m)
 {
-    if (m)
+    if (m && m->find)
+        m->pens.n = 0;                  /* found pens: nothing to release */
+    else if (m)
         pc_theme_changed(&m->pens, pen_release_fn, m);
+}
+
+void mt_pens_find(menu_text *m, int on)
+{
+    if (m && m->pens.n == 0)
+        m->find = on;
 }
 
 static ULONG op_truecolor_ink(void *u, ULONG rgb)

@@ -20,6 +20,9 @@ menu_text *mt_open(struct Screen *scr, int square, const char *spec, int aa);
 void mt_close(menu_text *m);
 /* the drawn theme changes: release the pens held for the old colours (palette screens) */
 void mt_theme_changed(menu_text *m);
+/* S92-PENS-BOOT-ORDER: on (desk_dos_holder_owns) the ink pens are found (vr_pen_find), never obtained or released. Set right
+ * after mt_theme_changed, so the held pens were taken in the same mode they are let go in. */
+void mt_pens_find(menu_text *m, int on);
 
 int mt_is_ttf(const menu_text *m);
 /* 1 on a true-colour screen with cybergraphics: mt_draw and mt_fill draw each colour as itself, no pen */

@@ -14,4 +14,8 @@ long vr_pen_obtain(struct ColorMap *cm, unsigned long rgb);
  * the nearest pen. cm is the struct ColorMap. Each pen >= 0 is one ReleasePen owed. */
 long vr_pen_best(void *cm, unsigned long rgb, int exact);
 
+/* S92-PENS-BOOT-ORDER: vr_pen_best's shape, but FindColor: the nearest pen the screen already shows (exact ignored), never
+ * allocated, so NO ReleasePen is owed. For screens where patina-flat's holder owns the pens (desk_dos_holder_owns). */
+long vr_pen_find(void *cm, unsigned long rgb, int exact);
+
 #endif

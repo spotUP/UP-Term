@@ -23,6 +23,17 @@ long vr_pen_best(void *u, unsigned long rgb, int exact)
                           (struct TagItem *)(exact ? exact_tags : near_tags));
 }
 
+long vr_pen_find(void *u, unsigned long rgb, int exact)
+{
+    struct ColorMap *cm = (struct ColorMap *)u;
+    const struct ViewPort *vp = cm ? cm->cm_vp : 0;
+    /* the screen's own pens only: a 16-colour AGA map has more entries (sprite colours) than the planes reach */
+    LONG max = vp && vp->RasInfo && vp->RasInfo->BitMap ? (1L << vp->RasInfo->BitMap->Depth) - 1 : -1;
+    if (!cm || exact < 0) /* FindColor is always nearest; exact is kept for vr_pen_best's signature */
+        return -1;
+    return FindColor(cm, ((rgb >> 16) & 0xFF) * 0x01010101UL, ((rgb >> 8) & 0xFF) * 0x01010101UL, (rgb & 0xFF) * 0x01010101UL, max);
+}
+
 long vr_pen_obtain(struct ColorMap *cm, unsigned long rgb)
 {
     if (!cm)

@@ -111,6 +111,7 @@ typedef struct gui {
     char drawn[GT_NAME];         /* the theme the pens are from: the saved one, or the Style > Theme row previewed */
     int pens;                    /* distinct pens obtained (2 in the minimal mode) */
     char pen_got[MT_ROLES];
+    int find;                    /* S92-PENS-BOOT-ORDER: desk_dos_holder_owns(scr): every pen is found (vr_pen_find), none owned */
     int mode;
     int await;                   /* ChangeWindowBox sent, IDCMP_CHANGEWINDOW not yet seen */
     mg_focus focus;              /* the launcher's focus rule: another program taking the focus closes the menu */
@@ -616,7 +617,7 @@ static void draw_row(gui *g, int e)
                     fill(g, MT_TEXT, cx - 1, y + 1, cx + cs, y + 2 + cs);      /* border in the text colour */
                     mt_fill(g->mt, g->rp, cx, y + 2, cx + cs - 1, y + 1 + cs, (ULONG)rgb);
                 } else {
-                    long p = pc_of(&g->chip_pens, vr_pen_best, g->cm, (unsigned long)rgb);
+                    long p = pc_of(&g->chip_pens, g->find ? vr_pen_find : vr_pen_best, g->cm, (unsigned long)rgb);
                     if (p >= 0) {
                         fill(g, MT_TEXT, cx - 1, y + 1, cx + cs, y + 2 + cs);
                         SetAPen(g->rp, (ULONG)p);
@@ -680,7 +681,7 @@ static void fill_rgb(gui *g, uc_u32 rgb, int x0, int y0, int x1, int y1)
     long p;
     if (x1 < x0 || y1 < y0 || mt_fill(g->mt, g->rp, x0, y0, x1, y1, rgb))
         return;
-    p = pc_of(&g->prev_pens, vr_pen_best, g->cm, rgb);
+    p = pc_of(&g->prev_pens, g->find ? vr_pen_find : vr_pen_best, g->cm, rgb);
     if (p < 0)
         return;
     SetAPen(g->rp, (ULONG)p);
@@ -744,6 +745,10 @@ static void chip_release_fn(void *cm, long pen)
 
 static void chip_pens_release(gui *g)
 {
+    if (g->find) {                       /* found pens: nothing to release */
+        g->chip_pens.n = g->prev_pens.n = 0;
+        return;
+    }
     pc_theme_changed(&g->chip_pens, chip_release_fn, g->cm);
     pc_theme_changed(&g->prev_pens, chip_release_fn, g->cm);
 }
@@ -1770,6 +1775,8 @@ static void event_loop(gui *g)
 static void pens_get(gui *g, const char *name)
 {
     uc_u32 rgb[MT_ROLES], got[MT_ROLES];
+    char have[MT_ROLES];
+    long (*pen_for)(void *, unsigned long, int);
     gtheme th;
     char screen_theme[GT_NAME];
     int r, themed = 1;
@@ -1784,27 +1791,34 @@ static void pens_get(gui *g, const char *name)
     g->drawn[sizeof g->drawn - 1] = 0;
     menu_theme_roles_gui(&th, rgb);
     SetVar((STRPTR) "PATINA_THEME", (STRPTR)th.name, -1, GVF_GLOBAL_ONLY);   /* sentinel: the rig reads which theme drew */
+    /* S92-PENS-BOOT-ORDER: the welcome window opens at boot before the holder's exclusive try and took pens 4-11. Every
+     * pen_get follows a pens_release, so the mode changes only with nothing held. */
+    g->find = desk_dos_holder_owns(g->scr);
+    mt_pens_find(g->mt, g->find);
+    pen_for = g->find ? vr_pen_find : vr_pen_best;
     if (minimal) {
         /* two colours: the theme's background and foreground; equal ones would hide the selection, so both
          * fall back to the screen's own pens (0, 1) */
         themed = menu_theme_minimal(rgb);
         for (r = 0; r < MT_ROLES; r++) {
             int is_bg = r == MT_BG || r == MT_SELTEXT;
-            long p = themed ? vr_pen_obtain(g->cm, rgb[r]) : -1;
-            g->pen_got[r] = p >= 0;
+            long p = themed && g->cm ? vr_obtain_rule(pen_for, g->cm, rgb[r]) : -1;
+            have[r] = p >= 0;
+            g->pen_got[r] = p >= 0 && !g->find;
             g->pen[r] = p >= 0 ? p : (is_bg ? 0 : 1);
         }
     } else {
         for (r = 0; r < MT_ROLES; r++) {
-            long p = vr_pen_obtain(g->cm, rgb[r]);
-            g->pen_got[r] = p >= 0;
+            long p = g->cm ? vr_obtain_rule(pen_for, g->cm, rgb[r]) : -1;
+            have[r] = p >= 0;
+            g->pen_got[r] = p >= 0 && !g->find;
             g->pen[r] = p >= 0 ? p : (r == MT_BG ? 0 : 1);
         }
     }
     /* a role with no pen of its own (few-colour screen) draws in its fallback role's pen (menu_theme.h) */
     for (r = 0; r < MT_ROLES; r++) {
         int fb = menu_theme_fallback_role(r);
-        if (fb >= 0 && !g->pen_got[r])
+        if (fb >= 0 && !have[r])
             g->pen[r] = g->pen[fb];
     }
     g->pens = 0;

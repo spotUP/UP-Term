@@ -59,7 +59,7 @@ void tw_libs_close(void)
 
 static long pen_find(uc_u32 rgb)
 {
-    return (long)FindColor(g_cm, ((rgb >> 16) & 255) * 0x01010101UL, ((rgb >> 8) & 255) * 0x01010101UL, (rgb & 255) * 0x01010101UL, -1);
+    return vr_pen_find(g_cm, rgb, 0);
 }
 
 /* the nearest existing pen of each role again (the holder's sync or recolour moved the colours): 1 when one changed */
@@ -83,7 +83,7 @@ static void pens_get(struct Screen *scr)
     ipd_screen_theme_name(g_scr, g_theme, (int)sizeof g_theme);
     gt_dos_load(g_theme, &th);
     menu_theme_roles_gui(&th, g_rgb);
-    g_find = ip_holder_owns_roles(ip_screen_depth(scr->BitMap.Depth, (scr->ViewPort.Modes & EXTRA_HALFBRITE) != 0), desk_dos_flat_wanted());
+    g_find = desk_dos_holder_owns(scr);
     if (g_find) {
         pens_refind();                   /* nothing obtained: g_pen_got stays 0, pens_release frees nothing */
         return;

@@ -25,6 +25,7 @@
 #include "proclaunch.h"
 #include "sentinel_dos.h"
 #include "iconpen_dos.h"
+#include "iconpen_core.h"
 
 #define DK_BUF 1024
 #define DK_REVERT "T:patina-revert"
@@ -914,6 +915,11 @@ void desk_dos_flat_sync(void)
  * the window bottom ring). S:User-Startup's BOOT line was the only start; a system without it (a master image installed before the
  * Patina-Flat block, a failed Run) booted flat pens with no flat program. Invariant: a flat switch on means patina-flat is resident
  * once the start gate has run. */
+int desk_dos_holder_owns(const struct Screen *scr)
+{
+    return scr && ip_holder_owns_roles(ip_screen_depth(scr->BitMap.Depth, (scr->ViewPort.Modes & EXTRA_HALFBRITE) != 0), desk_dos_flat_wanted());
+}
+
 int desk_dos_flat_wanted(void)
 {
     am_prefs *ap = amconf_borrow();
