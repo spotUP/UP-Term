@@ -2,6 +2,7 @@
  *   palprobe            the screen ColorMap's PalExtra: free / shared lists, the refcount of every pen, and per pen
  *                       F (free), S<n> (shared, n users) or X (exclusive: in neither list)
  *   palprobe WATCHALL <s>  as WATCH, but every ColorMap (cm logged) and no screen lock: run it before IPrefs
+ *                       (re-patches ObtainBestPenA on top whenever a later patch replaced palprobe's: event P, cm = the old vector, ret = tick)
  *   palprobe WATCH <s>  for <s> seconds patch ObtainPen / ObtainBestPenA / ReleasePen and log every call that touches
  *                       the Workbench ColorMap: task name, call, pen in / out. Then the PalExtra dump.
  * Patched calls never do I/O: they append to a ring under Disable and the main task prints it. */
@@ -27,7 +28,7 @@ struct GfxBase *GfxBase;
 #define LVO_OBTAINPEN      (-954)
 
 typedef struct { char task[20]; char call; long pen; long ret; ULONG rgb; void *cm; } ev;
-#define NEV 1024
+#define NEV 4096
 static ev evs[NEV];
 static volatile int nev;
 static struct ColorMap *watch_cm;
@@ -83,6 +84,34 @@ static void __saveds p_release(__reg("a0") struct ColorMap *cm, __reg("d0") ULON
     if (watch_all || cm == watch_cm)
         log_ev(cm, 'R', (long)n, 0, 0);
     o_release(cm, n, gb);
+}
+
+/* The JMP target of a graphics.library vector: palprobe's stub while its patch is the newest, else whoever patched after it */
+static APTR vec(LONG lvo)
+{
+    return *(APTR *)((UBYTE *)GfxBase + lvo + 2);
+}
+
+static void vecs(void)
+{
+    Printf("vec -840 %08lx (p_best %08lx) -954 %08lx (p_obtain %08lx) -948 %08lx (p_release %08lx)\n", (ULONG)vec(LVO_OBTAINBESTPENA),
+           (ULONG)p_best, (ULONG)vec(LVO_OBTAINPEN), (ULONG)p_obtain, (ULONG)vec(LVO_RELEASEPEN), (ULONG)p_release);
+}
+
+/* self-check: an exact ObtainBestPen of pen 0's colour on the Workbench (a match, no pen allocated) must log one B event */
+static void best_selfcheck(void)
+{
+    struct Screen *s = LockPubScreen("Workbench");
+    ULONG c[3];
+    LONG got;
+    if (!s)
+        return;
+    GetRGB32(s->ViewPort.ColorMap, 0, 1, c);
+    got = ObtainBestPen(s->ViewPort.ColorMap, c[0], c[1], c[2], OBP_Precision, PRECISION_EXACT, OBP_FailIfBad, TRUE, TAG_DONE);
+    if (got >= 0)
+        ReleasePen(s->ViewPort.ColorMap, (ULONG)got);
+    Printf("selfcheck ObtainBestPen -> %ld\n", (long)got);
+    UnlockPubScreen(NULL, s);
 }
 
 static void dump(struct ColorMap *cm)
@@ -143,7 +172,17 @@ int main(int argc, char **argv)
         o_obtain = (void *)SetFunction((struct Library *)GfxBase, LVO_OBTAINPEN, (APTR)p_obtain);
         o_release = (void *)SetFunction((struct Library *)GfxBase, LVO_RELEASEPEN, (APTR)p_release);
         Permit();
-        Delay(secs * 50);
+        for (i = 0; i < secs * 50; i++) {    /* a later SetFunction (rtg.library's ObtainBestPenA) may not chain: go on top again */
+            Delay(1);
+            Forbid();
+            if (vec(LVO_OBTAINBESTPENA) != (APTR)p_best) {
+                o_best = (void *)SetFunction((struct Library *)GfxBase, LVO_OBTAINBESTPENA, (APTR)p_best);
+                log_ev((void *)o_best, 'P', -1, i, 0);
+            }
+            Permit();
+        }
+        best_selfcheck();
+        vecs();
         Forbid();
         SetFunction((struct Library *)GfxBase, LVO_OBTAINBESTPENA, (APTR)o_best);
         SetFunction((struct Library *)GfxBase, LVO_OBTAINPEN, (APTR)o_obtain);
