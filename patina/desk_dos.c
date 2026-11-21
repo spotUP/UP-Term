@@ -255,6 +255,18 @@ static long dk_read_icontrol_snapshot(unsigned char *buf, long size)
     return dk_read(name, buf, size);
 }
 
+/* S92-POINTER: the pointer.prefs a theme recolours. A stock 3.2 install has no ENV:/ENVARC: Sys/pointer.prefs (the editor's default lives
+ * in SYS:Storage/Env-Archive/Pointer.prefs), so with no third source a pick had nothing to recolour and wrote no pointer at all. */
+static long dk_read_pointer(unsigned char *buf, long size)
+{
+    long len = dk_read("ENV:Sys/pointer.prefs", buf, size);
+    if (len < 0)
+        len = dk_read("ENVARC:Sys/Pointer.prefs", buf, size);
+    if (len < 0)
+        len = dk_read("SYS:Storage/Env-Archive/Pointer.prefs", buf, size);
+    return len;
+}
+
 static int dk_pointer_editor_ok(void)
 {
     static unsigned char img[65536];
@@ -751,9 +763,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     if ((mask & (1u << DT_POINTER)) && !dk_pointer_editor_ok()) {
         /* R1.17: the 3.1 editor reset-loops on the 3.2 pointer prefs; leave the pointer alone there */
     } else if (mask & (1u << DT_POINTER)) {
-        len = dk_read("ENV:Sys/pointer.prefs", big, sizeof big);
-        if (len < 0)
-            len = dk_read("ENVARC:Sys/Pointer.prefs", big, sizeof big);
+        len = dk_read_pointer(big, sizeof big);
         if (len > 0 && desk_pointer(th, big, len) > 0)
             ok &= dk_put("Pointer", DK_WORK "/pointer.prefs", big, len);
         else
@@ -2022,9 +2032,7 @@ int desk_dos_start_apply(void)
     }
     /* S31-START-PARTS: the pointer, font and icontrol parts of a theme pick, planned like the palette (dk_apply wrote them only on a pick) */
     if (((mask >> DT_POINTER) & 1) && dk_pointer_editor_ok()) {
-        curlen = dk_read("ENV:Sys/pointer.prefs", pcur, sizeof pcur);
-        if (curlen < 0)
-            curlen = dk_read("ENVARC:Sys/Pointer.prefs", pcur, sizeof pcur);
+        curlen = dk_read_pointer(pcur, sizeof pcur);
         ptrlen = desk_start_prefs(DT_POINTER, mask, &th, 0, 0, 0, curlen > 0 ? pcur : 0, curlen, pnew, sizeof pnew);
         if (ptrlen > 0)
             plan |= DESK_START_POINTER;
