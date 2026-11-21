@@ -1,6 +1,7 @@
 /* palprobe: who holds which pen of the Workbench screen (vtcon L7, the Patina icon pens 32..47).
  *   palprobe            the screen ColorMap's PalExtra: free / shared lists, the refcount of every pen, and per pen
  *                       F (free), S<n> (shared, n users) or X (exclusive: in neither list)
+ *   palprobe WATCHALL <s>  as WATCH, but every ColorMap (cm logged) and no screen lock: run it before IPrefs
  *   palprobe WATCH <s>  for <s> seconds patch ObtainPen / ObtainBestPenA / ReleasePen and log every call that touches
  *                       the Workbench ColorMap: task name, call, pen in / out. Then the PalExtra dump.
  * Patched calls never do I/O: they append to a ring under Disable and the main task prints it. */
@@ -25,11 +26,12 @@ struct GfxBase *GfxBase;
 #define LVO_RELEASEPEN     (-948)
 #define LVO_OBTAINPEN      (-954)
 
-typedef struct { char task[20]; char call; long pen; long ret; ULONG rgb; } ev;
-#define NEV 256
+typedef struct { char task[20]; char call; long pen; long ret; ULONG rgb; void *cm; } ev;
+#define NEV 1024
 static ev evs[NEV];
 static volatile int nev;
 static struct ColorMap *watch_cm;
+static int watch_all;              /* WATCHALL: every ColorMap, the screen lock is not held (an IPrefs reset can reopen the Workbench) */
 
 static LONG (*o_best)(__reg("a0") struct ColorMap *, __reg("d1") ULONG, __reg("d2") ULONG, __reg("d3") ULONG,
                       __reg("a1") struct TagItem *, __reg("a6") struct GfxBase *);
@@ -37,7 +39,7 @@ static LONG (*o_obtain)(__reg("a0") struct ColorMap *, __reg("d0") ULONG, __reg(
                         __reg("d3") ULONG, __reg("d4") ULONG, __reg("a6") struct GfxBase *);
 static void (*o_release)(__reg("a0") struct ColorMap *, __reg("d0") ULONG, __reg("a6") struct GfxBase *);
 
-static void log_ev(char call, long pen, long ret, ULONG rgb)
+static void log_ev(void *cm, char call, long pen, long ret, ULONG rgb)
 {
     struct Task *t = FindTask(NULL);
     const char *n = t->tc_Node.ln_Name ? t->tc_Node.ln_Name : "?";
@@ -55,14 +57,15 @@ static void log_ev(char call, long pen, long ret, ULONG rgb)
     evs[i].pen = pen;
     evs[i].ret = ret;
     evs[i].rgb = rgb;
+    evs[i].cm = cm;
 }
 
 static LONG __saveds p_best(__reg("a0") struct ColorMap *cm, __reg("d1") ULONG r, __reg("d2") ULONG g, __reg("d3") ULONG b,
                             __reg("a1") struct TagItem *tags, __reg("a6") struct GfxBase *gb)
 {
     LONG ret = o_best(cm, r, g, b, tags, gb);
-    if (cm == watch_cm)
-        log_ev('B', -1, ret, ((r >> 8) & 0xff0000) | ((g >> 16) & 0xff00) | (b >> 24));
+    if (watch_all || cm == watch_cm)
+        log_ev(cm, 'B', -1, ret, ((r >> 8) & 0xff0000) | ((g >> 16) & 0xff00) | (b >> 24));
     return ret;
 }
 
@@ -70,15 +73,15 @@ static LONG __saveds p_obtain(__reg("a0") struct ColorMap *cm, __reg("d0") ULONG
                               __reg("d3") ULONG b, __reg("d4") ULONG f, __reg("a6") struct GfxBase *gb)
 {
     LONG ret = o_obtain(cm, n, r, g, b, f, gb);
-    if (cm == watch_cm)
-        log_ev((f & PENF_EXCLUSIVE) ? 'X' : 'O', (long)n, ret, ((r >> 8) & 0xff0000) | ((g >> 16) & 0xff00) | (b >> 24));
+    if (watch_all || cm == watch_cm)
+        log_ev(cm, (f & PENF_EXCLUSIVE) ? 'X' : 'O', (long)n, ret, ((r >> 8) & 0xff0000) | ((g >> 16) & 0xff00) | (b >> 24));
     return ret;
 }
 
 static void __saveds p_release(__reg("a0") struct ColorMap *cm, __reg("d0") ULONG n, __reg("a6") struct GfxBase *gb)
 {
-    if (cm == watch_cm)
-        log_ev('R', (long)n, 0, 0);
+    if (watch_all || cm == watch_cm)
+        log_ev(cm, 'R', (long)n, 0, 0);
     o_release(cm, n, gb);
 }
 
@@ -132,6 +135,27 @@ int main(int argc, char **argv)
         return 20;
     if (argc >= 3 && (argv[1][0] == 'W' || argv[1][0] == 'w'))
         secs = atoi(argv[2]);
+    if (secs > 0 && strlen(argv[1]) > 5)
+        watch_all = 1;
+    if (watch_all) {                    /* WATCHALL <s>: from the Startup-Sequence before IPrefs; the Workbench may not exist yet */
+        Forbid();
+        o_best = (void *)SetFunction((struct Library *)GfxBase, LVO_OBTAINBESTPENA, (APTR)p_best);
+        o_obtain = (void *)SetFunction((struct Library *)GfxBase, LVO_OBTAINPEN, (APTR)p_obtain);
+        o_release = (void *)SetFunction((struct Library *)GfxBase, LVO_RELEASEPEN, (APTR)p_release);
+        Permit();
+        Delay(secs * 50);
+        Forbid();
+        SetFunction((struct Library *)GfxBase, LVO_OBTAINBESTPENA, (APTR)o_best);
+        SetFunction((struct Library *)GfxBase, LVO_OBTAINPEN, (APTR)o_obtain);
+        SetFunction((struct Library *)GfxBase, LVO_RELEASEPEN, (APTR)o_release);
+        Permit();
+        Delay(25);
+        for (i = 0; i < nev && i < NEV; i++)
+            Printf("ev cm %08lx %s %lc pen %ld -> %ld rgb %06lx\n", (ULONG)evs[i].cm, evs[i].task, (long)evs[i].call, evs[i].pen,
+                   evs[i].ret, evs[i].rgb);
+        Printf("events %ld\n", (long)nev);
+        secs = 0;
+    }
     s = LockPubScreen("Workbench");
     if (!s) {
         Printf("no Workbench screen\n");
@@ -157,7 +181,7 @@ int main(int argc, char **argv)
                        evs[i].rgb);
             Printf("events %ld\n", (long)nev);
         }
-        Printf("depth %ld modes %08lx\n", (long)s->BitMap.Depth, (ULONG)s->ViewPort.Modes);
+        Printf("depth %ld modes %08lx cm %08lx\n", (long)s->BitMap.Depth, (ULONG)s->ViewPort.Modes, (ULONG)s->ViewPort.ColorMap);
         dump(s->ViewPort.ColorMap);
         UnlockPubScreen(NULL, s);
     }
