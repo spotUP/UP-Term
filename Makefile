@@ -108,6 +108,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_dopus_startup_page rig.py dopus answers the Installer's Modify Startup-Sequence page with S:Startup-Sequence, not the BOOTX wrapper (tests/test_rig_dopus_startup_page.py)
 # ONLY=rig_dopus_purpose rig.py dopus --purpose reaches the install rig's window title (tests/test_rig_dopus_purpose.py)
 # ONLY=rig_dopus_own_screen rig.py dopus --own-screen writes the DOpus environment that opens DOpus on its own screen (tests/test_rig_dopus_own_screen.py)
+# ONLY=rig_dopus_script_os32 rig.py dopus --os32 puts SYS:Install on the path and runs the Installer by its bare name (tests/test_rig_dopus_script_os32.py)
 # ONLY=menu_rig_dopus_screen dopus_present checks that Open UP-Term here and the drawn menu open on DOpus's own screen (tests/test_menu_rig_dopus_screen.py)
 # ONLY=claude_fixture the fake Messages API's routes (tools/test_claude_fixture.py)
 # ONLY=worktree_ready make worktree-ready dates a source that differs from main newer than the seeded binaries (tools/test_worktree_ready.py)
@@ -333,6 +334,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS)) | $(VENV_FONTTOOLS)
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_only_list ]; then python3 tests/test_rig_only_list.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_rig_dopus_screen ]; then python3 tests/test_menu_rig_dopus_screen.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_dopus_own_screen ]; then python3 tests/test_rig_dopus_own_screen.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_dopus_script_os32 ]; then python3 tests/test_rig_dopus_script_os32.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_dopus_startup_page ]; then python3 tests/test_rig_dopus_startup_page.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_dopus_purpose ]; then python3 tests/test_rig_dopus_purpose.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
