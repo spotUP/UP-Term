@@ -29,11 +29,13 @@ class Stale(unittest.TestCase):
     def test_stale_is_rebuilt(self):
         with mock.patch("builtins.print"):
             self.assertEqual(rig.ensure_built([self.bin], self.fake(1)), ["build/amiga/foo"])
-        self.assertIn(["make", "build/amiga/foo"], self.calls)
+        built = [c for c in self.calls if "buildq" in c[0]]
+        self.assertEqual([c[1:] for c in built][0][-3:], ["--", "make", "build/amiga/foo"])
+        self.assertNotIn(["make", "build/amiga/foo"], self.calls)  # never bare
 
     def test_current_is_not_built(self):
         self.assertEqual(rig.ensure_built([self.bin], self.fake(0)), [])
-        self.assertNotIn(["make", "build/amiga/foo"], self.calls)
+        self.assertFalse([c for c in self.calls if "buildq" in c[0]])
 
     def test_rc2_warns_not_silent(self):
         with mock.patch("builtins.print") as pr:

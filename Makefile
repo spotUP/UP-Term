@@ -945,10 +945,10 @@ GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --qui
 # day as mkkit.py writes it. C:Claude ships in the up-claude add-on and says that row's version
 # (UPCLAUDE_VERSION). The header is rewritten only when it changes, so the programs rebuild when a
 # version or the day moves, not on every make.
-$(UPTERM_VERSION_H): FORCE
-	@mkdir -p $(@D)
-	@printf '#define UPTERM_VERSION "%s"\n#define UPTERM_DATE "%s"\n#define UPCLAUDE_VERSION "%s"\n' "$$(python3 tools/pkgs.py get base version)" "$$(date +%d.%m.%y)" "$$(python3 tools/pkgs.py get claude version)" > $@.new
-	@if cmp -s $@.new $@; then rm $@.new; else mv $@.new $@; fi
+# Written while the Makefile is read, not by a FORCE rule: `-q` runs no recipe, so a FORCE header counted as remade
+# and every program including it was stale on every query (rig.py ensure_built rebuilt 17 programs on every start,
+# S92-STALE-STAGE2). The mtime moves only when the text does, so a build and a query agree.
+UPTERM_VERSION_WRITE := $(shell mkdir -p $(dir $(UPTERM_VERSION_H)) && printf '\#define UPTERM_VERSION "%s"\n\#define UPTERM_DATE "%s"\n\#define UPCLAUDE_VERSION "%s"\n' "$$(python3 tools/pkgs.py get base version)" "$$(date +%d.%m.%y)" "$$(python3 tools/pkgs.py get claude version)" > $(UPTERM_VERSION_H).new && if cmp -s $(UPTERM_VERSION_H).new $(UPTERM_VERSION_H); then rm $(UPTERM_VERSION_H).new; else mv $(UPTERM_VERSION_H).new $(UPTERM_VERSION_H); fi)
 # the engine's hot loops in assembler, for the builds that define VT_ASM (S1)
 ENGINE_68K := engine/vtengine_68k.s
 # the console's history file (handler/histfile.c) by C:Claude's rule for growing files, over its DOS calls alone

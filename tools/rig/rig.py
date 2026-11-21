@@ -1906,7 +1906,8 @@ def ensure_built(files, run=None):
     if not stale:
         return []
     print("[BUILD] stale before push: " + ", ".join(t.rsplit("/", 1)[1] for t in stale))
-    r = make(*stale)
+    r = run(["%s/.claude/bin/buildq" % os.path.expanduser("~"), "--purpose", "rig.py: stale rebuild", "--", "make", *stale],
+            cwd=ROOT, capture_output=True, text=True, env=env)
     if r.returncode:
         sys.exit("[ERROR] make failed for stale program(s) %s, not pushing them:\n%s"
                  % (", ".join(t.rsplit("/", 1)[1] for t in stale), (r.stdout + r.stderr)[-1500:]))
