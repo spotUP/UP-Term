@@ -474,6 +474,17 @@ static void po_set(void *ctx, int pen, uc_u32 rgb)
         po_unowned_writes++;
     rcm_set(ctx, pen, rgb);
 }
+/* S92-PENS-BOOT-ORDER: with flat on, Patina main's bar (shared ObtainBestPen theme pens) opens only after patina-flat owns the
+ * holder (first sync done, pens 4-15 exclusive), or after the wait cap; flat off opens at once */
+static void test_bar_waits_holder(void)
+{
+    CHECK_INT(ip_bar_may_open(0, 0, 0), 1);
+    CHECK_INT(ip_bar_may_open(1, 0, 0), 0);
+    CHECK_INT(ip_bar_may_open(1, 0, IP_BAR_WAIT_MAX - 1), 0);
+    CHECK_INT(ip_bar_may_open(1, 1, 0), 1);
+    CHECK_INT(ip_bar_may_open(1, 0, IP_BAR_WAIT_MAX), 1);
+}
+
 static void test_pens47_owned(void)
 {
     static rcm c;
@@ -510,6 +521,11 @@ static void test_pens47_owned(void)
     po_unowned_writes = 0;
     CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_OBTAIN);
     CHECK_INT((long)c.rgb[6], 0xabcdefL);
+    {
+        char line[96];
+        ip_status_line(&h, line, sizeof line);
+        CHECK_STR(line, "pens-held 16 roles 4+ 5+ 6- 7+");   /* S92B: the status names the role pens, so a rig shows who has 4-7 */
+    }
     CHECK_INT(ip_role_claim(&h, 6, 0), 0);
     CHECK_INT(po_unowned_writes, 0);
     CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_NONE);
@@ -1648,6 +1664,7 @@ void suite_iconpen(void)
     test_main_takes_pens_at_boot();
     test_reopen_same_address();
     test_pens47_owned();
+    test_bar_waits_holder();
     test_plan_pens_held_by_the_screen_holder();
     test_theme_switch_recolour();
     test_screens_table();

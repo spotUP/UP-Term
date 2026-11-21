@@ -528,6 +528,18 @@ void ipd_resync(void)
     ReleaseSemaphore(&r->ss);
 }
 
+int ipd_has_owner(unsigned owner)
+{
+    ipd_rec *r = find_rec(0);
+    int on;
+    if (!r)
+        return 0;
+    ObtainSemaphore(&r->ss);
+    on = (r->t.slot[0].sh.owners & owner) != 0;
+    ReleaseSemaphore(&r->ss);
+    return on;
+}
+
 /* The sync of pens_sync, but only the colours: the screen is the one the pens are held on or nothing happens. The screen list stays
  * locked so the ColorMap cannot close under SetRGB32. */
 void ipd_recolour(void)

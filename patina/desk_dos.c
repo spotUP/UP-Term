@@ -914,6 +914,14 @@ void desk_dos_flat_sync(void)
  * the window bottom ring). S:User-Startup's BOOT line was the only start; a system without it (a master image installed before the
  * Patina-Flat block, a failed Run) booted flat pens with no flat program. Invariant: a flat switch on means patina-flat is resident
  * once the start gate has run. */
+int desk_dos_flat_wanted(void)
+{
+    am_prefs *ap = amconf_borrow();
+    int on = amconf_flat_index(ap, AM_FLAT) || amconf_flat_index(ap, AM_FLATGAD);
+    amconf_return(ap);
+    return on;
+}
+
 int desk_dos_flat_ensure(void)
 {
     am_prefs *ap;

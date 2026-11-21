@@ -111,6 +111,9 @@ extern unsigned long ipd_screen_theme_asks;
 void ipd_rules_changed(void);
 /* Re-sync without changing owners (screen reopened, theme changed). */
 void ipd_resync(void);
+/* S92-PENS-BOOT-ORDER: 1 when `owner` (IP_OWNER_*) holds the record. ipd_owner sets the bit and syncs under the record's semaphore,
+ * which this takes too, so 1 also means that owner's first sync has finished. */
+int ipd_has_owner(unsigned owner);
 /* A theme switch: rewrite the held pens 32..47 with SetRGB32 from the new theme (ip_recolour). Does nothing when no record exists. */
 void ipd_recolour(void);
 /* S57-PENS47-UNOWNED: write a live role pen (4-7) through the holder: 1 written (the holder owns it), 0 not ours or not on the

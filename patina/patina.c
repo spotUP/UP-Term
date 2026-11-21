@@ -269,13 +269,27 @@ static void iconpens_stop(void)
     }
 }
 
-/* every window Patina opens at start: the status bar (the menu servers and AmTile open theirs on use) */
-static void start_windows(void)
+/* S92-PENS-BOOT-ORDER: the bar's shared theme pens wait for the pen holder's first sync (ip_bar_may_open); -1 = not waiting */
+static long g_bar_since = -1;
+static int g_tick_ok;
+static void bar_gate(long now)
 {
-    if (g_bar_want)
+    if (g_bar_since < 0)
+        return;                                 /* the tick hook stays; done costs nothing */
+    if (g_tick_ok && !ip_bar_may_open(desk_dos_flat_wanted(), ipd_has_owner(IP_OWNER_FLAT), now - g_bar_since))
+        return;
+    g_bar_since = -1;
+    if (g_bar_want && !bar_is_open())
         bar_open(g_dir);                        /* the status bar; 0 = no screen, the commodity runs without it */
     g_bs = bar_sigmask();
     g_bts = bar_timer_sigmask();
+}
+
+/* every window Patina opens at start: the status bar (the menu servers and AmTile open theirs on use) */
+static void start_windows(void)
+{
+    g_bar_since = tick_now();
+    bar_gate(g_bar_since);
 }
 
 /* RL16 W10: the welcome window, once, when welcome-shown is not on. A separate patina-gui process through the same
@@ -293,7 +307,7 @@ static void welcome_maybe(void)
 /* S32-START-LOOK: the start look needs the Workbench screen, and Patina starts from its SYS:WBStartup icon (Leg W; earlier kits: S:User-Startup) before LoadWB
  * opens it; ipd_lock_wb_screen never opens a closed Workbench (BOOT-31-WB-DEADLOCK), so these steps found no screen
  * and wrote nothing. Run once at start when the screen is up, else on the first tick that finds it (desk_start_due). */
-static int g_desk_started, g_tick_ok;
+static int g_desk_started;
 static long g_splash_since = -1;
 static void desk_start_gate(long now)
 {
@@ -724,6 +738,7 @@ int main(void)
     borderblank_follow();                       /* AM-BORDERBLANK: the setting read by style_load at startup */
     wbm_begin();
     g_wb_hold = tick_open_ok && wbm_check(0) == WBM_WAIT;
+    tick_hook(bar_gate);
     if (!g_wb_hold)
         start_windows();
     else

@@ -113,6 +113,13 @@ static void dump(struct ColorMap *cm)
             Printf("\n");
     }
     ReleaseSemaphore(&pe->pe_Semaphore);
+    Printf("rgb");                      /* the colour of the first 16 pens: a rig reads the theme role pens 4-7 here */
+    for (i = 0; i < n && i < 16; i++) {
+        ULONG c[3];
+        GetRGB32(cm, (ULONG)i, 1, c);
+        Printf(" %ld:%06lx", (long)i, (long)(((c[0] >> 24) << 16) | ((c[1] >> 24) << 8) | (c[2] >> 24)));
+    }
+    Printf("\n");
 }
 
 int main(int argc, char **argv)

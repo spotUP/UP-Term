@@ -279,6 +279,18 @@ int ip_status_line(const ip_holder *h, char *out, size_t cap)
                 n += w;
             }
     }
+    if (h->rcount > 0) {                 /* the role pens (4-7 deeper than 3): + held, - another client has it */
+        int w = snprintf(out + n, cap - (size_t)n, " roles");
+        if (w <= 0 || (size_t)(n + w) >= cap)
+            return 0;
+        n += w;
+        for (i = 0; i < h->rcount; i++) {
+            w = snprintf(out + n, cap - (size_t)n, " %d%c", h->rpen[i], h->rhave[i] ? '+' : '-');
+            if (w <= 0 || (size_t)(n + w) >= cap)
+                return 0;
+            n += w;
+        }
+    }
     return n;
 }
 
@@ -438,6 +450,11 @@ int ip_shared_refs(const ip_shared *s)
 int ip_shared_hold(const ip_shared *s, int gfx_v39)
 {
     return s->owners != 0 && gfx_v39;
+}
+
+int ip_bar_may_open(int flat_wanted, int flat_owns, long waited)
+{
+    return !flat_wanted || flat_owns || waited >= IP_BAR_WAIT_MAX;
 }
 
 int ip_main_step(int applied, int owned)

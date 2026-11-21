@@ -3,7 +3,7 @@
 #ifndef PATINA_TICK_CORE_H
 #define PATINA_TICK_CORE_H
 
-#define TICK_MAX_HOOKS 10
+#define TICK_MAX_HOOKS 12   /* Patina main registers up to 11 (S92-PENS-BOOT-ORDER bar_gate) */
 
 typedef void (*tick_fn)(long now);
 
