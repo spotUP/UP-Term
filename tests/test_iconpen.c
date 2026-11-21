@@ -474,15 +474,15 @@ static void po_set(void *ctx, int pen, uc_u32 rgb)
         po_unowned_writes++;
     rcm_set(ctx, pen, rgb);
 }
-/* S92-PENS-BOOT-ORDER: with flat on, Patina main's bar (shared ObtainBestPen theme pens) opens only after patina-flat owns the
- * holder (first sync done, pens 4-15 exclusive), or after the wait cap; flat off opens at once */
-static void test_bar_waits_holder(void)
+/* S92-PENS-BOOT-ORDER: the bar obtains no theme pens only where the holder owns 4-15: planar depth 4/5 with flat on */
+static void test_holder_owns_roles(void)
 {
-    CHECK_INT(ip_bar_may_open(0, 0, 0), 1);
-    CHECK_INT(ip_bar_may_open(1, 0, 0), 0);
-    CHECK_INT(ip_bar_may_open(1, 0, IP_BAR_WAIT_MAX - 1), 0);
-    CHECK_INT(ip_bar_may_open(1, 1, 0), 1);
-    CHECK_INT(ip_bar_may_open(1, 0, IP_BAR_WAIT_MAX), 1);
+    CHECK_INT(ip_holder_owns_roles(4, 1), 1);
+    CHECK_INT(ip_holder_owns_roles(5, 1), 1);
+    CHECK_INT(ip_holder_owns_roles(4, 0), 0);
+    CHECK_INT(ip_holder_owns_roles(3, 1), 0);
+    CHECK_INT(ip_holder_owns_roles(6, 1), 0);
+    CHECK_INT(ip_holder_owns_roles(8, 1), 0);
 }
 
 static void test_pens47_owned(void)
@@ -1664,7 +1664,7 @@ void suite_iconpen(void)
     test_main_takes_pens_at_boot();
     test_reopen_same_address();
     test_pens47_owned();
-    test_bar_waits_holder();
+    test_holder_owns_roles();
     test_plan_pens_held_by_the_screen_holder();
     test_theme_switch_recolour();
     test_screens_table();

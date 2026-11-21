@@ -16,6 +16,8 @@
 #include "themewin.h"
 #include "gthemes_dos.h"
 #include "iconpen_dos.h"
+#include "iconpen_core.h"
+#include "desk_dos.h"
 #include "../render/pens_amiga.h"
 
 struct GfxBase *GfxBase;
@@ -30,6 +32,7 @@ static int g_pen_got[MT_ROLES];
 static uc_u32 g_rgb[MT_ROLES];           /* the theme's colour of each role the pens were taken for */
 static char g_theme[GT_NAME];            /* the theme those pens belong to */
 static long g_recolours;
+static int g_find;                       /* S92-PENS-BOOT-ORDER: the holder owns the role pens here: pick, never obtain */
 #define TW_MAX 4
 static struct { struct Window *win; tw_redraw_fn fn; } g_slot[TW_MAX];
 
@@ -54,6 +57,23 @@ void tw_libs_close(void)
     }
 }
 
+static long pen_find(uc_u32 rgb)
+{
+    return (long)FindColor(g_cm, ((rgb >> 16) & 255) * 0x01010101UL, ((rgb >> 8) & 255) * 0x01010101UL, (rgb & 255) * 0x01010101UL, -1);
+}
+
+/* the nearest existing pen of each role again (the holder's sync or recolour moved the colours): 1 when one changed */
+static int pens_refind(void)
+{
+    int r, moved = 0;
+    for (r = 0; r < MT_ROLES; r++) {
+        long p = pen_find(g_rgb[r]);
+        moved |= p != g_pen[r];
+        g_pen[r] = p;
+    }
+    return moved;
+}
+
 static void pens_get(struct Screen *scr)
 {
     gtheme th;
@@ -63,6 +83,11 @@ static void pens_get(struct Screen *scr)
     ipd_screen_theme_name(g_scr, g_theme, (int)sizeof g_theme);
     gt_dos_load(g_theme, &th);
     menu_theme_roles_gui(&th, g_rgb);
+    g_find = ip_holder_owns_roles(ip_screen_depth(scr->BitMap.Depth, (scr->ViewPort.Modes & EXTRA_HALFBRITE) != 0), desk_dos_flat_wanted());
+    if (g_find) {
+        pens_refind();                   /* nothing obtained: g_pen_got stays 0, pens_release frees nothing */
+        return;
+    }
     for (r = 0; r < MT_ROLES; r++) {
         long p = vr_pen_obtain(g_cm, g_rgb[r]);
         g_pen_got[r] = p >= 0;
@@ -208,10 +233,11 @@ void tw_tick(long now)
     if (g_wins == 0)
         return;
     ipd_screen_theme_name(g_scr, cur, (int)sizeof cur);
-    if (!tw_theme_changed(g_theme, cur))
-        return;
-    pens_release();
-    pens_get(g_scr);
+    if (tw_theme_changed(g_theme, cur)) {
+        pens_release();
+        pens_get(g_scr);
+    } else if (!g_find || !pens_refind())
+        return;                          /* found pens follow the holder's sync and recolours */
     g_recolours++;
     for (i = 0; i < TW_MAX; i++)
         if (g_slot[i].win && g_slot[i].fn)

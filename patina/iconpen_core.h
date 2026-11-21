@@ -169,11 +169,10 @@ int ip_hold_wanted(int quit, int held, int gfx_v39);
 enum { IP_MAIN_NONE, IP_MAIN_TAKE, IP_MAIN_DROP, IP_MAIN_SYNC };
 int ip_main_step(int applied, int owned);
 
-/* S92-PENS-BOOT-ORDER: 1 when Patina main may open its bar. The bar takes its theme colours with ObtainBestPen (shared), and a free pen
- * shared first can never be obtained exclusive again, so with flat on the bar waits until patina-flat holds the record (its first
- * sync done: pens 4-15 exclusive) or IP_BAR_WAIT_MAX seconds passed (flat held by a kill switch never becomes an owner). */
-#define IP_BAR_WAIT_MAX 10
-int ip_bar_may_open(int flat_wanted, int flat_owns, long waited);
+/* S92-PENS-BOOT-ORDER: 1 when patina-flat's holder owns the Workbench pens 4-15 exclusive (planar depth 4/5, ip_screen_depth, with a
+ * flat switch on). A free pen another client shares first (ObtainBestPen) can never be obtained exclusive, so there the bar's theme
+ * pens obtain nothing: they pick the nearest existing colour (FindColor) and follow the holder's recolours. */
+int ip_holder_owns_roles(int depth, int flat_wanted);
 
 typedef struct ip_shared {
     unsigned owners;

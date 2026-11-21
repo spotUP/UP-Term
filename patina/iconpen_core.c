@@ -452,9 +452,9 @@ int ip_shared_hold(const ip_shared *s, int gfx_v39)
     return s->owners != 0 && gfx_v39;
 }
 
-int ip_bar_may_open(int flat_wanted, int flat_owns, long waited)
+int ip_holder_owns_roles(int depth, int flat_wanted)
 {
-    return !flat_wanted || flat_owns || waited >= IP_BAR_WAIT_MAX;
+    return flat_wanted && (depth == 4 || depth == 5);
 }
 
 int ip_main_step(int applied, int owned)

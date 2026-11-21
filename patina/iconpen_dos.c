@@ -614,7 +614,7 @@ int ipd_icon_pens_direct(void)
     pl = LockPubScreenList();
     sc = ipd_wb_screen_in(pl);
     depth = sc ? ip_screen_depth(sc->BitMap.Depth, (sc->ViewPort.Modes & EXTRA_HALFBRITE) != 0) : 0;
-    if (depth == 4 || depth == 5)
+    if (ip_holder_owns_roles(depth, 1))
         for (i = 8; i < IP_PENS; i++)
             if (!(h && sc == h->screen && i >= h->first && i < h->first + h->count && h->have[i - h->first]) && ipd_pen_not_exclusive(sc->ViewPort.ColorMap, i)) {
                 SetRGB32(&sc->ViewPort, (ULONG)i, ip_scale32(rgb[i][0]), ip_scale32(rgb[i][1]), ip_scale32(rgb[i][2]));
