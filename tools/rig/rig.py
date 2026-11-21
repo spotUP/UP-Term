@@ -2415,6 +2415,16 @@ def boot_device_check():
     if not p.exists() or (p.is_dir() and not any(p.iterdir())) or (p.is_file() and p.stat().st_size == 0):
         sys.exit("rig: not starting: boot device %s is missing or empty" % p)
 
+def emu_exit_error(proc, was_up, running=None):
+    """The boot wait's error text when the emulator exited, else None. `proc` is the launch's Popen (exact rc), or
+    None for `open -a`, where the emulator counts as gone only after it was once seen in ps (rig 98 hung 29 min on a
+    fs-uae that got SDL_QUIT)."""
+    rc = proc.poll() if proc else None
+    if rc is None and (proc or not was_up or (running or mine)()):
+        return None
+    return "[ERROR] fs-uae exited (rc %s) during boot, rig %s; log %s" % (
+        "?" if rc is None else rc, os.environ.get("UPTERM_RIG", "1"), paths.FSUAE_LOG_DIR)
+
 def _start(retries):
     # before anything is written: a start while the rig runs (or boots, when
     # status still says down) must not rewrite BOOTX:go, BOOTX:s/startup-sequence
@@ -2459,10 +2469,11 @@ def _start(retries):
         log.unlink()
     (RIG / "boot/boot.console").unlink(missing_ok=True)
     boot_device_check()   # no boot device = an emulator on the insert-disk screen; refuse before launching either one
+    emu_proc = None   # the Popen handle where the launch keeps one (not `open -a`)
     if AMIBERRY:
         # Amiberry's console log goes where cap_fsuae_log, fsuae_crash and fsuae_reset_count already read
         paths.FSUAE_LOG_DIR.mkdir(parents=True, exist_ok=True)
-        subprocess.Popen(["nice", "-n", "19"] + amiberry.command(amiberry.launch_path(RIG, CFG, title_text()), amiberry_machine()["shots_dir"]), stdin=subprocess.DEVNULL,
+        emu_proc = subprocess.Popen(["nice", "-n", "19"] + amiberry.command(amiberry.launch_path(RIG, CFG, title_text()), amiberry_machine()["shots_dir"]), stdin=subprocess.DEVNULL,
                          stdout=open(paths.FSUAE_LOG_DIR / "fs-uae.log.txt", "ab"), stderr=subprocess.STDOUT,
                          start_new_session=True)
     elif paths.FSUAE.suffix == ".app":
@@ -2470,7 +2481,7 @@ def _start(retries):
     else:  # a bare binary: detached, so the rig outlives this command; nice 19 so the
         # machine-load gates of other sessions do not block on the rig
         fin, fout, ferr = fsuae_stdio()
-        subprocess.Popen(["nice", "-n", "19", str(paths.FSUAE), str(CFG)], stdin=fin,
+        emu_proc = subprocess.Popen(["nice", "-n", "19", str(paths.FSUAE), str(CFG)], stdin=fin,
                          stdout=fout, stderr=ferr, start_new_session=True)
     subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "logwatch"], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
@@ -2479,8 +2490,13 @@ def _start(retries):
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     t0 = time.time()
     seen, changed, noted = "", t0, t0
+    emu_seen = False
     while True:
         time.sleep(BOOT_POLL)
+        emu_seen = emu_seen or bool(mine())
+        gone = emu_exit_error(emu_proc, emu_seen)
+        if gone:
+            sys.exit(gone)
         text = log.read_text() if log.exists() else ""
         if go_assigns_done(text) and status(quiet=True):
             print("up")
