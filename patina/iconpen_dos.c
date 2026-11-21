@@ -534,7 +534,8 @@ int ipd_has_owner(unsigned owner)
     int on;
     if (!r)
         return 0;
-    ObtainSemaphore(&r->ss);
+    if (!AttemptSemaphore(&r->ss))      /* called from a tick hook: a sync holding r->ss means "not yet", never a wait */
+        return 0;
     on = (r->t.slot[0].sh.owners & owner) != 0;
     ReleaseSemaphore(&r->ss);
     return on;
