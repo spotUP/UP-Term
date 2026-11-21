@@ -1,43 +1,48 @@
 #!/usr/bin/env python3
-"""rig.py start warns (never blocks) naming the stale build/amiga programs and the newest newer source. make and git faked."""
-import os, pathlib, shutil, subprocess, sys, tempfile, unittest
+"""rig.py start rebuilds stale build/amiga programs (ensure_built) instead of only warning; make rc 2 warns. make faked."""
+import pathlib, shutil, subprocess, sys, tempfile, unittest
 from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/rig"))
 import rig
 
 
-class Warn(unittest.TestCase):
+class Stale(unittest.TestCase):
     def setUp(self):
         self.t = pathlib.Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.t, ignore_errors=True)
         (self.t / "build/amiga").mkdir(parents=True)
         self.bin = self.t / "build/amiga/foo"
         self.bin.write_bytes(b"x")
-        os.utime(self.bin, (100, 100))
-        for n, m in (("a.c", 200), ("b.h", 300)):
-            (self.t / n).write_text("")
-            os.utime(self.t / n, (m, m))
         p = mock.patch.object(rig, "ROOT", self.t)
         p.start()
         self.addCleanup(p.stop)
+        self.calls = []
 
     def fake(self, rc):
         def run(cmd, **kw):
-            return subprocess.CompletedProcess(cmd, rc, "a.c\nb.h\n" if cmd[0] == "git" else "", "")
+            self.calls.append(cmd)
+            # the grouped `make -q` and the per-target one answer rc; the build itself (no -q) succeeds
+            return subprocess.CompletedProcess(cmd, rc if "-q" in cmd else 0, "", "boom")
         return run
 
-    def test_stale_warns_with_binary_and_newest_source(self):
-        with mock.patch("builtins.print") as pr:
-            r = rig.warn_stale_build([self.bin], self.fake(1))
-        self.assertEqual(r, ["foo"])
-        msg = pr.call_args[0][0]
-        self.assertTrue(msg.startswith("[WARN]") and "foo" in msg and "b.h" in msg, msg)
+    def test_stale_is_rebuilt(self):
+        with mock.patch("builtins.print"):
+            self.assertEqual(rig.ensure_built([self.bin], self.fake(1)), ["build/amiga/foo"])
+        self.assertIn(["make", "build/amiga/foo"], self.calls)
 
-    def test_current_is_silent(self):
+    def test_current_is_not_built(self):
+        self.assertEqual(rig.ensure_built([self.bin], self.fake(0)), [])
+        self.assertNotIn(["make", "build/amiga/foo"], self.calls)
+
+    def test_rc2_warns_not_silent(self):
         with mock.patch("builtins.print") as pr:
-            self.assertEqual(rig.warn_stale_build([self.bin], self.fake(0)), [])
-        pr.assert_not_called()
+            self.assertEqual(rig.ensure_built([self.bin], self.fake(2)), [])
+        self.assertTrue(pr.call_args[0][0].startswith("[WARN] make -q failed"), pr.call_args)
+
+    def test_setup_builds_instead_of_warning(self):
+        self.assertFalse(hasattr(rig, "warn_stale_build"))
+        self.assertIn("ensure_built([src for src, dst in program_pairs(RIG", pathlib.Path(rig.__file__).read_text())
 
 
 if __name__ == "__main__":

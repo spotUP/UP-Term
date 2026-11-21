@@ -1524,9 +1524,8 @@ def setup():
     stage_amissl(RIG / "vtc", M060)
     stage_ixemul(RIG / "vtc", NOFPU)
     stage_screennotify(RIG / "vtc")
-    # refresh_programs rebuilds the programs that differ from VTC:; a stale one that already matches stays as it is
-    warn_stale_build([src for src, dst in program_pairs(RIG / "vtc", ROOT / "build/amiga")
-                      if not dst.is_file() or dst.read_bytes() == src.read_bytes()])
+    # a stale build/amiga program is rebuilt here, even when VTC: already holds the same old bytes (S92-STALE-STAGE)
+    ensure_built([src for src, dst in program_pairs(RIG / "vtc", ROOT / "build/amiga")])
     refresh_programs(RIG / "vtc", ROOT / "build/amiga")   # the files build_drift checks, as install copies them
     refresh_kit_shadows(RIG / "vtc")
     stale = build_drift(RIG / "vtc")
@@ -1888,7 +1887,7 @@ RETIRED_VTC_FILES = ("bin/sh",)
 def ensure_built(files, run=None):
     """Makes every file of this tree's build/amiga in `files` current before it is pushed to a rig: make's own graph
     (`make -q`) says which are older than their sources, and those are rebuilt with `make`; a failed build exits with
-    `[ERROR] ... <program>`. A file make has no rule for (rc 2) is pushed as it is. Nothing stale: one `make -q`, no
+    `[ERROR] ... <program>`. A file make has no rule for or fails on (rc 2) is pushed as it is, with a [WARN]. Nothing stale: one `make -q`, no
     build. Before, install and the refresh gate copied build/amiga as-is, and rig 91 ran a pre-K40d handler after a merge
     (RIG-PUSH-STALE-BUILD). Files outside this tree's build/amiga (the main checkout's, via merge_build) are not ours to build."""
     run = run or subprocess.run
@@ -1902,7 +1901,8 @@ def ensure_built(files, run=None):
     targets = ["build/amiga/" + n for n in names]
     if make("-q", *targets).returncode == 0:
         return []
-    stale = paths.stale_targets(targets, run, ROOT)
+    stale = paths.stale_targets(targets, run, ROOT, on_error=lambda t, r: print(
+        "[WARN] make -q failed (rc %d) for %s, it may be stale: %s" % (r.returncode, t, r.stderr.strip()[-300:])))
     if not stale:
         return []
     print("[BUILD] stale before push: " + ", ".join(t.rsplit("/", 1)[1] for t in stale))
@@ -1911,24 +1911,6 @@ def ensure_built(files, run=None):
         sys.exit("[ERROR] make failed for stale program(s) %s, not pushing them:\n%s"
                  % (", ".join(t.rsplit("/", 1)[1] for t in stale), (r.stdout + r.stderr)[-1500:]))
     return stale
-
-def warn_stale_build(files, run=None):
-    """[WARN] before staging: the build/amiga programs in `files` that make's graph (`make -q`, as ensure_built) says are
-    older than their sources, with the newest tracked source file newer than the oldest of them. Rule: make's graph
-    decides staleness; the named source is the newest tracked .c/.h/.S/Makefile by mtime (shortcut: not per-binary, so it
-    may be a file another binary builds from). Warns only, never blocks. Returns the stale names."""
-    run = run or subprocess.run
-    own = (ROOT / "build/amiga").resolve()
-    targets = ["build/amiga/" + n for n in sorted({f.name for f in map(pathlib.Path, files) if f.is_file() and f.resolve().parent == own})]
-    stale = paths.stale_targets(targets, run, ROOT)
-    if not stale:
-        return []
-    oldest = min((ROOT / t).stat().st_mtime for t in stale)
-    tracked = run(["git", "ls-files", "*.c", "*.h", "*.S", "Makefile"], cwd=ROOT, capture_output=True, text=True).stdout.split()
-    newer = [((ROOT / f).stat().st_mtime, f) for f in tracked if (ROOT / f).is_file() and (ROOT / f).stat().st_mtime > oldest]
-    src = "newest source newer: %s" % max(newer)[1] if newer else "no tracked source file is newer (a dependency changed)"
-    print("[WARN] build/amiga is stale and the rig keeps it (run make amiga): %s; %s" % (", ".join(t.rsplit("/", 1)[1] for t in stale), src))
-    return [t.rsplit("/", 1)[1] for t in stale]
 
 def refresh_programs(vtc, built, required=()):
     """Copies every program of program_pairs that differs (or, for the `required` names, is absent from VTC: itself).
