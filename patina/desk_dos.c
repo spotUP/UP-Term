@@ -836,13 +836,35 @@ static void dk_icons_sync(int on, int outline)
  * it writes the theme fields itself, FLAT-BOOT-THEME-FIELDS: desk_flat_full in its main). The one place Patina starts it, for a desk apply and for the start gate alike. */
 unsigned long desk_dos_flat_starts;
 
-static void dk_flat_start(int flat, int gad)
+/* FLAT-FALLBACK: set when patina-flat did not publish FLAT_SEM_NAME within DK_FLAT_WAIT_TICKS of its start; dk_flat_pens then
+ * writes the stock pens for this boot only (the user's flat prefs stay on, the next boot retries). Cleared once the record appears. */
+static int dk_flat_failed;
+static int dk_flat_pens(const gtheme *th);
+
+#define DK_FLAT_WAIT_TICKS 250   /* about 5 s at 50 ticks a second */
+
+static void dk_flat_start(int flat, int gad, const gtheme *th)
 {
+    int t, up = 0;
     if (!flat && !gad)
         return;
     desk_dos_flat_starts++;
     am_sentinel("PATINA_FLAT_START", (long)desk_dos_flat_starts);
     pl_start(PL_BIN_DIR "/patina-flat BOOT", PL_BIN_DIR "/patina-flat", 32768, "patina-flat");   /* its $STACK cookie (rule 6) */
+    for (t = 0; t < DK_FLAT_WAIT_TICKS && !up; t += 5) {
+        Forbid();
+        up = FindSemaphore((STRPTR)FLAT_SEM_NAME) != 0;
+        Permit();
+        if (!up)
+            Delay(5);
+    }
+    if (up) {
+        dk_flat_failed = 0;
+        return;
+    }
+    am_sentinel("PATINA_FLAT_FALLBACK", (long)desk_dos_flat_starts);
+    dk_flat_failed = 1;
+    dk_flat_pens(th);   /* flat pens off for this boot: the stock map goes back */
 }
 
 /* The Workbench task (0: none) and whether it sits idle in Wait() right now (not inside a synchronous call). Shared by the
@@ -890,7 +912,7 @@ static void dk_flat_sync_theme(const gtheme *thp, int changed_only)
             win_refresh_frames(wb_idle);
         }
     } else if (!r) {
-        dk_flat_start(flat, gad);
+        dk_flat_start(flat, gad, th);
     }
     amconf_return(ap);
 }
@@ -942,6 +964,7 @@ int desk_dos_flat_ensure(void)
 {
     am_prefs *ap;
     int flat, gad, absent;
+    gtheme th;
     ap = amconf_borrow();
     flat = amconf_flat_index(ap, AM_FLAT);
     gad = amconf_flat_index(ap, AM_FLATGAD);
@@ -951,7 +974,8 @@ int desk_dos_flat_ensure(void)
     Permit();
     if (!absent || (!flat && !gad))
         return 0;
-    dk_flat_start(flat, gad);
+    gt_dos_load_current(&th);
+    dk_flat_start(flat, gad, &th);
     return 1;
 }
 
@@ -1092,15 +1116,16 @@ static int dk_flat_pens(const gtheme *th)
     unsigned char pens[DK_SLOTS];
     unsigned short live[DK_SLOTS];
     struct Screen *before;
-    int nlive = 0, flat, own, theme, restore, sync, depth;
+    int nlive = 0, flat, own, theme, restore, taken, sync, depth;
     unsigned long idle = 0;
     long len, wlen, plen;
     ap = amconf_borrow();
-    flat = amconf_desk_flat_pens(ap);
+    flat = amconf_desk_flat_pens(ap) && !dk_flat_failed;   /* FLAT-FALLBACK: no patina-flat this boot, stock pens */
     own = flat && !((amconf_desk_mask(ap) >> DT_WBPATTERN) & 1);
     theme = flat && !((amconf_desk_mask(ap) >> DT_PALETTE) & 1);
     amconf_return(ap);                  /* flat, own and theme are all it reads */
-    restore = !flat && dk_exists(DK_FLAT_TAKEN);
+    taken = dk_exists(DK_FLAT_TAKEN);
+    restore = !flat && (taken || dk_flat_failed);
     before = dk_wb_screen(live, &nlive);
     if (!before || !dk_palette_editor_ok())
         return 0;
@@ -1152,7 +1177,7 @@ static int dk_flat_pens(const gtheme *th)
         wlen = desk_wbpattern_pick(th, depth > 3 ? 3 : depth, plen > 0 ? prev : 0, plen > 0 ? plen : 0, dk_pic_keep(prev, plen), out, sizeof out);
         if (wlen > 0 && (wlen != plen || memcmp(out, prev, wlen)))
             dk_put("WBPattern", DK_WORK "/wbpattern.prefs", out, wlen);
-    } else if (restore) {
+    } else if (restore && taken) {
         plen = dk_read(DK_FLAT_PAT, prev, sizeof prev);
         if (plen < 0) {
             if (!dk_arc_only)

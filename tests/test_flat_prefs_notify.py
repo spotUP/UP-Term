@@ -31,8 +31,8 @@ class FlatPrefsNotify(unittest.TestCase):
         self.assertIn("dk_flat_sync_theme(&th, changed_only);", body(src, "static void dk_flat_sync_with(int changed_only)"))
         w = body(src, "static void dk_flat_sync_theme(const gtheme *thp, int changed_only)")
         self.assertRegex(w, r"!changed_only \|\| memcmp\(&next, &r->st, sizeof next\) != 0")
-        self.assertIn("dk_flat_start(flat, gad);", w)
-        self.assertIn('pl_start(PL_BIN_DIR "/patina-flat BOOT"', body(src, "static void dk_flat_start(int flat, int gad)"))
+        self.assertIn("dk_flat_start(flat, gad, th);", w)
+        self.assertIn('pl_start(PL_BIN_DIR "/patina-flat BOOT"', body(src, "static void dk_flat_start(int flat, int gad, const gtheme *th)"))
         self.assertIn("void desk_dos_flat_sync(void);", (ROOT / "patina/desk_dos.h").read_text())
 
     def test_desk_apply_still_writes_unconditionally(self):
@@ -42,3 +42,28 @@ class FlatPrefsNotify(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FlatFallback(unittest.TestCase):
+    """FLAT-FALLBACK: patina-flat that never publishes its semaphore leaves flat pens with no flat program. Both start callers
+    (boot gate, desk sync) go through dk_flat_start, which polls and then forces the stock-pen restore for this boot only."""
+    def setUp(self):
+        self.src = (ROOT / "patina/desk_dos.c").read_text()
+
+    def test_start_polls_then_forces_stock_pens_without_touching_prefs(self):
+        b = body(self.src, "static void dk_flat_start(int flat, int gad, const gtheme *th)")
+        self.assertIn("FindSemaphore((STRPTR)FLAT_SEM_NAME)", b)
+        self.assertIn("DK_FLAT_WAIT_TICKS", b)
+        self.assertIn("dk_flat_failed = 1;", b)
+        self.assertIn("dk_flat_pens(th);", b)
+        self.assertNotIn("amconf_set", b)
+
+    def test_both_callers_pass_a_theme(self):
+        self.assertIn("dk_flat_start(flat, gad, th);", body(self.src, "static void dk_flat_sync_theme(const gtheme *thp, int changed_only)"))
+        self.assertIn("dk_flat_start(flat, gad, &th);", body(self.src, "int desk_dos_flat_ensure(void)"))
+
+    def test_pens_force_restore_on_failure(self):
+        b = body(self.src, "static int dk_flat_pens(const gtheme *th)\n{")
+        self.assertIn("&& !dk_flat_failed", b)
+        self.assertIn("restore = !flat && (taken || dk_flat_failed);", b)
+        self.assertIn("restore && taken", b)
