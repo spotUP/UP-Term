@@ -52,3 +52,5 @@ zip     up-zip    1.0      1.0         80      UP-Term:pkg/up-zip     Files/user
 dopus   up-dopus   1.1      -           -       ENVARC:upkg/up-dopus   Files/os3,Files/os3-68000,Files/toolbar                                   vtcon  DOpus5:DirectoryOpus
 uhc     up-uhc     1.5      1.0         -       UP-Term:pkg/up-uhc     Files/unstartup-uhc.sh                                                          vtcon  -
 sqlite  up-sqlite  1.1      1.0         80      UP-Term:pkg/up-sqlite  Files/userland/bin/sqlite3                            upterm-ports,ixemul-vtcon  UP-Term:bin/sqlite3
+# DRAFT (S93 patina split, not wired into the Makefile yet): archive and kit drawer do not exist until dist-patina does
+patina  up-patina  1.0  1.1  -  UP-Term:pkg/up-patina  Files/Patina,Files/patina-menu,Files/patina-gui,Files/patina-index,Files/patina-flat,Files/patina-icons,Files/amnotify,Files/AmTile,Files/patina-themes,Files/lucide,Files/bar.conf  vtcon  UP-Term:bin/Patina
