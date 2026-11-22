@@ -35,7 +35,8 @@ static void test_colours_and_fold(void)
             CHECK(p != DK_GREEN && p != DK_BACKDROP);
             if (depth == 2) CHECK(p >= 0 && p <= DK_ACCENT);
             if (depth >= 6) CHECK_INT(p, IP_FIRST + slot);
-            if (depth == 4 || depth == 5) CHECK(slot >= 8 ? p == slot : (p >= 0 && p <= DK_DARKER));
+            if (depth == 5) CHECK(slot >= 8 ? p == slot : (p >= 0 && p <= DK_DARKER));
+            if (depth == 4) CHECK(slot >= 8 && slot < 12 ? p == slot : (p >= 0 && p <= DK_DARKER));   /* S92E-PENS: 12-15 fold */
         }
 }
 
@@ -86,7 +87,7 @@ static void test_holder(void)
     gtheme t;
     uint8_t rgb[IP_PENS][3];
     fake f;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     ip_holder h;
     char line[32];
     int s1, s2, i, left = 0;
@@ -125,7 +126,7 @@ static void test_holder(void)
 static void test_sync(void)
 {
     ip_holder h;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     uint8_t rgb[IP_PENS][3];
     int s1, s2;
     memset(rgb, 0, sizeof rgb);
@@ -221,7 +222,7 @@ static void test_free_list_model(void)
 {
     palx p;
     ip_holder h;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     uint8_t rgb[IP_PENS][3];
     int scr, dim, i, k;
     memset(rgb, 0, sizeof rgb);
@@ -269,7 +270,7 @@ static void test_icons_keep_pens_when_flat_stops(void)
 {
     palx p;
     ip_shared s;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     uint8_t rgb[IP_PENS][3];
     int scr;
     memset(rgb, 0, sizeof rgb);
@@ -319,7 +320,7 @@ static void test_main_takes_pens_at_boot(void)
 {
     palx p;
     ip_shared s;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     uint8_t rgb[IP_PENS][3];
     ip_ops o2;
     int scr, scr2, own = 0, synced = 0;
@@ -424,7 +425,7 @@ static void test_reopen_same_address(void)
 {
     static rcm c;
     ip_holder h;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     int scr;                     /* one address for both screens */
     memset(&c, 0, sizeof c);
     memset(&o, 0, sizeof o);
@@ -464,6 +465,58 @@ static void test_reopen_same_address(void)
     CHECK_INT(c.bad_release, 0);
 }
 
+/* S92E-PENS: a pen another client holds SHARED (DOpus's ObtainBestPen pens) is refused once and never probed again until the holder
+ * is forgotten; a pen held exclusive stays probed (it may come free). Planar depth 4: the plan is pens 8-11 only. */
+static int rs_shared[256];
+static int rs_probes[256];
+static int rs_is_free(void *ctx, int pen) { rs_probes[pen]++; return rcm_is_free(ctx, pen); }
+static int rs_is_shared(void *ctx, int pen) { return ((rcm *)ctx)->alloc[pen] && rs_shared[pen]; }
+static void test_shared_not_retried(void)
+{
+    static rcm c;
+    ip_holder h;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
+    desk_pen_plan p;
+    int scr, i;
+    desk_pen_plan_for(4, &p);
+    CHECK_INT(p.icon_first, 8);
+    CHECK_INT(p.icon_count, 4);
+    memset(&c, 0, sizeof c);
+    memset(&o, 0, sizeof o);
+    memset(rs_shared, 0, sizeof rs_shared);
+    memset(rs_probes, 0, sizeof rs_probes);
+    o.obtain = rcm_obtain; o.release = rcm_release; o.is_free = rs_is_free; o.is_shared = rs_is_shared; o.theme = rcm_theme;
+    o.set_rgb = rcm_set; o.ctx = &c;
+    ip_holder_init(&h);
+    rcm_open(&c);
+    c.alloc[8] = c.alloc[9] = c.alloc[10] = 1;           /* shared by another client */
+    rs_shared[8] = rs_shared[9] = rs_shared[10] = 1;
+    c.alloc[11] = 1;                                     /* exclusive by another client */
+    c.alloc[12] = 1;                                     /* outside the plan: never asked for */
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 4, 4), IP_SYNC_OBTAIN);
+    CHECK_INT(h.held, 0);
+    CHECK_INT(h.refused[0] + h.refused[1] + h.refused[2], 3);
+    CHECK_INT(h.refused[3], 0);
+    memset(rs_probes, 0, sizeof rs_probes);
+    for (i = 0; i < 10; i++)
+        CHECK_INT(ip_sync(&h, &o, 1, &scr, 4, 4), IP_SYNC_NONE);
+    CHECK_INT(rs_probes[8] + rs_probes[9] + rs_probes[10], 0);   /* no retry of the shared pens */
+    CHECK_INT(rs_probes[11], 10);                                /* the exclusive one is still watched */
+    CHECK_INT(rs_probes[12], 0);
+    c.alloc[11] = 0;                                             /* it comes free: taken on the next sync */
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 4, 4), IP_SYNC_OBTAIN);
+    CHECK_INT(h.held, 1);
+    CHECK(h.have[3]);
+    CHECK_INT(h.refused[0] + h.refused[1] + h.refused[2], 3);    /* the re-obtain refuses the shared ones again, once */
+    CHECK_INT(ip_sync(&h, &o, 0, &scr, 4, 4), IP_SYNC_RELEASE);
+    CHECK_INT(h.refused[0] + h.refused[1] + h.refused[2], 0);    /* release forgets the refusals */
+    CHECK_INT(c.bad_release, 0);
+    o.is_shared = 0;                                             /* no op: nothing is refused (the old behaviour) */
+    ip_holder_init(&h);
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 4, 4), IP_SYNC_OBTAIN);
+    CHECK_INT(h.refused[0], 0);
+}
+
 /* S57-PENS47-UNOWNED: pens 4-7 (the live role pens) are written by the sync, so the holder must own them first. The model ColorMap
  * records who allocated a pen; set_rgb here asserts the pen is allocated (by the holder) at the moment it is written. */
 static int po_unowned_writes;
@@ -489,7 +542,7 @@ static void test_pens47_owned(void)
 {
     static rcm c;
     ip_holder h;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     int scr, i;
     memset(&c, 0, sizeof c);
     memset(&o, 0, sizeof o);
@@ -547,7 +600,7 @@ static void test_theme_ready(void)
 {
     static rcm c;
     ip_holder h;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     int scr;
     memset(&c, 0, sizeof c);
     memset(&o, 0, sizeof o);
@@ -618,7 +671,7 @@ static void pf_plan(gt_plan_pen *p, int i, int pen, uc_u32 rgb, int ex)
 static void test_plan_pens_held_by_the_screen_holder(void)
 {
     static pf f;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     ip_holder h;
     gt_plan_pen p[3];
     uint8_t rgb[IP_PENS][3];
@@ -687,7 +740,7 @@ static void test_plan_pens_held_by_the_screen_holder(void)
         ip_holder r;
         static rcm c;
         int scr;
-        ip_ops ro;
+        ip_ops ro = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
         memset(&c, 0, sizeof c);
         memset(&ro, 0, sizeof ro);
         ro.obtain = rcm_obtain; ro.release = rcm_release; ro.is_free = rcm_is_free; ro.theme = rcm_theme; ro.set_rgb = rcm_set;
@@ -705,7 +758,7 @@ static void test_theme_switch_recolour(void)
 {
     static rcm c;
     ip_holder h;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     gtheme a, b;
     int scr, i;
     memset(&c, 0, sizeof c);
@@ -863,7 +916,7 @@ static void test_screens_diff_and_apply(void)
 {
     ip_screens t;
     fake f;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     ip_snap a, b;
     ip_diff d;
     ip_screens before;
@@ -1099,7 +1152,7 @@ static int msx_sync(msx *m, ip_screens *t, const ip_snap *sn, const int *hold)
 static void test_screens_sync(void)
 {
     ip_screens t;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     msx m;
     ip_snap sn, sn2;
     ip_diff d;
@@ -1262,7 +1315,7 @@ static void test_plan_only_slots(void)
 {
     static pm m;
     static ip_screens t;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     ip_snap sn, sn2;
     ip_diff d;
     int hold[IP_SCREENS] = {1, 1, 0}, need[IP_SCREENS];
@@ -1439,7 +1492,7 @@ static void test_screens_held_count(void)
 {
     ip_screens t;
     fake f;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     uint8_t rgb[IP_PENS][3];
     memset(rgb, 0, sizeof rgb);
     table_with_pens(&t, &f, &o);                                 /* Pub holds 16 */
@@ -1460,7 +1513,7 @@ static void test_screens_held_count(void)
 static void test_restore_original_releases_every_screen(void)
 {
     ip_screens t;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     msx m;
     ip_snap sn;
     gt_screen_rules rules;
@@ -1506,7 +1559,7 @@ static int fm_bit(const uc_u32 *m, int p) { return (int)((m[p >> 5] >> (p & 31))
 
 static void test_plan_free_mask(void)
 {
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     ip_holder h;
     uc_u32 mask[GT_MASK_WORDS];
     int p, bits;
@@ -1566,7 +1619,7 @@ static void test_recheck_replans_held_slot(void)
 {
     static pm m;
     static ip_screens t;
-    ip_ops o;
+    ip_ops o = { 0 };   /* every op absent unless set (optional ops such as is_shared) */
     ip_snap sn;
     int hold[IP_SCREENS] = {1, 1, 0}, need[IP_SCREENS];
     memset(&sn, 0, sizeof sn);
@@ -1663,6 +1716,7 @@ void suite_iconpen(void)
     test_icons_keep_pens_when_flat_stops();
     test_main_takes_pens_at_boot();
     test_reopen_same_address();
+    test_shared_not_retried();
     test_pens47_owned();
     test_holder_owns_roles();
     test_plan_pens_held_by_the_screen_holder();

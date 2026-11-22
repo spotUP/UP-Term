@@ -91,6 +91,13 @@ static int pen_is_free(void *ctx, int pen)
     return ipd_pen_is_free(((pen_ctx *)ctx)->cur, pen);
 }
 
+/* S92E-PENS: in use, but not exclusive: another client holds it shared (ip_ops.is_shared) */
+static int pen_is_shared(void *ctx, int pen)
+{
+    struct ColorMap *cm = ((pen_ctx *)ctx)->cur;
+    return !ipd_pen_is_free(cm, pen) && ipd_pen_not_exclusive(cm, pen);
+}
+
 static void pen_set_rgb(void *ctx, int pen, uc_u32 rgb)
 {
     pen_ctx *c = (pen_ctx *)ctx;
@@ -348,6 +355,7 @@ static void pens_sync(ipd_rec *r)
     o.obtain = pen_obtain;
     o.release = pen_release;
     o.is_free = pen_is_free;
+    o.is_shared = pen_is_shared;
     o.theme = pens_theme_cached;
     o.set_rgb = pen_set_rgb;
     o.theme_ready = pens_theme_ready;
@@ -546,6 +554,7 @@ void ipd_recolour(void)
     o.obtain = pen_obtain;
     o.release = pen_release;
     o.is_free = pen_is_free;
+    o.is_shared = pen_is_shared;
     o.theme = pens_theme_cached;
     o.set_rgb = pen_set_rgb;
     o.ctx = &c;
@@ -594,6 +603,7 @@ int ipd_icon_pens_direct(void)
     struct List *pl;
     struct Screen *sc;
     ip_holder *h = r ? &r->t.slot[0].sh.h : 0;
+    desk_pen_plan pp;
     int i, depth, n = 0;
     ipd_icon_rgb(rgb);              /* DOS reads: before any lock */
     if (r)
@@ -601,8 +611,9 @@ int ipd_icon_pens_direct(void)
     pl = LockPubScreenList();
     sc = ipd_wb_screen_in(pl);
     depth = sc ? ip_screen_depth(sc->BitMap.Depth, (sc->ViewPort.Modes & EXTRA_HALFBRITE) != 0) : 0;
+    desk_pen_plan_for(depth, &pp);
     if (ip_holder_owns_roles(depth, 1))
-        for (i = 8; i < IP_PENS; i++)
+        for (i = pp.icon_first; i < pp.icon_first + pp.icon_count; i++)
             if (!(h && sc == h->screen && i >= h->first && i < h->first + h->count && h->have[i - h->first]) && ipd_pen_not_exclusive(sc->ViewPort.ColorMap, i)) {
                 SetRGB32(&sc->ViewPort, (ULONG)i, ip_scale32(rgb[i][0]), ip_scale32(rgb[i][1]), ip_scale32(rgb[i][2]));
                 n++;

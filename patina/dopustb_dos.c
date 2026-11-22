@@ -339,14 +339,30 @@ out_free:
     return done;
 }
 
+/* palette_count of one environment file to 0 (de_userpens_zero): DOpus takes no pens of its own at its next start, so the
+ * Workbench pens 4..11 stay with Patina's icon pen holder (S92e). Written only when it changes. */
+static void dtd_userpens_one(const char *name)
+{
+    long len = 0;
+    uint8_t *in = dtd_slurp(name, 0, 0, &len);
+    if (!in)
+        return;
+    if (de_userpens_zero(in, (size_t)len) == 1)
+        dtd_put(name, in, len);
+    FreeVec(in);
+}
+
 static int dtd_env_all(const char *path, const char *set, int want_restore)
 {
     struct Process *me = (struct Process *)FindTask(0);
     APTR oldwin = me->pr_WindowPtr;
     int n, w = 0;
     me->pr_WindowPtr = (APTR)-1;
-    for (n = 0; n < 2; n++)
+    for (n = 0; n < 2; n++) {
         w += dtd_env_one(dtd_env_files[n], path, set, want_restore);
+        if (!want_restore)
+            dtd_userpens_one(dtd_env_files[n]);
+    }
     me->pr_WindowPtr = oldwin;
     return w;
 }

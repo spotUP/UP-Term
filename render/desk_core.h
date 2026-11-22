@@ -59,7 +59,7 @@ int desk_icons_state(int on, int outline);
 /* Pen plan (lucide icons L6): which screen pens the desktop uses beyond the DrawInfo pens, per screen depth (EHB counts as 5).
  * button = the flat button fill (DK_SELECTION), backdrop = the Workbench backdrop tone (FLAT-COLOUR-OVERHAUL: its own pen DK_BACKDROP, nothing draws with it; a WBPattern tile is 3 planes, so its pen is below 8 but it is the SCREEN pen 2^depth-8+pen
  * when depth > 3 (desk_backdrop_screen_pen: pen 255 on 8 planes), tile pen == screen pen only at depth <= 3; on a screen below 3 planes no pen is free and it is DK_DARKER, the same tone). DK_MUTED keeps the theme muted text colour. The icon pens are the range icon_first .. icon_first + icon_count - 1 that patina-flat holds for icon
- * slots icon_slot ..: depth >= 6 pens 32..47 (slots 0..15), depth 4 and 5 pens 8..15 (slots 8..15), depth 2 and 3 none. The
+ * slots icon_slot ..: depth >= 6 pens 32..47 (slots 0..15), depth 4 pens 8..11 (slots 8..11), depth 5 pens 8..15 (slots 8..15), depth 2 and 3 none. The
  * range never overlaps button, backdrop or the eight role pens 0..7. */
 typedef struct desk_pen_plan {
     int button, backdrop;

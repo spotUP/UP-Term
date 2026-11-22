@@ -33,7 +33,7 @@ class BootDopusAfterPens(unittest.TestCase):
     def test_icon_pens_direct_rules(self):
         b = body(IPD, "int ipd_icon_pens_direct(void)")
         self.assertIn("ipd_pen_not_exclusive(", b, "a pen another client holds exclusive must be skipped")
-        self.assertIn("depth == 4 || depth == 5", b, "only depth 4/5 maps slots 8..15 onto pens 8..15 (ip_fold)")
+        self.assertIn("ip_holder_owns_roles(depth", b, "only depth 4/5 maps slots 8..15 onto pens 8..15 (ip_fold)")
         self.assertLess(b.index("ipd_icon_rgb("), b.index("LockPubScreenList()"), "theme read (DOS) under the list lock")
 
     def test_theme_send_honours_force(self):
