@@ -1,0 +1,62 @@
+; @include dist/common/addon-head.installer
+
+(if (not #update)
+(
+; welcome: n = 7, lead 3
+(message
+    "\n\n\nP A T I N A\n\n"
+    "Patina is UP-Term's Workbench desktop layer: the Left\n"
+    "Amiga menu and key actions, the app index, the flat\n"
+    "look (icons and window frames), the notifier and AmTile.\n"
+    "Without it the terminal, the shell and the tools work\n"
+    "as before; they just have no Patina menu or flat look.\n"
+    (all))
+(set #kb-patina @KBPATINA@)
+(set #totalkb @KBTOTAL@)
+(set #free (getdiskspace (pathonly #dest)))
+(if (and (> #free 0) (< (/ #free 1024) #totalkb))
+    (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
+           "Patina needs about " #totalkb " KB. Free room and\n"
+           "run Install again."))
+
+;  ready: n = 7, lead 3
+(message
+    (cat "\n\n\nReady to install Patina into\n\n" #dest "\n\n"
+         "about " (/ #totalkb 1024) " MB.\n"
+         "Proceed starts the install;\n"
+         "Abort Install leaves everything as it was."))
+)
+    ; Update: the options of the last install, from its record
+    (
+        (if (exists "@OPTS@/UPTOPTDEST") (run "Copy @OPTS@/#? ENV: QUIET"))
+        (set #kb-patina 0)
+        (set #totalkb (+ 1 (getenv "UPTUPDKB")))
+        ))
+(set #donekb 0)
+
+(complete 0)
+
+(P_OPTIONS)
+
+(set #step "patina" #kb #kb-patina #n 3
+     #why (cat "Copying the Patina programs, themes and\n"
+               "icons, and adding the Startup-Sequence block."))
+(P_STEP)
+
+; S:Startup-Sequence had no IPrefs line to put the Patina-Flat block before (install.dos: instssblock.sh rc 10): n = 6
+(if (exists "ENV:UPTSSFAILFLAT")
+    (
+        (set #n 6)
+        (P_LEAD)
+        (message
+            (cat #lead
+                 "The Patina-Flat block was NOT added: S:Startup-\nSequence has no IPrefs line to put it before.\n"))
+        (run "Delete >NIL: ENV:UPTSSFAILFLAT QUIET")))
+
+(set #n 6)
+(P_LEAD)
+(set #done
+    (cat #lead "Patina is installed. Left Amiga + a key, or\n"
+         "reboot to start it from SYS:WBStartup.\n\n"
+         "Uninstall (beside Install) takes it out again."))
+; @include dist/common/addon-tail.installer

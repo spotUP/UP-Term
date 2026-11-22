@@ -1,0 +1,107 @@
+.KEY DIR/A,STEP/K
+.BRA {
+.KET }
+; up-patina install (1.0): Patina, the Super-key commodity and drawn menu, the flat Workbench (patina-flat and its
+; icon images), the status bar and the app index. Moved out of the base kit (patina split, S93): the programs still
+; go to UP-Term:bin, the data to UP-Term:Patina, the settings to ENVARC:Patina, so every path that names them is
+; unchanged. Needs UP-Term 1.2 or newer (packages.txt needs-base): the base carries the Patina and Flat Look pages
+; of UPPrefs and the keys that start Patina.
+; Run by this archive's Install (an Installer script), which asks the questions:
+;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
+; From a Shell without Installer the same line installs everything. One part, patina; the first part, check, stops
+; the install when up-term.lha is missing or too old (the reason is in ENV:UPTCHECK).
+FailAt 21
+; @include dist/common/kit-dir.dos
+; every write into UP-Term: goes through UPTREAL: (UP-Term: may be a multi-directory assign: it writes to the first one)
+; @include dist/common/@RECORDRESOLVE@
+If NOT "{STEP}" EQ ""
+  Skip {STEP}
+EndIf
+; @include dist/common/@CHECKFRAG@
+Lab patina
+; the Omarchy colour themes of the drawn Patina menu (Style > Theme); a user theme goes in ENVARC:Patina/themes
+MakeDir >NIL: UPTREAL:Patina UPTREAL:Patina/Themes
+Copy patina-themes UPTREAL:Patina/Themes ALL CLONE QUIET
+If WARN
+  Quit 20
+EndIf
+; the icon images of the flat Workbench (the applier splices them into .info files)
+MakeDir >NIL: UPTREAL:Patina/Icons
+Copy lucide/lucide.dat UPTREAL:Patina/Icons CLONE QUIET
+If WARN
+  Quit 20
+EndIf
+Copy lucide/outline.dat UPTREAL:Patina/Icons CLONE QUIET
+If WARN
+  Quit 20
+EndIf
+; Patina (the Super-key commodity), patina-menu and patina-gui (the quick menu and key viewer its keys start), the
+; app index, the flat UI patch, the notifier, the icon applier and AmTile.
+MakeDir >NIL: UPTREAL:bin
+Copy Patina patina-menu patina-gui patina-index patina-flat amnotify patina-icons AmTile UPTREAL:bin CLONE
+If WARN
+  Quit 20
+EndIf
+; the status bar's settings: laid down only when none exists (the user owns bar.conf), and copied to ENV:
+MakeDir >NIL: ENVARC:Patina ENV:Patina
+If NOT EXISTS ENVARC:Patina/bar.conf
+  Copy bar.conf ENVARC:Patina/bar.conf CLONE
+  If WARN
+    Quit 20
+  EndIf
+EndIf
+If NOT EXISTS ENV:Patina/bar.conf
+  Copy ENVARC:Patina/bar.conf ENV:Patina/bar.conf CLONE
+  If WARN
+    Quit 20
+  EndIf
+EndIf
+; the flat UI patch (patina-flat): a marked block ";BEGIN UP-Term Patina-Flat" in S:Startup-Sequence directly
+; BEFORE IPrefs (after AddDataTypes), put there by instssblock.sh, the same inserter as the base's RemLib block (it does
+; nothing when the block is there, and reports rc 10 when the sequence has no IPrefs line). S:Startup-Sequence runs before
+; S:User-Startup makes the UP-Term: assign, so the block names the drawer by absolute path, read from
+; ENVARC:up-term/Dir, and is guarded by If EXISTS on the binary: with this package removed the block does nothing.
+; reassign.sh (base) rewrites the path when a later Install moves the drawer. BOOT starts the patch only when
+; Patina's flat key is on. This archive's Uninstall strips the block. S:Startup-Sequence.before-UP-Term is made once.
+If EXISTS ENVARC:up-term/Dir
+  Copy >NIL: ENVARC:up-term/Dir ENV:upflatdir CLONE
+  If WARN
+    Quit 20
+  EndIf
+  If NOT EXISTS S:Startup-Sequence.before-UP-Term
+    Copy S:Startup-Sequence S:Startup-Sequence.before-UP-Term CLONE
+    If WARN
+      Quit 20
+    EndIf
+  EndIf
+  Delete >NIL: T:Startup-Sequence.up-term QUIET
+  UP-Term:bin/vsh instssblock.sh Patina-Flat IPrefs "If EXISTS $upflatdir/bin/patina-flat" "  Run >NIL: $upflatdir/bin/patina-flat BOOT" "EndIf"
+  ; rc 10: S:Startup-Sequence has no IPrefs line, the block was not added
+  If ERROR
+    Echo "UP-Term: S:Startup-Sequence has no IPrefs line: the Patina-Flat block was NOT added."
+  EndIf
+  If EXISTS T:Startup-Sequence.up-term
+    Copy T:Startup-Sequence.up-term S:Startup-Sequence CLONE QUIET
+    If WARN
+      Quit 20
+    EndIf
+    Delete >NIL: T:Startup-Sequence.up-term QUIET
+  EndIf
+  Delete >NIL: ENV:upflatdir QUIET
+EndIf
+; Leg W: Patina and the app index start from Workbench's own startup drawer. Two PROJECT icons (default tools
+; UP-Term:bin/Patina and UP-Term:bin/patina-index, no binary copied, so an Update leaves no stale twin) carry
+; DONOTWAIT (Workbench does not wait for the program), STARTPRI (Patina 10, the index -10: Patina first) and,
+; for the indexer, TOOLPRI=-5 (low task priority). Uninstall deletes both icons.
+If NOT EXISTS SYS:WBStartup
+  MakeDir SYS:WBStartup
+EndIf
+Copy wbstartup/Patina.info wbstartup/patina-index.info SYS:WBStartup CLONE
+If WARN
+  Quit 20
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+; @include dist/common/record.dos
+Echo "Patina is installed: Left Amiga + a key, or reboot to start it from SYS:WBStartup (README.txt)."

@@ -1,0 +1,15 @@
+Short:        Patina desktop layer for UP-Term
+Author:       spotUP
+Uploader:     spotup@gmail.com (spotUP)
+Type:         util/misc
+Version:      @VERSION@
+Architecture: m68k-amigaos >= 3.0.0
+Requires:     comm/term/up-term.lha >= @NEEDSBASE@
+Distribution: Aminet
+
+Patina: the Left Amiga menu and key actions, the app index, the flat Workbench look (icons and window frames),
+the notifier and AmTile, with their colour themes and icon sets. Split out of up-term.lha 1.1; the base works without it.
+
+Needs the base archive up-term.lha (version @NEEDSBASE@ or newer) installed first.
+
+Install: unpack, double-click Install. Uninstall removes what this archive installed.

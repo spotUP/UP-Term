@@ -42,9 +42,6 @@ copy-coreutils  Files/coreutils/bin     bin
 -               Files/coreutils
 copy-userland   Files/userland/bin      bin
 userland        Files/userland
-userland        Files/patina-themes
-userland        Files/lucide
-userland        Files/phosphor
 copy-unifont    Files/unifont           unifont
 copy-emoji      Files/emoji             emoji
 tools           Files/UPDemo
@@ -55,16 +52,7 @@ tools           Files/Agent
 tools           Files/UPTerm
 tools           Files/UP-Term.version
 tools           Files/VERSIONS
-tools           Files/Patina
-tools           Files/patina-menu
-tools           Files/patina-gui
-tools           Files/patina-index
-tools           Files/patina-flat
-tools           Files/patina-icons
-tools           Files/amnotify
-tools           Files/AmTile
 tools           Files/keymap
-tools           Files/bar.conf
 tools           Files/Rexx
 tools           Files/share/updemo
 tools           Files/S
@@ -84,7 +72,6 @@ desktop         Files/UP-Term.info
 desktop         Files/UP-Term-Prefs
 desktop         Files/UP-Term-Prefs.info
 desktop         Files/upicon
-desktop         Files/wbstartup
 desktop         Files/dopus-filetype
 boot            Files/banner
 boot            Files/vshrc
