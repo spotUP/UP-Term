@@ -128,7 +128,17 @@ static void dk_editor(const char *editor, const char *file)
 {
     char cmd[160], prog[80];
     unsigned long idle = 0;
-    BPTR in = Open((STRPTR)"NIL:", MODE_OLDFILE), out = Open((STRPTR)"NIL:", MODE_NEWFILE);
+    BPTR in, out, sys = Lock((STRPTR)"ENV:Sys", ACCESS_READ);
+    /* S92d gate R: a missing ENV:Sys (damaged boot ENV:) makes the editor raise a Program Error that blocks the ARexx port
+     * until OK; recreate it, and when that fails skip the editor (the ENVARC copy was already written) */
+    if (sys)
+        UnLock(sys);
+    else if ((sys = CreateDir((STRPTR)"ENV:Sys")) != 0)
+        UnLock(sys);
+    else
+        return;
+    in = Open((STRPTR)"NIL:", MODE_OLDFILE);
+    out = Open((STRPTR)"NIL:", MODE_NEWFILE);
     strcpy(prog, "SYS:Prefs/");
     strcat(prog, editor);
     strcpy(cmd, prog);
