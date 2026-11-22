@@ -28,7 +28,7 @@ struct GfxBase *GfxBase;
 #define LVO_OBTAINPEN      (-954)
 
 typedef struct { char task[20]; char call; long pen; long ret; ULONG rgb; void *cm; } ev;
-#define NEV 4096
+#define NEV 16384   /* a DOpus + Patina boot passes 4096 events */
 static ev evs[NEV];
 static volatile int nev;
 static struct ColorMap *watch_cm;
@@ -138,12 +138,19 @@ static void dump(struct ColorMap *cm)
         st[p] = 'S';
     for (i = 0; i < n; i++) {
         if (st[i] == 'S')
-            Printf("%ld:S%ld ", (long)i, (long)pe->pe_RefCnt[i]);
+            Printf("%ld:S%ld ", (long)i, (long)((UWORD *)pe->pe_RefCnt)[i]);  /* KS 3.1 keeps one UWORD per pen (raw dump below) */
         else
             Printf("%ld:%lc ", (long)i, (long)st[i]);
         if ((i & 15) == 15)
             Printf("\n");
     }
+    Printf("refcnt bytes:");             /* raw pe_RefCnt bytes: on KS 3.1 two per pen, big-endian */
+    for (i = 0; i < 2 * n && i < 64; i++)
+        Printf(" %ld", (long)pe->pe_RefCnt[i]);
+    Printf("\nalloclist bytes:");
+    for (i = 0; i < n && i < 32; i++)
+        Printf(" %ld", (long)pe->pe_AllocList[i]);
+    Printf("\n");
     ReleaseSemaphore(&pe->pe_Semaphore);
     Printf("rgb");                      /* the colour of the first 16 pens: a rig reads the theme role pens 4-7 here */
     for (i = 0; i < n && i < 16; i++) {
@@ -178,6 +185,14 @@ int main(int argc, char **argv)
             if (vec(LVO_OBTAINBESTPENA) != (APTR)p_best) {
                 o_best = (void *)SetFunction((struct Library *)GfxBase, LVO_OBTAINBESTPENA, (APTR)p_best);
                 log_ev((void *)o_best, 'P', -1, i, 0);
+            }
+            if (vec(LVO_OBTAINPEN) != (APTR)p_obtain) {     /* same for ObtainPen / ReleasePen: event P, pen -954 / -948 */
+                o_obtain = (void *)SetFunction((struct Library *)GfxBase, LVO_OBTAINPEN, (APTR)p_obtain);
+                log_ev((void *)o_obtain, 'P', LVO_OBTAINPEN, i, 0);
+            }
+            if (vec(LVO_RELEASEPEN) != (APTR)p_release) {
+                o_release = (void *)SetFunction((struct Library *)GfxBase, LVO_RELEASEPEN, (APTR)p_release);
+                log_ev((void *)o_release, 'P', LVO_RELEASEPEN, i, 0);
             }
             Permit();
         }
