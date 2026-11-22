@@ -5,7 +5,7 @@
 
 #include "settings_def.h"
 #include "prefs_core.h"
-#include "../patina/amconf_core.h"
+#include "../config/amconf_core.h"
 
 #define FO(m) offsetof(prefs_fields, m)
 #define FS(m) ((int)sizeof(((prefs_fields *)0)->m))

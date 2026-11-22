@@ -2,7 +2,7 @@
 """patina_flat_rig.py -- FLAT-C1 and FLAT-C2 rig steps (C2: gadget glyph pixels, c2_after; flatwin SET writes the switch)
 
 FLAT-C1 rig step (plan 2026-10-29-patina-flat-ui-patch.md): the sysiclass h_SubEntry swap of
-patina-flat running on a 68k (the pass-through trampoline of patina/flat_core.c).
+patina-flat running on a 68k (the pass-through trampoline of render/flat_core.c).
 
 Checks, on whatever OS the rig booted (--os 32, --os 31):
   1. patina-flat starts, STATUS reads flat=...; sysiclass h_SubEntry (sysiprobe) differs from the original; the

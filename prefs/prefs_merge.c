@@ -3,7 +3,7 @@
 
 #include "prefs_merge.h"
 #include "settings_def.h"
-#include "../patina/amconf_core.h"
+#include "../config/amconf_core.h"
 
 /* the stores a row can live in: the UP-Term fields, or Patina's own */
 typedef struct stores {

@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "../patina/flat_role_core.h"
-#include "../patina/desk_core.h"
+#include "../render/desk_core.h"
 #include "harness.h"
 
 #define RGB(r, g, b) (((uc_u32)(r) << 16) | ((uc_u32)(g) << 8) | (uc_u32)(b))

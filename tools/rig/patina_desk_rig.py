@@ -271,9 +271,9 @@ def pal_pen_counts(data):
 
 def desk_expect_exe():
     exe = os.path.join(tempfile.gettempdir(), 'desk_expect_rig')
-    srcs = ['tools/rig/desk_expect.c', 'patina/desk_core.c', 'patina/gthemes_core.c', 'handler/be32.c',
+    srcs = ['tools/rig/desk_expect.c', 'render/desk_core.c', 'render/gthemes_core.c', 'handler/be32.c',
             'config/upconf.c', 'config/upconf_rows.c', 'prefs/settings_def.c', 'prefs/prefs_core.c',
-            'patina/amconf_keys.c', 'handler/kcmode.c', 'handler/slash.c']
+            'config/amconf_keys.c', 'handler/kcmode.c', 'handler/slash.c']
     paths = [os.path.join(ROOT, s) for s in srcs]
     if not os.path.exists(exe) or os.path.getmtime(exe) < max(os.path.getmtime(p) for p in paths):
         subprocess.check_call(['cc', '-std=c89', '-o', exe] + paths)
@@ -351,7 +351,7 @@ def put_flat_prefs(on):
 def flat_case():
     """FLAT-C9 reachability: the theme pick (menu Style > Patina theme, desk_dos_apply) writes the flat_state block of the
     running patina-flat from the prefs (desk_flat_state) and redraws the window frames (win_refresh_frames).
-    DK_FG=2, DK_ACCENT=3, DK_BG=0 are the pens desk_flat_glyph_pens / desk_flat_state define (patina/desk_core.h)."""
+    DK_FG=2, DK_ACCENT=3, DK_BG=0 are the pens desk_flat_glyph_pens / desk_flat_state define (render/desk_core.h)."""
     if not g.patina_up():
         print('[FAIL] the Patina commodity is not running')
         return 1

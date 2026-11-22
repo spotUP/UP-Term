@@ -7,7 +7,7 @@
 #include "../config/keymap.h"
 #include "../handler/keymap_act.h"
 #include "../handler/menu_ids.h"
-#include "../patina/cxdesc.h"
+#include "../config/cxdesc.h"
 #include "../patina/bar_core.h"
 #include "../handler/slash.h"
 #include "../patina/menu_core.h"
@@ -21,8 +21,8 @@
 #include "../engine/vtengine.h"
 #include "harness.h"
 #include "memfs.h"
-#include "../patina/gthemes_core.h"
-#include "../patina/amconf_core.h"
+#include "../render/gthemes_core.h"
+#include "../config/amconf_core.h"
 
 #define RAW_K     0x27
 #define RAW_T     0x14

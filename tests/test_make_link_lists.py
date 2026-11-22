@@ -2,7 +2,7 @@
 """Link lists carry the provider of every symbol leaf_core.c needs.
 
 patina/leaf_core.c calls gte_dirty, gte_row and gte_row_label, defined in
-patina/gthemes_core.c. build/amiga/wbrun and build/amiga/jobprobe linked
+render/gthemes_core.c. build/amiga/wbrun and build/amiga/jobprobe linked
 leaf_core.c without it, so `make rig-helpers` failed with "undefined symbol
 _gte_dirty". This test expands the real link recipes with `make -n -B` (variables
 resolved, nothing compiled) and checks, for each (user, provider) pair in PAIRS,
@@ -13,7 +13,7 @@ import os, re, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
 TARGETS = ["build/amiga/" + t for t in ("Patina", "patina-menu", "patina-gui", "jobprobe", "wbrun")]
-PAIRS = [("patina/leaf_core.c", "patina/gthemes_core.c")]
+PAIRS = [("patina/leaf_core.c", "render/gthemes_core.c")]
 MIN_LINES = 5
 
 

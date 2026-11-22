@@ -3,7 +3,7 @@
 
 #include "prefs_core.h"
 #include "settings_def.h"
-#include "../patina/amconf_core.h"
+#include "../config/amconf_core.h"
 #include "../handler/kcmode.h"
 #include "../handler/slash.h"
 

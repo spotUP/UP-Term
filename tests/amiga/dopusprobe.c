@@ -9,7 +9,7 @@
 #include <exec/execbase.h>
 #include <exec/semaphores.h>
 #include <proto/exec.h>
-#include "../../patina/flat_core.h"
+#include "../../render/flat_core.h"
 
 long __stack = 8192;
 const char dopusprobe_stack_cookie[] = "$STACK: 8192";

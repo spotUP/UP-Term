@@ -1,6 +1,6 @@
 /* barconf_dos: see barconf_dos.h. The file read is amconf's (amconf_dos_io), the same callback the prefs chain uses. */
 #include "barconf_dos.h"
-#include "amconf_dos.h"
+#include "../config/amconf_dos.h"
 
 #define BARCONF_MAX 2048
 

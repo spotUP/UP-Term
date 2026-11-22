@@ -1,15 +1,15 @@
-/* The Patina GUI themes (patina/gthemes_core.c, menu_theme_roles_gui, the AM_GTHEME key; plan
+/* The Patina GUI themes (render/gthemes_core.c, menu_theme_roles_gui, the AM_GTHEME key; plan
  * 2026-10-26-patina-gui-themes.md checks H1..H8). The shipped files are read from dist/patina-themes. */
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include "../patina/amconf_core.h"
-#include "../patina/desk_core.h"
-#include "../patina/flat_core.h"
-#include "../patina/gthemes_core.h"
-#include "../patina/iconpen_core.h"
+#include "../config/amconf_core.h"
+#include "../render/desk_core.h"
+#include "../render/flat_core.h"
+#include "../render/gthemes_core.h"
+#include "../render/iconpen_core.h"
 #include "../patina/wbreset_core.h"
 #include "../patina/leaf.h"
 #include "../prefs/settings_def.h"

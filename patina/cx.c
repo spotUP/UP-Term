@@ -6,7 +6,7 @@
 #include <proto/commodities.h>
 #include <string.h>
 #include "cx.h"
-#include "cxdesc.h"
+#include "../config/cxdesc.h"
 #include "../handler/upactive.h"
 #include "bar.h"
 

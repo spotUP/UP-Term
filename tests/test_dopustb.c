@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "../patina/dopustb_core.h"
-#include "../patina/iconpen_core.h"
+#include "../render/iconpen_core.h"
 #include "harness.h"
 
 static void theme(gtheme *t, const char *s)

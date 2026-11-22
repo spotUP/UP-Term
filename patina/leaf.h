@@ -7,7 +7,7 @@
 #include "../config/keymap.h"
 #include "index_core.h"
 #include "menu_core.h"
-#include "amconf_core.h"
+#include "../config/amconf_core.h"
 #include "../prefs/settings_def.h"
 
 /* the window a run: leaf gets (the README's NewShell line, as open:uterm) */

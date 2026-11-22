@@ -52,7 +52,7 @@ STROKE_PX = {16: 1, 24: 2, 32: 2}
 # Pens: 0 ground (transparent), 1-3 glyph at 33/66/100 percent, 4-6 accent at 33/66/100 percent, 7 ground. Levels map
 # 1:1 to pens 1-3.
 PEN_OF_LEVEL = (0, 1, 2, 3)
-# Placeholder CMAP (Tokyo Night, the blend of patina/iconpen_core.c ip_colours). DOpus remaps a brush to the screen by
+# Placeholder CMAP (Tokyo Night, the blend of render/iconpen_core.c ip_colours). DOpus remaps a brush to the screen by
 # its CMAP; theme apply rewrites these 24 bytes from ip_colours itself (dopustb_core.c dt_cmap), so nothing here is a
 # second blend: these literals only serve until the first theme apply.
 CMAP = ((0x1A, 0x1B, 0x26), (0x49, 0x4D, 0x60), (0x78, 0x7E, 0x9A), (0xA9, 0xB1, 0xD6), (0x3A, 0x48, 0x6B), (0x59, 0x74, 0xB0), (0x7A, 0xA2, 0xF7), (0x1A, 0x1B, 0x26))

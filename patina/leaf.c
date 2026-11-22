@@ -13,7 +13,7 @@
 #include "iconpen_dos.h"
 #include "rexx_host.h"
 #include "../prefs/prefs_asl.h"
-#include "amconf_dos.h"
+#include "../config/amconf_dos.h"
 #include "gthemes_dos.h"
 #include "desk_dos.h"
 #include "sentinel_dos.h"

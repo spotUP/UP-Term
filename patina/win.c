@@ -19,10 +19,10 @@
 #include <proto/wb.h>
 #include <string.h>
 #include "win.h"
-#include "win_core.h"
+#include "../config/win_core.h"
 #include "win_apply.h"
-#include "amconf_core.h"
-#include "amconf_dos.h"
+#include "../config/amconf_core.h"
+#include "../config/amconf_dos.h"
 #include "rexx_host.h"
 #include "../handler/upactive.h"
 #include "iconpen_dos.h"

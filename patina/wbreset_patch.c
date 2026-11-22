@@ -14,7 +14,7 @@
 #include <proto/intuition.h>
 #include <string.h>
 #include "wbreset.h"
-#include "flat_core.h"
+#include "../render/flat_core.h"
 #include "libpatch.h"
 #include "ipatch.h"
 #include "sentinel_dos.h"

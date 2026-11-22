@@ -1,6 +1,5 @@
 /* desk_core: see desk_core.h */
 #include "desk_core.h"
-#include "bar_core.h"
 #include "../handler/be32.h"
 
 #include <string.h>

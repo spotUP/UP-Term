@@ -4,8 +4,8 @@
 #ifndef GTHEMES_DOS_H
 #define GTHEMES_DOS_H
 
-#include "gthemes_core.h"
-#include "gthemes_scan_dos.h"
+#include "../render/gthemes_core.h"
+#include "../render/gthemes_scan_dos.h"
 #include "index_core.h"
 
 /* the current theme's name: AM_GTHEME of the settings file, GT_DEFAULT when unset */

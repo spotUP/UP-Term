@@ -1,6 +1,6 @@
 #include <string.h>
 #include "menu_core.h"
-#include "gthemes_core.h"
+#include "../render/gthemes_core.h"
 
 static char lower(char c)
 {

@@ -1,8 +1,8 @@
-/* Patina's own settings file (patina/amconf_core.c): the key table, parse, serialize, the UP-Term file as the
+/* Patina's own settings file (config/amconf_core.c): the key table, parse, serialize, the UP-Term file as the
  * legacy source, the load chain, the migration and the shared install path, against a file table in memory. */
 #include <stdio.h>
 #include <string.h>
-#include "../patina/amconf_core.h"
+#include "../config/amconf_core.h"
 #include "../patina/leaf.h"
 #include "../prefs/settings_def.h"
 #include "../prefs/prefs_ui.h"

@@ -1,6 +1,6 @@
 #include <string.h>
 #include "harness.h"
-#include "../patina/win_core.h"
+#include "../config/win_core.h"
 
 static const win_screen scr = { 640, 256, 11, 0 };
 

@@ -7,7 +7,7 @@
 #ifndef PATINA_THEMEPREV_CORE_H
 #define PATINA_THEMEPREV_CORE_H
 
-#include "gthemes_core.h"
+#include "../render/gthemes_core.h"
 
 enum {
     TPV_DESKTOP,

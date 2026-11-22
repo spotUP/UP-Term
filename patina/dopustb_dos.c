@@ -20,8 +20,8 @@
 #include "desk_dos.h"
 #include "menu_font.h"
 #include "rexx_host.h"
-#include "amconf_core.h"
-#include "amconf_dos.h"
+#include "../config/amconf_core.h"
+#include "../config/amconf_dos.h"
 #include "../handler/pubscr.h"
 
 #define DTD_DRAWER "DOpus5:Images/Patina/"

@@ -27,7 +27,7 @@
 #include "bar_core.h"
 #include "act.h"
 #include "tick.h"
-#include "cxdesc.h"
+#include "../config/cxdesc.h"
 #include "barconf_core.h"
 #include "proclaunch.h"
 #include "poll_timer.h"

@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "amconf_core.h"
-#include "desk_core.h"
+#include "../render/desk_core.h"
 
 
 /* one parse table: the whole file is never held twice */

@@ -79,7 +79,7 @@
 #include "winspec.h"
 #include "tabprog.h"
 #include "tabslot.h"
-#include "../patina/amconf_dos.h"
+#include "../config/amconf_dos.h"
 #include "../demo/updemo.h"
 #include "brk.h"
 #include "ttyown.h"
@@ -1399,7 +1399,7 @@ struct watch_msg {
     int nerd_ttf; /* FONTS:SymbolsNerdFontMono.ttf is there, as of this table */
 };
 
-/* The file the Patina theme switch writes (patina/gthemes_core.h GT_TERM_FILE): one profile section holding the new
+/* The file the Patina theme switch writes (render/gthemes_core.h GT_TERM_FILE): one profile section holding the new
  * theme's colours. The watcher is told about it as it is about the profile file; the window applies it (theme_apply), so a
  * switch recolours every open tab, a tab's hand-set theme included (owner 2026-10-29). */
 #define ACTIVE_THEME_FILE "ENV:up-term/theme-active"

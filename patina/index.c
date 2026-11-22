@@ -25,7 +25,7 @@
 #include "index_core.h"
 #include "ixwatch.h"
 #include "../install/hardvol.h"
-#include "amconf_dos.h"
+#include "../config/amconf_dos.h"
 #include "../tty/qmark.h"
 #include "stkprobe.h"
 
