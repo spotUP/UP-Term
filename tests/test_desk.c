@@ -1,14 +1,14 @@
-/* The pure core of the Patina native desktop theme (patina/desk_core.c; plan 2026-10-29-patina-p1a-native-theme.md
+/* The pure core of the Patina native desktop theme (render/desk_core.c; plan 2026-10-29-patina-p1a-native-theme.md
  * items R1.2-R1.6, R1.16a, R1.18a-R1.22a, D-TGT). Goldens: tests/data/desk/ (probe note 2026-10-29-patina-p1a-prefs-probe.md).
  * The product entry point (desk.c, the menu rows) comes with the OS half; these tests drive the core directly. */
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../patina/amconf_core.h"
-#include "../patina/desk_core.h"
-#include "../patina/flat_core.h"
-#include "../patina/win_core.h"
+#include "../config/amconf_core.h"
+#include "../render/desk_core.h"
+#include "../render/flat_core.h"
+#include "../config/win_core.h"
 #include "../handler/be32.h"
 #include "harness.h"
 

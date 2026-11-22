@@ -22,7 +22,7 @@
 #include "index_core.h"
 #include "ixwatch.h"
 #include "leaf.h"
-#include "amconf_dos.h"
+#include "../config/amconf_dos.h"
 #include "gthemes_dos.h"
 #include "pkgs_dos.h"
 #include "job_dos.h"

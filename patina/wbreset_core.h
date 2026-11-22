@@ -7,7 +7,7 @@
 #define PATINA_WBRESET_CORE_H
 
 #include <stdint.h>
-#include "gthemes_core.h"
+#include "../render/gthemes_core.h"
 
 #define WBR_SEM_NAME "Patina.WBReset"
 #define WBR_MAX 8

@@ -1,7 +1,7 @@
 /* See dopustb_core.h. */
 #include <string.h>
 #include "dopustb_core.h"
-#include "iconpen_core.h"
+#include "../render/iconpen_core.h"
 #include "iconfile_core.h"
 
 void dt_pick_set(unsigned font_h, int rx, int ry, int outline, dt_set *out)

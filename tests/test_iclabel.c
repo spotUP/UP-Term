@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include "harness.h"
 #include "../patina/iclabel_core.h"
-#include "../patina/iconpen_core.h"
+#include "../render/iconpen_core.h"
 #include "../render/aa_ink_rule.h"
 
 static void t_accept(void)

@@ -1,14 +1,14 @@
-/* The patina-flat state block (patina/flat_core.c; plan 2026-10-29-patina-flat-ui-patch.md FLAT-C0). The block
+/* The patina-flat state block (render/flat_core.c; plan 2026-10-29-patina-flat-ui-patch.md FLAT-C0). The block
  * is shared with Patina through the public semaphore, so its offsets are a contract: pinned here byte by byte. */
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../patina/flat_core.h"
-#include "../patina/flat_glyph.h"
+#include "../render/flat_core.h"
+#include "../render/flat_glyph.h"
 #include "../patina/roundaa_core.h"
-#include "../patina/desk_core.h"
-#include "../patina/iconpen_core.h"
+#include "../render/desk_core.h"
+#include "../render/iconpen_core.h"
 #define ROMSPAN_VEC
 #include "../device/romspan.h"
 #include "harness.h"

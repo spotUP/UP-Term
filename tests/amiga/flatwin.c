@@ -26,7 +26,7 @@
 #include <intuition/classes.h>
 #include <intuition/gadgetclass.h>
 #include <exec/semaphores.h>
-#include "../../patina/flat_core.h"
+#include "../../render/flat_core.h"
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;

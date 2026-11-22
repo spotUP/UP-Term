@@ -12,7 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../../patina/desk_core.h"
+#include "../../render/desk_core.h"
 
 static unsigned char buf[16384];
 

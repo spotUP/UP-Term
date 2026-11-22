@@ -15,14 +15,14 @@
 #include "demo_core.h"
 #include "cx.h"
 #include "win.h"
-#include "win_core.h"
+#include "../config/win_core.h"
 #include "win_apply.h"
 #include "bar.h"
 #include "note.h"
 #include "shot.h"
 #include "rexx_host.h"
 #include "gthemes_dos.h"
-#include "gthemes_scan_dos.h"
+#include "../render/gthemes_scan_dos.h"
 #include "sentinel_dos.h"
 
 extern struct IntuitionBase *IntuitionBase;

@@ -15,7 +15,7 @@
 #define PREFS_UI_H
 
 /* ---- gadget ids: stable, the rig names them ------------------------------ */
-#include "../patina/gthemes_core.h"
+#include "../render/gthemes_core.h"
 
 enum {
     /* in every page */

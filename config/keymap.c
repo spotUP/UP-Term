@@ -1,7 +1,7 @@
 /* keymap: see keymap.h for the file format and the contract. */
 #include <string.h>
 #include "upconf.h"
-#include "../patina/win_core.h"
+#include "../config/win_core.h"
 #include "keymap.h"
 
 #if defined(VT_COUNT_ALLOC)
@@ -249,7 +249,7 @@ static int tab_arg_ok(const char *a)
     return 0;
 }
 
-/* win:<verb [argument]>: the closed verb list of patina/win_core.c (win_parse is the one list); 1 when text is one of
+/* win:<verb [argument]>: the closed verb list of config/win_core.c (win_parse is the one list); 1 when text is one of
  * its forms. */
 static int win_arg_ok(const char *a)
 {

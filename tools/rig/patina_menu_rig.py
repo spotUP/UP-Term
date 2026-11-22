@@ -450,7 +450,7 @@ def x9_begin():
 
 def am_key_names():
     """The keys Patina's own store owns: the rows of the settings table (prefs/settings_def.c, sd_settings and
-    sd_hidden) whose store is SD_PATINA; amconf_keys() in patina/amconf_keys.c fills am_keys[] from the same rows."""
+    sd_hidden) whose store is SD_PATINA; amconf_keys() in config/amconf_keys.c fills am_keys[] from the same rows."""
     return set(re.findall(r'\{\s*[-\w]+,\s*"([a-z-]+)",(?:(?!\n\s*\{).)*?SD_PATINA', AM_KEYS_C.read_text(), re.S))
 
 

@@ -4,7 +4,7 @@
 #define DOPUSTB_CORE_H
 #include <stddef.h>
 #include <stdint.h>
-#include "gthemes_core.h"
+#include "../render/gthemes_core.h"
 
 #define DT_PENS 8          /* brush depth 3: ground, glyph 33/66/100 percent, accent 33/66/100 percent, ground */
 

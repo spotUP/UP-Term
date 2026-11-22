@@ -72,9 +72,9 @@ def install_sets():
 
 def expect_exe():
     exe = os.path.join(tempfile.gettempdir(), 'dopustb_expect_rig')
-    srcs = ['tools/rig/dopustb_expect.c', 'patina/dopustb_core.c', 'patina/iconpen_core.c', 'patina/iconfile_core.c',
-            'patina/gthemes_core.c', 'patina/desk_core.c', 'handler/be32.c', 'config/upconf.c', 'config/upconf_rows.c',
-            'prefs/settings_def.c', 'prefs/prefs_core.c', 'patina/amconf_core.c', 'patina/amconf_keys.c', 'handler/slash.c',
+    srcs = ['tools/rig/dopustb_expect.c', 'patina/dopustb_core.c', 'render/iconpen_core.c', 'patina/iconfile_core.c',
+            'render/gthemes_core.c', 'render/desk_core.c', 'handler/be32.c', 'config/upconf.c', 'config/upconf_rows.c',
+            'prefs/settings_def.c', 'prefs/prefs_core.c', 'config/amconf_core.c', 'config/amconf_keys.c', 'handler/slash.c',
             'handler/kcmode.c']
     paths = [os.path.join(ROOT, s) for s in srcs]
     if not os.path.exists(exe) or os.path.getmtime(exe) < max(os.path.getmtime(p) for p in paths):

@@ -16,7 +16,7 @@
 #include "themewin.h"
 #include "gthemes_dos.h"
 #include "iconpen_dos.h"
-#include "iconpen_core.h"
+#include "../render/iconpen_core.h"
 #include "desk_dos.h"
 #include "../render/pens_amiga.h"
 

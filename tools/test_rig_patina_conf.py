@@ -1,7 +1,7 @@
 """tools/rig/patina_menu_rig.py writes each key to the store that owns it.
 
 Since 5270f4ba Patina reads ENV:Patina/prefs before ENV:up-term/up-term, so a case that Echoes one of the
-product table's keys (am_keys[] in patina/amconf_keys.c) into the up-term file is ignored and the menu stays text.
+product table's keys (am_keys[] in config/amconf_keys.c) into the up-term file is ignored and the menu stays text.
 Static guard: no line of the rig that names X9_CONF names an am_keys key. Behaviour: x9_conf() sends Patina keys to
 ENV:Patina/prefs and the rest to ENV:up-term/up-term. Usage: test_rig_patina_conf.py [rig-source-to-scan]
 """

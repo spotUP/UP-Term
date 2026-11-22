@@ -5,7 +5,7 @@
 #include "gthemes_core.h"
 #include "../prefs/settings_def.h"
 #include "../prefs/prefs_core.h"
-#include "amconf_core.h"
+#include "../config/amconf_core.h"
 
 static upconf g_conf;
 

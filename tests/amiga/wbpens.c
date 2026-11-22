@@ -26,7 +26,7 @@
 #include <proto/dos.h>
 #include <proto/intuition.h>
 #include <proto/graphics.h>
-#include "../../patina/flat_shared.h"   /* the "Patina.Flat" record: st.enabled is the flat state (F marker) */
+#include "../../render/flat_shared.h"   /* the "Patina.Flat" record: st.enabled is the flat state (F marker) */
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;

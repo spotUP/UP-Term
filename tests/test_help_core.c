@@ -4,7 +4,7 @@
 #include <string.h>
 #include "../patina/help_core.h"
 #include "../patina/menu_geom.h"
-#include "../patina/flat_core.h"
+#include "../render/flat_core.h"
 #include "../patina/menu_theme.h"
 #include "harness.h"
 

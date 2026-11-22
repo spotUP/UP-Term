@@ -14,7 +14,7 @@
 #include "termenv.h"
 #include "menu_open.h"
 #include "taskalive.h"
-#include "cxdesc.h"
+#include "../config/cxdesc.h"
 #include "proclaunch.h"
 #include "uterm_dos.h"
 #include "../handler/tabprog.h"

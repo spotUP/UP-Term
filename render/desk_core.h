@@ -430,4 +430,8 @@ int desk_wb_root_wait(int root_state);
 unsigned desk_start_plan(unsigned mask, int flat, int wbok, const unsigned char *wb, long wblen, int saved, int gsaved,
                          const gtheme *th, int depth, const unsigned char *pat, long patlen);
 
+/* Intuition window flags the desktop checks (bar_is_desktop, desk_wb_backdrop_invoke); kept here so the host code needs no Intuition header. */
+#define BAR_WFLG_BACKDROP 0x00000100UL
+#define BAR_WFLG_WBENCHWINDOW 0x02000000UL
+
 #endif

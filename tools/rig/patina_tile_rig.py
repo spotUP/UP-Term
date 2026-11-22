@@ -155,7 +155,7 @@ def helper():
     if not HELPER:
         out = pathlib.Path(tempfile.mkdtemp(prefix='patina_tile_boxes')) / 'tile_boxes'
         r = subprocess.run(['cc', '-std=c99', '-o', str(out), 'tools/rig/patina_tile_boxes.c',
-                            'patina/tile_core.c', 'patina/win_core.c'], cwd=REPO, capture_output=True, text=True)
+                            'patina/tile_core.c', 'config/win_core.c'], cwd=REPO, capture_output=True, text=True)
         if r.returncode:
             raise SystemExit('patina_tile_boxes did not build:\n' + r.stderr[-600:])
         HELPER.append(str(out))

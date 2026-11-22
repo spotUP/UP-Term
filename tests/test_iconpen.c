@@ -1,7 +1,7 @@
-/* Lucide icon pens, pure half (patina/iconpen_core.c, desk_pen_plan_for; plan 2026-10-31-patina-lucide-icons.md L5, L6, L7). */
+/* Lucide icon pens, pure half (render/iconpen_core.c, desk_pen_plan_for; plan 2026-10-31-patina-lucide-icons.md L5, L6, L7). */
 #include <stdio.h>
 #include <string.h>
-#include "../patina/iconpen_core.h"
+#include "../render/iconpen_core.h"
 #include "harness.h"
 
 static void theme(gtheme *t)

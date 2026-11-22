@@ -11,7 +11,7 @@
 #include "../prefs/pick_list.h"
 #include "../prefs/settings_def.h"
 #include "../prefs/prefs_merge.h"
-#include "../patina/amconf_core.h"
+#include "../config/amconf_core.h"
 #include "harness.h"
 #include "memfs.h"
 

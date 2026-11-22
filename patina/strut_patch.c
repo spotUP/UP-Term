@@ -14,7 +14,7 @@
 #include "strut_patch.h"
 #include "ipatch.h"
 #include "libpatch.h"
-#include "win_core.h"
+#include "../config/win_core.h"
 #include "bar_core.h"
 #include "sentinel_dos.h"
 #include "iconpen_dos.h"

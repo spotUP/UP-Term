@@ -4,7 +4,7 @@
 #include <proto/exec.h>
 #include <proto/intuition.h>
 #include "desk_confirm_dos.h"
-#include "desk_core.h"
+#include "../render/desk_core.h"
 #include "desk_dos.h"
 #include "sentinel_dos.h"
 #include "tick.h"

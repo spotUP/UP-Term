@@ -4,7 +4,7 @@
 #ifndef PATINA_TILE_CORE_H
 #define PATINA_TILE_CORE_H
 
-#include "win_core.h"
+#include "../config/win_core.h"
 
 #define TILE_GAP_DEFAULT    4
 #define TILE_RATIO_DEFAULT  55    /* master width in percent of the work area */
