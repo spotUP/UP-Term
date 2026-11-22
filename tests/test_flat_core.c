@@ -980,7 +980,7 @@ static void test_glyph_states(void)
     cn = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_NORMAL, n, FLAT_GLYPH_MAX_PRIMS);
     cs = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_SELECTED, s, FLAT_GLYPH_MAX_PRIMS);
     cd = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_INACTIVE, d, FLAT_GLYPH_MAX_PRIMS);
-    CHECK_INT(cn, 2);                                               /* the box and one solid block */
+    CHECK_INT(cn, 5);                                               /* the box and the four sides of the outline (S93-GADGET-GLYPH) */
     CHECK_INT(cs, cn);
     CHECK_INT(cd, cn);
     CHECK_INT(n[0].role, FLAT_ROLE_FRAME);                          /* first rect = the box in the frame's colour */
@@ -1005,15 +1005,16 @@ static void test_glyph_states(void)
     fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 5, 0, 0, 14, 12);
     CHECK_INT(cv[0][0], '.');
     CHECK_INT(cv[5][5], '+');
-    /* solid blocks: the inside of the close square is filled (FLAT-SOLID-FILL) */
+    /* S93-GADGET-GLYPH: the close square is an outline, its inside shows the ground */
     cv_clear();
     fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 14, 12);
-    CHECK_INT(cv[5][6], '#');
+    CHECK_INT(cv[4][6], '#');
+    CHECK_INT(cv[5][6], '.');
     CHECK_INT(cv[0][0], '.');
 }
 
-/* FLAT-SOLID-FILL: every window glyph is drawn as filled blocks in every state, and an inactive window differs
- * from an active one in colour only (same rectangles, only the role of the glyph pen changes). */
+/* FLAT-SOLID-FILL: zoom and iconify hold a filled block in every state (close and depth are outlines since S93-GADGET-GLYPH),
+ * and an inactive window differs from an active one in colour only (same rectangles, only the role of the glyph pen changes). */
 static void test_glyph_solid_and_state_equal(void)
 {
     static const unsigned long win[] = { FLAT_W_CLOSE, FLAT_W_DEPTH, FLAT_W_ZOOM, FLAT_W_SIZE, FLAT_W_ICONIFY };
@@ -1035,7 +1036,8 @@ static void test_glyph_solid_and_state_equal(void)
                     if (p[k][j].role != FLAT_ROLE_FRAME && p[k][j].role != FLAT_ROLE_BACK &&
                         p[k][j].x1 - p[k][j].x0 >= 1 && p[k][j].y1 - p[k][j].y0 >= 1)
                         solid = 1;
-                CHECK(solid || win[i] == FLAT_W_SIZE);          /* S69-ARROW-ASPECT: the size triangle is rows 1 px high (shape: test_arrow_s69_shape) */
+                CHECK(solid || win[i] == FLAT_W_SIZE ||          /* S69-ARROW-ASPECT: the size triangle is rows 1 px high (shape: test_arrow_s69_shape) */
+                      win[i] == FLAT_W_CLOSE || win[i] == FLAT_W_DEPTH);   /* outlines: test_glyph_gadgets_distinct */
             }
             for (j = 0; j < c[0]; j++) {                            /* identical geometry; only the glyph pen role moves */
                 CHECK(p[0][j].x0 == p[1][j].x0 && p[0][j].y0 == p[1][j].y0 &&
@@ -1044,6 +1046,60 @@ static void test_glyph_solid_and_state_equal(void)
                     CHECK(p[0][j].role == FLAT_ROLE_TEXT && p[1][j].role == FLAT_ROLE_LINE);
             }
         }
+    }
+}
+
+/* S93-GADGET-GLYPH (owner, OS 3.1 rig 93: "plain squares in different positions"): close, depth, zoom and iconify each draw
+ * a different shape. Close = an outline with a ground-coloured inside; depth = two outlines, the back one up-right of the
+ * front one; zoom = an outline holding a solid block in its top-left corner; iconify = a solid block. */
+static void glyph_raster(unsigned long which, int w, int h, char c[24][24])
+{
+    flat_prim p[FLAT_GLYPH_MAX_PRIMS];
+    int n = flat_glyph_plan(which, w, h, FLAT_G_NORMAL, p, FLAT_GLYPH_MAX_PRIMS), j, x, y;
+    CHECK(n > 1);
+    for (j = 0; j < n; j++)
+        for (y = p[j].y0; y <= p[j].y1; y++)
+            for (x = p[j].x0; x <= p[j].x1; x++)
+                c[y][x] = p[j].role == FLAT_ROLE_TEXT ? '#' : '.';
+}
+static void test_glyph_gadgets_distinct(void)
+{
+    static const unsigned long win[4] = { FLAT_W_CLOSE, FLAT_W_DEPTH, FLAT_W_ZOOM, FLAT_W_ICONIFY };
+    static const int dim[2][2] = { { 14, 12 }, { 24, 20 } };
+    static char c[4][24][24];
+    int z, i, k, x, y;
+    for (z = 0; z < 2; z++) {
+        int w = dim[z][0], h = dim[z][1], fx0 = w, fy0 = h, fx1 = -1, fy1 = -1, holes = 0, corners = 0;
+        memset(c, 0, sizeof c);
+        for (i = 0; i < 4; i++)
+            glyph_raster(win[i], w, h, c[i]);
+        for (i = 0; i < 4; i++)                                     /* pairwise different pixels */
+            for (k = i + 1; k < 4; k++)
+                CHECK(memcmp(c[i], c[k], sizeof c[i]) != 0);
+        for (y = 0; y < h; y++)                                     /* the close square's ink bounds */
+            for (x = 0; x < w; x++)
+                if (c[0][y][x] == '#') {
+                    fx0 = x < fx0 ? x : fx0; fy0 = y < fy0 ? y : fy0; fx1 = x > fx1 ? x : fx1; fy1 = y > fy1 ? y : fy1;
+                }
+        CHECK(fx1 - fx0 >= 2 && fy1 - fy0 >= 2);
+        CHECK(c[0][fy0][fx0] == '#' && c[0][fy1][fx1] == '#');      /* close: outlined, ground inside */
+        CHECK_INT(c[0][(fy0 + fy1) / 2][(fx0 + fx1) / 2], '.');
+        for (y = 1; y < h - 1; y++)                                 /* depth: two outlines = two separate inner holes and */
+            for (x = 1; x < w - 1; x++)                             /* two top-left outline corners, the back one up-right */
+                if (c[1][y][x] == '#' && c[1][y][x + 1] == '#' && c[1][y + 1][x] == '#' && c[1][y - 1][x] != '#' &&
+                    c[1][y][x - 1] != '#')
+                    corners++;
+                else if (c[1][y][x] == '.' && c[1][y - 1][x] == '#' && c[1][y][x - 1] == '#' && c[1][y - 1][x - 1] == '#')
+                    holes++;
+        CHECK_INT(corners, 2);
+        CHECK(holes >= 2);                                          /* the overlap can close a third pocket */
+        for (y = 0, k = 0; y < h; y++)                              /* zoom: a 3x3 solid block inside an outline */
+            for (x = 0; x + 2 < w && y + 2 < h; x++)
+                if (c[2][y][x] == '#' && c[2][y][x + 2] == '#' && c[2][y + 2][x] == '#' && c[2][y + 1][x + 1] == '#' &&
+                    c[2][y + 2][x + 2] == '#')
+                    k = 1;
+        CHECK(k);
+        CHECK(c[3][h - 1 - (h / 4 > 1 ? h / 4 : 1)][(w / 4 > 1 ? w / 4 : 1) + 1] == '#');   /* iconify: solid block low left */
     }
 }
 
@@ -4399,6 +4455,7 @@ void suite_flat_core(void)
     test_dopus_arrow();
     test_glyph_goldens();
     test_glyph_solid_and_state_equal();
+    test_glyph_gadgets_distinct();
     test_glyph_states();
     test_glyph_frame_bg();
     test_glyph_route();

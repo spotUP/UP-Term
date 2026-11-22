@@ -21,6 +21,9 @@ typedef struct plan {
     short side;                 /* flat_side_px of the screen: columns per row of visual height (1 square, 2 hires, 4 superhires) */
 } plan;
 
+static int imin(int a, int b) { return a < b ? a : b; }
+static int imax(int a, int b) { return a > b ? a : b; }
+
 static void put(plan *g, int x0, int y0, int x1, int y1, int role)
 {
     if (g->n >= g->cap || x1 < x0 || y1 < y0)
@@ -39,38 +42,47 @@ static void put(plan *g, int x0, int y0, int x1, int y1, int role)
     g->n++;
 }
 
-/* a square or rectangle: one solid block (the only style: FLAT-SOLID-FILL) */
+/* a square or rectangle: one solid block (FLAT-SOLID-FILL; close, depth and zoom use frame(), S93-GADGET-GLYPH) */
 static void box(plan *g, int x0, int y0, int x1, int y1, int role)
 {
     put(g, x0, y0, x1, y1, role);
 }
 
-static int imin(int a, int b) { return a < b ? a : b; }
-static int imax(int a, int b) { return a > b ? a : b; }
+/* S93-GADGET-GLYPH: a 1-row outline; the side lines are g->side columns wide so they look as thick as the top and bottom */
+static void frame(plan *g, int x0, int y0, int x1, int y1)
+{
+    put(g, x0, y0, x1, y0, g->fg);
+    put(g, x0, y1, x1, y1, g->fg);
+    put(g, x0, y0 + 1, x0 + g->side - 1, y1 - 1, g->fg);
+    put(g, x1 - g->side + 1, y0 + 1, x1, y1 - 1, g->fg);
+}
 
+/* S93-GADGET-GLYPH (owner): close, depth and zoom are outlines, so the four title-bar gadgets no longer read as the same
+ * solid square in different places. Close = a small outlined square in the middle. */
 static void g_close(plan *g)
 {
     int s = imax(3, imin(g->ix1 - g->ix0 + 1, g->iy1 - g->iy0 + 1) / 2 + 1);
-    int cx = g->w / 2, cy = g->h / 2;
-    int x0 = cx - s / 2, y0 = cy - s / 2;
-    box(g, x0, y0, x0 + s - 1, y0 + s - 1, g->fg);
+    int x0 = g->w / 2 - s / 2, y0 = g->h / 2 - s / 2;
+    frame(g, x0, y0, x0 + s - 1, y0 + s - 1);
 }
 
+/* depth: two overlapping outlined squares, the back one up-right, the front one down-left; the front one is filled with the
+ * ground first so it hides the back one's lines */
 static void g_depth(plan *g)
 {
-    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1;
-    int q = imax(3, imin(iw, ih) * 2 / 3);
-    box(g, g->ix0, g->iy0, g->ix0 + q - 1, g->iy0 + q - 1, g->fg);
-    put(g, g->ix1 - q + 1, g->iy1 - q + 1, g->ix1, g->iy1, g->bg);      /* the front square hides the back one */
-    box(g, g->ix1 - q + 1, g->iy1 - q + 1, g->ix1, g->iy1, g->fg);
+    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, q = imax(3, imin(iw, ih) * 2 / 3), d = imax(1, q / 2);
+    int x0 = g->ix0 + (iw - q - d) / 2, y0 = g->iy0 + (ih - q - d) / 2;    /* the pair (q + d square) centred in the inner box */
+    frame(g, x0 + d, y0, x0 + d + q - 1, y0 + q - 1);
+    put(g, x0, y0 + d, x0 + q - 1, y0 + d + q - 1, g->bg);
+    frame(g, x0, y0 + d, x0 + q - 1, y0 + d + q - 1);
 }
 
+/* zoom: an outlined box with a smaller solid box in its top-left corner */
 static void g_zoom(plan *g)
 {
-    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1;
-    int q = imax(3, imin(iw, ih) / 2);
-    box(g, g->ix0, g->iy0, g->ix1, g->iy1, g->fg);
-    put(g, g->ix0 + 1, g->iy0 + 1, g->ix0 + q - 1, g->iy0 + q - 1, g->bg);
+    int q = imax(3, imin(g->ix1 - g->ix0 + 1, g->iy1 - g->iy0 + 1) / 2);
+    frame(g, g->ix0, g->iy0, g->ix1, g->iy1);
+    put(g, g->ix0, g->iy0, g->ix0 + q - 1, g->iy0 + q - 1, g->fg);
 }
 
 static void g_size(plan *g)
@@ -248,7 +260,7 @@ int flat_clone_slot(const flat_clone_key *keys, int n, int cap, unsigned long wh
 
 /* S69-ARROW-ASPECT: the scroller arrows and the size gadget are NOT cloned. The stock shapes are authored for 2:1 hires pixels, so
  * a copy of them on a square-pixel screen steps 2 columns per row (left/right, size) instead of 1. They draw as flat's own solid
- * glyphs (g_arrow, g_size), scaled by the drawing screen's pixel aspect (g->side). Close, depth, zoom and iconify keep the clone. */
+ * glyphs (g_arrow, g_size), scaled by the drawing screen's pixel aspect (g->side). Close, depth, zoom and iconify keep the clone on OS 3.2+ (flat.c c2_draw; OS 3.1 takes the plan, S93-GADGET-GLYPH). */
 int flat_clone_route(const flat_state *s, unsigned long which, unsigned long method)
 {
     return s && s->enabled && !s->held && method == FLAT_IM_DRAW && flat_glyph_window_gadget(which) && !flat_glyph_knob_gadget(which) &&
