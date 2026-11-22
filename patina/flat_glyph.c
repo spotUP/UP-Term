@@ -57,19 +57,19 @@ static void frame(plan *g, int x0, int y0, int x1, int y1)
     put(g, x1 - g->side + 1, y0 + 1, x1, y1 - 1, g->fg);
 }
 
-/* S93-GADGET-FILL: the title-bar glyphs share one size: R rows tall (the inner height, at most the inner width in rows), g->side * R
- * columns wide, so on hires and superhires they stay square on screen and fill their box instead of floating in it */
+/* S93-GADGET-FILL, wide glyphs: the title-bar glyphs share one row count R, taken from the inner HEIGHT only (owner chose wide
+ * glyphs filling the whole cell width, so the gaps between neighbouring gadgets close; the width no longer limits R) */
 static int gsq(const plan *g)
 {
-    return imax(3, imin(g->iy1 - g->iy0 + 1, (g->ix1 - g->ix0 + 1) / g->side));
+    return imax(3, g->iy1 - g->iy0 + 1);
 }
 
 /* S93-GADGET-GLYPH (owner): close, depth and zoom are outlines, so the four title-bar gadgets no longer read as the same
  * solid square in different places. Close = a small outlined square in the middle. */
 static void g_close(plan *g)
 {
-    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, r = gsq(g), bw = imin(iw, g->side * r);
-    int x0 = g->ix0 + (iw - bw) / 2, y0 = g->iy0 + (ih - r) / 2;
+    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, r = gsq(g), bw = iw;
+    int x0 = g->ix0, y0 = g->iy0 + (ih - r) / 2;
     frame(g, x0, y0, x0 + bw - 1, y0 + r - 1);
 }
 
@@ -78,7 +78,7 @@ static void g_close(plan *g)
 static void g_depth(plan *g)
 {
     int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, r = gsq(g), d = imax(2, r / 3), q = r - d;
-    int dw = g->side * d, qw = g->side * q, x0 = g->ix0 + (iw - dw - qw) / 2, y0 = g->iy0 + (ih - r) / 2;   /* the pair centred in the inner box */
+    int dw = imax(g->side * 2, iw / 4), qw = iw - dw, x0 = g->ix0, y0 = g->iy0 + (ih - r) / 2;   /* the pair spans the inner width */
     frame(g, x0 + dw, y0, x0 + dw + qw - 1, y0 + q - 1);
     put(g, x0, y0 + d, x0 + qw - 1, y0 + d + q - 1, g->bg);
     frame(g, x0, y0 + d, x0 + qw - 1, y0 + d + q - 1);
@@ -88,9 +88,9 @@ static void g_depth(plan *g)
 static void g_zoom(plan *g)
 {
     int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, rows = gsq(g), q = imax(3, rows / 2);
-    int bw = imin(iw, g->side * rows), x0 = g->ix0 + (iw - bw) / 2, y0 = g->iy0 + (ih - rows) / 2;
+    int bw = iw, x0 = g->ix0, y0 = g->iy0 + (ih - rows) / 2;
     frame(g, x0, y0, x0 + bw - 1, y0 + rows - 1);
-    put(g, x0, y0, x0 + g->side * q - 1, y0 + q - 1, g->fg);
+    put(g, x0, y0, x0 + imin(bw, imax(g->side * 3, bw / 2)) - 1, y0 + q - 1, g->fg);
 }
 
 static void g_size(plan *g)
@@ -109,7 +109,8 @@ static void g_size(plan *g)
 static void g_iconify(plan *g)
 {
     int q = imax(3, gsq(g) * 2 / 3);
-    box(g, g->ix0, g->iy1 - q + 1, g->ix0 + g->side * q - 1, g->iy1, g->fg);
+    int bw = imin(g->ix1 - g->ix0 + 1, imax(g->side * 3, (g->ix1 - g->ix0 + 1) * 2 / 3));
+    box(g, g->ix0, g->iy1 - q + 1, g->ix0 + bw - 1, g->iy1, g->fg);
 }
 
 /* DOPUS-LOCK (O2/O3): a solid padlock, no inverted box. Visual units: a column is 1, a row is g->side. Body = the lower half of the
@@ -483,6 +484,9 @@ static int plan_run(plan *g, unsigned long which, int w, int h, int state, int s
     plan_roles(g, which, state);
     i = imax(1, imin(w, h) / 4);
     g->ix0 = i; g->iy0 = i; g->ix1 = w - 1 - i; g->iy1 = h - 1 - i;
+    if (which == FLAT_W_CLOSE || which == FLAT_W_DEPTH || which == FLAT_W_ZOOM || which == FLAT_W_ICONIFY) {
+        g->ix0 = 1; g->ix1 = w - 2;     /* S93-GADGET-FILL: wide glyphs span the cell */
+    }
     put(g, 0, 0, w - 1, h - 1, g->bg);
     switch (which) {
     case FLAT_W_CLOSE: g_close(g); break;

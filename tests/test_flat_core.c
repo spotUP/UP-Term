@@ -1000,11 +1000,11 @@ static void test_glyph_states(void)
     cv_clear();
     fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 1, 0, 0, 14, 12);
     CHECK_INT(cv[0][0], '#');
-    CHECK_INT(cv[5][4], '.');
+    CHECK_INT(cv[3][4], '.');
     cv_clear();
     fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 5, 0, 0, 14, 12);
     CHECK_INT(cv[0][0], '.');
-    CHECK_INT(cv[5][4], '+');
+    CHECK_INT(cv[3][4], '+');
     /* S93-GADGET-GLYPH: the close square is an outline, its inside shows the ground */
     cv_clear();
     fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 14, 12);
