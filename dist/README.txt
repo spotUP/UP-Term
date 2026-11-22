@@ -1271,6 +1271,9 @@ ADD-ONS
     up-uhc.lha      The UHC tools (Ultimate Hunting Companion): runs UHC's own
                     installer, which downloads the tools. Needs this one
                     installed first, a network connection and LhA.
+    up-patina.lha   Patina: the Left Amiga menu and keys, the app index and
+                    the flat Workbench look. Offered by Install (default yes);
+                    needs this one installed first.
   Git, Perl and Vim are packages for upkg, not archives: they were in this
   archive before the slim base, and they install at the same places
   (UP-Term:bin, UP-Term:share). Type  upkg install git  (or perl, vim) in an

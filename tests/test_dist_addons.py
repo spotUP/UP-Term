@@ -36,7 +36,7 @@ class EveryAddOn(unittest.TestCase):
 
     def test_every_add_on_row_has_its_drawer_and_every_slim_package_is_one(self):
         """One loop over the whole table: the add-ons are the hand-written six plus every slim package."""
-        hand = ['claude', 'dopus', 'nvim', 'pi', 'python', 'uhc']
+        hand = ['claude', 'dopus', 'nvim', 'patina', 'pi', 'python', 'uhc']
         self.assertEqual(sorted(r['id'] for r in ADDONS), sorted(hand + slim.ids()))
 
     def test_a_failed_write_ends_the_install_with_rc_20_before_the_success_line(self):

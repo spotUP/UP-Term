@@ -2017,6 +2017,7 @@ KIT_nvim := $(BUILD)/dist/up-nvim
 KIT_python := $(BUILD)/dist/up-python
 KIT_dopus := $(BUILD)/dist/up-dopus
 KIT_uhc := $(BUILD)/dist/up-uhc
+KIT_patina := $(BUILD)/dist/up-patina
 # the upkg-only packages: every id of dist/slim.txt (git, perl, vim, bitchx, vbcc and the application ports); one stage
 # drawer and one dist-<id> target each, from the table, no target per package
 SLIM_IDS := $(shell python3 tools/slim.py ids)
@@ -2074,12 +2075,12 @@ AMIGA_PI_SKILLS := $(AMIGA_PI)/skills
 .PHONY: amiga-pi-bin
 amiga-pi-bin:
 	$(MAKE) -C $(AMIGA_PI) UPTERM_ROOT=$(UPTERM_ROOT) amiga
-dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(SLIM_DIST) dist-src dist-index dist-ipk
+dist: dist-base dist-patina dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(SLIM_DIST) dist-src dist-index dist-ipk
 
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
 # Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
-dist-base: amiga jbmono $(BUILD)/amiga/patina-menu $(BUILD)/amiga/patina-gui $(BUILD)/amiga/patina-index $(BUILD)/amiga/patina-flat $(BUILD)/amiga/patina-icons $(BUILD)/amiga/AmTile bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(LUCIDE_DAT) $(OUTLINE_DAT) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV) $(LHA)
+dist-base: amiga jbmono bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV) $(LHA)
 	@# the ports kit is checked before the kit drawer is wiped: a missing kit left no build/dist/up-term
 	$(call PORTS_KIT_FRESH,dist)
 	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
@@ -2098,16 +2099,9 @@ dist-base: amiga jbmono $(BUILD)/amiga/patina-menu $(BUILD)/amiga/patina-gui $(B
 	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(KIT)/Files/UP-Term
 	python3 tools/mkicon.py $(KIT)/Files/UP-Term-Prefs.info --tool "C:UP-Term-Prefs" --plain
 	printf 'UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n' > $(KIT)/Files/UP-Term-Prefs
-	mkdir -p $(KIT)/Files/wbstartup
-	python3 tools/mkicon.py $(KIT)/Files/wbstartup/Patina.info --tool "UP-Term:bin/Patina" --plain --tooltype DONOTWAIT --tooltype STARTPRI=10
-	python3 tools/mkicon.py $(KIT)/Files/wbstartup/patina-index.info --tool "UP-Term:bin/patina-index" --plain --tooltype DONOTWAIT --tooltype STARTPRI=-10 --tooltype TOOLPRI=-5
 	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/vshrc \
 	  dist/up-term.conf $(KIT)/Files/
 	mkdir -p $(KIT)/Files/themes && cp themes/*.conf themes/ATTRIBUTION.md $(KIT)/Files/themes/
-	@# the Omarchy colour themes of the drawn Patina menu: install.dos copies this drawer to UP-Term:Patina/Themes
-	rm -rf $(KIT)/Files/patina-themes && cp -R dist/patina-themes $(KIT)/Files/patina-themes
-	@# the icon images of the flat Workbench (Patina/Icons/lucide.dat, file name kept) with the Phosphor licence and source note
-	rm -rf $(KIT)/Files/lucide $(KIT)/Files/phosphor && mkdir -p $(KIT)/Files/lucide $(KIT)/Files/phosphor && cp $(LUCIDE_DAT) $(OUTLINE_DAT) dist/lucide/LICENSE dist/lucide/SOURCE.txt $(KIT)/Files/lucide/ && cp dist/phosphor/LICENSE dist/phosphor/SOURCE.txt $(KIT)/Files/phosphor/
 	rm -rf $(KIT)/Files/coreutils && mkdir -p $(KIT)/Files/coreutils
 	cp -R dist/gg/coreutils-5.2.1/bin dist/gg/coreutils-5.2.1/COPYING dist/gg/coreutils-5.2.1/SOURCE.txt $(KIT)/Files/coreutils/
 	@# the ports build coreutils 9.12 (a $$STACK cookie in every program); the GG 5.2.1 binaries have none
@@ -2140,7 +2134,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/patina-menu $(BUILD)/amiga/patina-gui $(B
 	cp $(BUILD)/amiga/upsame $(KIT)/Files/upsame
 	cp dist/install-amissl.dos $(KIT)/Files/install-amissl.dos
 	cp $(BUILD)/amiga/tcpprobe $(KIT)/Files/tcpprobe
-	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/Agent $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/icat $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Patina $(BUILD)/amiga/patina-menu $(BUILD)/amiga/patina-gui $(BUILD)/amiga/patina-index $(BUILD)/amiga/patina-flat $(BUILD)/amiga/amnotify $(BUILD)/amiga/patina-icons $(BUILD)/amiga/AmTile dist/keymap dist/bar.conf $(KIT)/Files/
+	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/Agent $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/icat $(BUILD)/amiga/ps $(BUILD)/amiga/top dist/keymap $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	rm -rf $(KIT)/Files/Rexx && cp -R dist/rexx $(KIT)/Files/Rexx
 	rm -rf $(KIT)/Files/share/updemo && mkdir -p $(KIT)/Files/share && cp -R dist/updemo $(KIT)/Files/share/updemo
@@ -2181,7 +2175,7 @@ pkg = $(shell python3 tools/pkgs.py get $(1) $(2))
 LAUNCHER = mkdir -p "$(1)/Files/launch" && cp "$(2)" "$(1)/Files/launch/$(3)" \
 	&& python3 tools/mkicon.py "$(1)/Files/launch/$(3).info" --tool C:IconX \
 	  --tooltype "WINDOW=XCON:0/12/$(4)/$(3)/CLOSE"
-.PHONY: dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(SLIM_DIST)
+.PHONY: dist-patina dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(SLIM_DIST)
 dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate $(BUILD)/wasabi/.stamp-$(WASABI_REV) $(LHA)
 	$(call ADDON_STAGE,claude)
 	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(KIT_claude)/Files/
@@ -2242,6 +2236,20 @@ dist-dopus: $(BUILD)/amiga/upupdate $(LHA)
 	$(MAKE) $(DOPUS_TOOLBAR_DIR)/Buttons/Patina-toolbar-filled-24
 	mkdir -p $(KIT_dopus)/Files/toolbar && cp -R $(DOPUS_TOOLBAR_DIR)/Images $(DOPUS_TOOLBAR_DIR)/Buttons $(KIT_dopus)/Files/toolbar/
 	python3 tools/mkkit.py dopus
+# up-patina (patina package split): Patina, its menu, GUI, index, flat UI patch, notifier, icon applier and AmTile, with
+# the colour themes, the flat icon sets (Phosphor, Lucide), the WBStartup icons and bar.conf. instssblock.sh is the
+# base's (dist/instssblock.sh), copied so the package installs its Startup-Sequence block by itself.
+dist-patina: $(BUILD)/amiga/Patina $(BUILD)/amiga/patina-menu $(BUILD)/amiga/patina-gui $(BUILD)/amiga/patina-index $(BUILD)/amiga/patina-flat $(BUILD)/amiga/patina-icons $(BUILD)/amiga/amnotify $(BUILD)/amiga/AmTile $(LUCIDE_DAT) $(OUTLINE_DAT) $(BUILD)/amiga/upupdate $(LHA)
+	$(call ADDON_STAGE,patina)
+	cp $(BUILD)/amiga/Patina $(BUILD)/amiga/patina-menu $(BUILD)/amiga/patina-gui $(BUILD)/amiga/patina-index $(BUILD)/amiga/patina-flat $(BUILD)/amiga/amnotify $(BUILD)/amiga/patina-icons $(BUILD)/amiga/AmTile dist/bar.conf dist/instssblock.sh $(KIT_patina)/Files/
+	mkdir -p $(KIT_patina)/Files/wbstartup
+	python3 tools/mkicon.py $(KIT_patina)/Files/wbstartup/Patina.info --tool "UP-Term:bin/Patina" --plain --tooltype DONOTWAIT --tooltype STARTPRI=10
+	python3 tools/mkicon.py $(KIT_patina)/Files/wbstartup/patina-index.info --tool "UP-Term:bin/patina-index" --plain --tooltype DONOTWAIT --tooltype STARTPRI=-10 --tooltype TOOLPRI=-5
+	@# the Omarchy colour themes of the drawn Patina menu: install.dos copies this drawer to UP-Term:Patina/Themes
+	cp -R dist/patina-themes $(KIT_patina)/Files/patina-themes
+	@# the icon images of the flat Workbench (Patina/Icons/lucide.dat, file name kept) with the Phosphor licence and source note
+	mkdir -p $(KIT_patina)/Files/lucide $(KIT_patina)/Files/phosphor && cp $(LUCIDE_DAT) $(OUTLINE_DAT) dist/lucide/LICENSE dist/lucide/SOURCE.txt $(KIT_patina)/Files/lucide/ && cp dist/phosphor/LICENSE dist/phosphor/SOURCE.txt $(KIT_patina)/Files/phosphor/
+	python3 tools/mkkit.py patina
 # up-uhc: no UHC files (owner decision 2026-10-27): install.dos downloads the author's installer uhcinstall on the
 # user's machine and runs it. The kit holds only unstartup-uhc.sh (dist/unstartup.sh, copied), which takes the legacy
 # ";BEGIN uhc" block of up-uhc 1.0 to 1.3 out of S:User-Startup.
@@ -2345,7 +2353,7 @@ dist-boot: $(LHA)
 # complete source of GNU coreutils (GPL v2 section 3: the same place as the binaries)
 .PHONY: dist-base dist-src dist-index dist-ipk
 # upkg's index (upkg plan D1): released next to the archives it names
-dist-index: dist-base dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(SLIM_DIST)
+dist-index: dist-base dist-patina dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(SLIM_DIST)
 	python3 tools/pkgs.py prune $(BUILD)
 	python3 tools/pkgs.py index $(BUILD) > $(BUILD)/upkg-index.txt
 # the .ipk feed for the opkg-based upkg (P10.4): build/ipk/*.ipk, Packages, Packages.gz from the staged trees.

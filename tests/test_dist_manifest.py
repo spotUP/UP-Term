@@ -126,7 +126,7 @@ class Manifest(unittest.TestCase):
         and libupkgui, so `make amiga` leaves it out."""
         mk = (ROOT / "Makefile").read_text().replace("\\\n", " ")
         amiga = set(re.search(r"^amiga:(.*)$", mk, re.M).group(1).split())
-        copies = [l for l in mk.splitlines() if l.startswith("\tcp ") and l.rstrip().endswith("$(KIT)/Files/")]
+        copies = [l for l in mk.splitlines() if l.startswith("\tcp ") and l.rstrip().endswith(("$(KIT)/Files/", "$(KIT_patina)/Files/"))]
         shipped = {w for l in copies for w in l.split() if w.startswith("$(BUILD)/amiga/")}
         self.assertIn("$(BUILD)/amiga/patina-gui", shipped)
         self.assertEqual(shipped - amiga, {"$(BUILD)/amiga/patina-menu"})

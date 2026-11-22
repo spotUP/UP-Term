@@ -1,0 +1,16 @@
+up-patina: parts, licences and where the source is
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+Patina, patina-menu,          MIT, Copyright (c) 2026 spotUP   vtcon repo (LICENSE), directory patina/
+patina-gui, patina-index,
+patina-flat, patina-icons,
+amnotify, AmTile
+Phosphor Icons Fill 2.1.2     MIT (Files/phosphor/LICENSE)     https://phosphoricons.com; Files/phosphor/SOURCE.txt.
+(Files/lucide/lucide.dat)                                      Flat Workbench icons rendered from the Phosphor
+                                                               Fill font
+Lucide icons 1.66.0           ISC (Files/lucide/LICENSE)       https://lucide.dev; Files/lucide/SOURCE.txt. Outline
+(Files/lucide/outline.dat)                                     icon set rendered from the Lucide font
+Patina menu icons             Glyphs of Symbols Nerd Font      Built into patina-gui from dist/menu-icons.
+Omarchy colour themes         per theme (themes' own licences) Files/patina-themes; themes/ATTRIBUTION.md in the base kit
+install scripts               UP-Term's licence                this package

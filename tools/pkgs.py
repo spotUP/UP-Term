@@ -162,7 +162,7 @@ SUMMARY = {
 # an archive is not always up-<id>: hexedit ships as up-hexed) of every slim package (dist/slim.txt) with no old name.
 # up-dopus is no slim package: born as up-dopus (2026-10-26), the one hand-written package without an old record (up-uhc, 2026-10-26, the second).
 NEW_PACKAGES = tuple(r['archive'] for r in rows(ROOT / 'dist/packages.txt')
-                    if r['id'] in slim.ids() and not old_names(r['archive'])) + ('up-dopus', 'up-uhc')
+                    if r['id'] in slim.ids() and not old_names(r['archive'])) + ('up-dopus', 'up-uhc', 'up-patina')
 EPOCH = 0
 
 

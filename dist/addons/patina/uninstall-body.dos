@@ -1,0 +1,91 @@
+; up-patina uninstall: what this package's install.dos put in. Run by the base Uninstall first (UP-Term: is still
+; assigned) or by this archive's own Uninstall. The settings (ENVARC:Patina/bar.conf, your GUI themes in
+; ENVARC:Patina/themes) and ENVARC:up-term/keymap.user are yours and stay.
+FailAt 21
+; the Patina-Flat block of S:Startup-Sequence (and of S:User-Startup, where an earlier kit's flat patch put it)
+If EXISTS ENVARC:up-term/unstartup.sh
+  If EXISTS S:Startup-Sequence
+    Delete >NIL: T:Startup-Sequence.up-term QUIET
+    UP-Term:bin/vsh ENVARC:up-term/unstartup.sh Patina-Flat S:Startup-Sequence
+    If EXISTS T:Startup-Sequence.up-term
+      Copy T:Startup-Sequence.up-term S:Startup-Sequence CLONE QUIET
+      Delete >NIL: T:Startup-Sequence.up-term QUIET
+    EndIf
+  EndIf
+EndIf
+; Leg W: the WBStartup icons that start Patina and the app index at boot
+Delete >NIL: SYS:WBStartup/Patina.info SYS:WBStartup/patina-index.info QUIET
+; Patina (the Super-key commodity), when it runs: its ARexx QUIT through its port (it is no CLI process when it started
+; from its WBStartup icon: Status does not list it and Break cannot reach it), then Ctrl-C for one that is a CLI
+; process. Until it ends it holds UP-Term:bin, and so do patina-gui and patina-menu (they end with Patina's shutdown).
+If EXISTS UP-Term:bin/Patina
+  UP-Term:bin/Patina >NIL: QUIT
+EndIf
+Status >ENV:upw COM UP-Term:bin/Patina
+If NOT WARN
+  Break $upw C
+EndIf
+Status >ENV:upw COM Patina
+If NOT WARN
+  Break $upw C
+EndIf
+UnSet >NIL: upw
+Delete >NIL: ENV:upw QUIET
+; Ctrl-C is only a signal: wait until Patina is gone, at most 10 s (one dot per second: no Eval needed)
+Set upwait ""
+Lab patinagone
+Status >NIL: COM UP-Term:bin/Patina
+If WARN
+  Status >NIL: COM Patina
+EndIf
+If NOT WARN
+  If NOT "$upwait" EQ ".........."
+    Wait 1
+    Set upwait "$upwait."
+    Skip patinagone BACK
+  EndIf
+EndIf
+UnSet upwait
+; patina-flat (the flat UI patch), when its BOOT start left it resident: Leg W starts it from S:Startup-Sequence by the
+; absolute drawer path (ENVARC:up-term/Dir), so Status knows it under that name. Ctrl-C ends it (it puts back its
+; patches when the slot is still its own).
+If EXISTS ENVARC:up-term/Dir
+  Copy >NIL: ENVARC:up-term/Dir ENV:upflatdir CLONE
+EndIf
+Status >ENV:upw COM UP-Term:bin/patina-flat
+If WARN
+  Status >ENV:upw COM patina-flat
+EndIf
+If WARN
+  If EXISTS ENV:upflatdir
+    Status >ENV:upw COM "$upflatdir/bin/patina-flat"
+  EndIf
+EndIf
+If NOT WARN
+  Break $upw C
+EndIf
+UnSet >NIL: upw
+Delete >NIL: ENV:upw QUIET
+Set upwait ""
+Lab flatgone
+Status >NIL: COM UP-Term:bin/patina-flat
+If WARN
+  Status >NIL: COM patina-flat
+EndIf
+If WARN
+  If EXISTS ENV:upflatdir
+    Status >NIL: COM "$upflatdir/bin/patina-flat"
+  EndIf
+EndIf
+If NOT WARN
+  If NOT "$upwait" EQ ".........."
+    Wait 1
+    Set upwait "$upwait."
+    Skip flatgone BACK
+  EndIf
+EndIf
+UnSet upwait
+Delete >NIL: ENV:upflatdir QUIET
+; the programs and data (a patina-flat that would not unload keeps its file until the next boot)
+Delete >NIL: UPTREAL:bin/Patina UPTREAL:bin/patina-menu UPTREAL:bin/patina-gui UPTREAL:bin/patina-index UPTREAL:bin/patina-flat UPTREAL:bin/amnotify UPTREAL:bin/patina-icons UPTREAL:bin/AmTile QUIET
+Delete >NIL: UPTREAL:Patina ALL QUIET FORCE
