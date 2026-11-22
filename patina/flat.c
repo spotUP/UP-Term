@@ -760,7 +760,10 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
         return c8_draw_on(obj, msg, pens.text + C8_MX);   /* S93-MX-GROUND: pens.text >= 0 */
     if (flat_check_image(which))
         return c8_draw_on(obj, msg, pens.text);   /* S74-CHECKBOX-GROUND; pen fallback in check_draw keeps this frame small */
-    if (flat_clone_route(&r->st, which, msg->MethodID) && c2_clone(hk, obj, msg, reg, which, raw_which, &pens))
+    /* S93-GADGET-GLYPH: OS 3.1's sysiclass marker render has no usable outlines (close/depth/zoom/iconify all mapped to plain
+     * squares on rig 93), so below Intuition 44 the title-bar gadgets take flat's own plan glyphs */
+    if (flat_conv(IntuitionBase->LibNode.lib_Version) == FLAT_CONV_REG
+        && flat_clone_route(&r->st, which, msg->MethodID) && c2_clone(hk, obj, msg, reg, which, raw_which, &pens))
         return 1;
     return c2_glyph(obj, msg, which, &pens);
 }
