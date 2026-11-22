@@ -42,7 +42,7 @@ static void put(plan *g, int x0, int y0, int x1, int y1, int role)
     g->n++;
 }
 
-/* a square or rectangle: one solid block (FLAT-SOLID-FILL; close, depth and zoom use frame(), S93-GADGET-GLYPH) */
+/* a solid rectangle: one put (FLAT-SOLID-FILL; the title-bar gadgets draw frame() plus an inner motif, S93-GADGET-GLYPH) */
 static void box(plan *g, int x0, int y0, int x1, int y1, int role)
 {
     put(g, x0, y0, x1, y1, role);
@@ -64,33 +64,57 @@ static int gsq(const plan *g)
     return imax(3, g->iy1 - g->iy0 + 1);
 }
 
-/* S93-GADGET-GLYPH (owner): close, depth and zoom are outlines, so the four title-bar gadgets no longer read as the same
- * solid square in different places. Close = a small outlined square in the middle. */
+/* S93-GADGET-GLYPH (owner): close, depth, zoom and iconify all draw the SAME outer frame, so the four gadgets look the same size.
+ * It is gsq rows high and 1.5 x that wide in visual units (side columns per row), centred in the inner box; the single source of
+ * that rectangle is gframe, which draws it and returns it: x0, y0 top left, fw columns, r rows. */
+static void gframe(plan *g, int *x0, int *y0, int *fw, int *r)
+{
+    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1;
+    *r = gsq(g);
+    *fw = imin(iw, g->side * *r * 3 / 2);
+    *x0 = g->ix0 + (iw - *fw) / 2;
+    *y0 = g->iy0 + (ih - *r) / 2;
+    frame(g, *x0, *y0, *x0 + *fw - 1, *y0 + *r - 1);
+}
+
+/* the free area inside the frame, one frame line (side columns, 1 row) in: *ax0..*ax1, *ay0..*ay1; *gap is 1 row when the area is
+ * tall enough (>= 4 rows) to leave a ground row below a motif, else 0 */
+static void garea(const plan *g, int x0, int y0, int fw, int r, int *ax0, int *ax1, int *ay0, int *ay1, int *gap)
+{
+    *ax0 = x0 + g->side;
+    *ax1 = x0 + fw - 1 - g->side;
+    *ay0 = y0 + 1;
+    *ay1 = y0 + r - 2;
+    *gap = *ay1 - *ay0 + 1 >= 4;
+}
+
+/* close: the empty frame */
 static void g_close(plan *g)
 {
-    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, r = gsq(g), bw = iw;
-    int x0 = g->ix0, y0 = g->iy0 + (ih - r) / 2;
-    frame(g, x0, y0, x0 + bw - 1, y0 + r - 1);
+    int x0, y0, fw, r;
+    gframe(g, &x0, &y0, &fw, &r);
 }
 
-/* depth: two overlapping outlined squares, the back one up-right, the front one down-left; the front one is filled with the
- * ground first so it hides the back one's lines */
+/* depth: the frame holding a smaller outlined square (the front window) in the lower left, 2 x side columns and 1 row in */
 static void g_depth(plan *g)
 {
-    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, r = gsq(g), d = imax(2, r / 3), q = r - d;
-    int dw = imax(g->side * 2, iw / 4), qw = iw - dw, x0 = g->ix0, y0 = g->iy0 + (ih - r) / 2;   /* the pair spans the inner width */
-    frame(g, x0 + dw, y0, x0 + dw + qw - 1, y0 + q - 1);
-    put(g, x0, y0 + d, x0 + qw - 1, y0 + d + q - 1, g->bg);
-    frame(g, x0, y0 + d, x0 + qw - 1, y0 + d + q - 1);
+    int x0, y0, fw, r, ax0, ax1, ay0, ay1, gap, w, h, bx0;
+    gframe(g, &x0, &y0, &fw, &r);
+    garea(g, x0, y0, fw, r, &ax0, &ax1, &ay0, &ay1, &gap);
+    bx0 = ax0 + 2 * g->side;
+    w = imin(ax1 - bx0 + 1, imax(g->side * 4, (ax1 - ax0 + 1) * 3 / 5));
+    h = imin(ay1 - gap - ay0 + 1, imax(3, (ay1 - ay0 + 1) * 3 / 5));
+    if (w > 0 && h > 0)
+        frame(g, bx0, ay1 - gap - h + 1, bx0 + w - 1, ay1 - gap);
 }
 
-/* zoom: an outlined box with a smaller solid box in its top-left corner */
+/* zoom: the frame with a smaller solid box in its top-left corner */
 static void g_zoom(plan *g)
 {
-    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, rows = gsq(g), q = imax(3, rows / 2);
-    int bw = iw, x0 = g->ix0, y0 = g->iy0 + (ih - rows) / 2;
-    frame(g, x0, y0, x0 + bw - 1, y0 + rows - 1);
-    put(g, x0, y0, x0 + imin(bw, imax(g->side * 3, bw / 2)) - 1, y0 + q - 1, g->fg);
+    int x0, y0, fw, r, q;
+    gframe(g, &x0, &y0, &fw, &r);
+    q = imax(3, r / 2);
+    put(g, x0, y0, x0 + imin(fw, imax(g->side * 3, fw / 2)) - 1, y0 + q - 1, g->fg);
 }
 
 static void g_size(plan *g)
@@ -105,12 +129,17 @@ static void g_size(plan *g)
     }
 }
 
-/* owner 2026-11-19: a small box in the lower left corner; the old 2-row bar read as a stray line */
+/* iconify: the frame holding a small solid box in the lower left, side columns and 1 row in (owner 2026-11-19: a box, not a bar) */
 static void g_iconify(plan *g)
 {
-    int q = imax(3, gsq(g) * 2 / 3);
-    int bw = imin(g->ix1 - g->ix0 + 1, imax(g->side * 3, (g->ix1 - g->ix0 + 1) * 2 / 3));
-    box(g, g->ix0, g->iy1 - q + 1, g->ix0 + bw - 1, g->iy1, g->fg);
+    int x0, y0, fw, r, ax0, ax1, ay0, ay1, gap, w, h, bx0;
+    gframe(g, &x0, &y0, &fw, &r);
+    garea(g, x0, y0, fw, r, &ax0, &ax1, &ay0, &ay1, &gap);
+    bx0 = ax0 + g->side;
+    w = imin(ax1 - bx0 + 1, imax(g->side * 3, (ax1 - ax0 + 1) * 3 / 5));
+    h = imin(ay1 - gap - ay0 + 1, imax(2, (ay1 - ay0 + 1) * 3 / 5));
+    if (w > 0 && h > 0)
+        box(g, bx0, ay1 - gap - h + 1, bx0 + w - 1, ay1 - gap, g->fg);
 }
 
 /* DOPUS-LOCK (O2/O3): a solid padlock, no inverted box. Visual units: a column is 1, a row is g->side. Body = the lower half of the

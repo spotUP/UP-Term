@@ -1050,8 +1050,8 @@ static void test_glyph_solid_and_state_equal(void)
 }
 
 /* S93-GADGET-GLYPH (owner, OS 3.1 rig 93: "plain squares in different positions"): close, depth, zoom and iconify each draw
- * a different shape. Close = an outline with a ground-coloured inside; depth = two outlines, the back one up-right of the
- * front one; zoom = an outline holding a solid block in its top-left corner; iconify = a solid block. */
+ * a different shape inside one shared frame (S93: same outer frame). Close = the empty frame; depth = the frame holding a smaller
+ * outline low left; zoom = an outline holding a solid block in its top-left corner; iconify = a solid block. */
 static void glyph_raster(unsigned long which, int w, int h, char c[24][24])
 {
     flat_prim p[FLAT_GLYPH_MAX_PRIMS];
@@ -1091,7 +1091,7 @@ static void test_glyph_gadgets_distinct(void)
                     corners++;
                 else if (c[1][y][x] == '.' && c[1][y - 1][x] == '#' && c[1][y][x - 1] == '#' && c[1][y - 1][x - 1] == '#')
                     holes++;
-        CHECK_INT(corners, 2);
+        CHECK(corners == 2 || (z == 0 && corners == 1));            /* the small size: the front window touches the frame top, one corner */
         CHECK(holes >= 2);                                          /* the overlap can close a third pocket */
         for (y = 0, k = 0; y < h; y++)                              /* zoom: a 3x3 solid block inside an outline */
             for (x = 0; x + 2 < w && y + 2 < h; x++)
@@ -1099,7 +1099,13 @@ static void test_glyph_gadgets_distinct(void)
                     c[2][y + 2][x + 2] == '#')
                     k = 1;
         CHECK(k);
-        CHECK(c[3][h - 1 - (h / 4 > 1 ? h / 4 : 1)][(w / 4 > 1 ? w / 4 : 1) + 1] == '#');   /* iconify: solid block low left */
+        for (i = 1; i < 4; i++)                                     /* the four gadgets share one outer frame: same ring pixels */
+            for (y = fy0; y <= fy1; y++)
+                for (x = fx0; x <= fx1; x++)
+                    if (y == fy0 || y == fy1 || x == fx0 || x == fx1)
+                        CHECK_INT(c[i][y][x], c[0][y][x]);
+        CHECK_INT(c[3][fy1 - 2][fx0 + 2], '#');                     /* iconify: a solid block in the lower left, inside the frame */
+        CHECK_INT(c[3][fy1 - 2][fx0 + 1], '.');                     /* one ground column between block and frame */
     }
 }
 
