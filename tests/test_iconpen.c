@@ -754,6 +754,35 @@ static void test_plan_pens_held_by_the_screen_holder(void)
     }
 }
 
+/* S92E-PENS retry trace: a planned exclusive pen that is not free (the ROM-shared Workbench pens 0-3 and 12-15 at depth 4, a pen
+ * another client holds) is never asked for, however many syncs retry the plan; a free one is taken once and then only kept. */
+static int pa_asks[256];
+static int pa_obtain(void *c, int pen, unsigned r, unsigned g, unsigned b) { pa_asks[pen]++; return pf_obtain(c, pen, r, g, b); }
+static int pa_is_free(void *c, int pen) { const pf *f = c; return !f->taken[pen] && !f->mine[pen]; }
+static void test_plan_busy_pen_not_asked(void)
+{
+    static pf f;
+    ip_ops o = { 0 };
+    ip_holder h;
+    gt_plan_pen p[3];
+    int i;
+    memset(&f, 0, sizeof f);
+    memset(&o, 0, sizeof o);
+    memset(pa_asks, 0, sizeof pa_asks);
+    o.obtain = pa_obtain; o.release = pf_release; o.set_rgb = pf_set; o.is_free = pa_is_free; o.ctx = &f;
+    f.taken[0] = f.taken[12] = 1;                              /* Intuition's shared Workbench pens */
+    ip_holder_init(&h);
+    pf_plan(p, 0, 0, 0x112233UL, 1); pf_plan(p, 1, 12, 0x445566UL, 1); pf_plan(p, 2, 5, 0x778899UL, 1);
+    for (i = 0; i < 10; i++)
+        CHECK_INT(ip_plan_sync(&h, &o, p, 3), 1);
+    CHECK_INT(pa_asks[0] + pa_asks[12], 0);
+    CHECK_INT(pa_asks[5], 1);                                  /* held after the first sync: never asked again */
+    CHECK_INT(f.mine[5], 1);
+    f.taken[12] = 0;                                           /* it comes free: the next sync takes it */
+    CHECK_INT(ip_plan_sync(&h, &o, p, 3), 2);
+    CHECK_INT(pa_asks[12], 1);
+}
+
 static void test_theme_switch_recolour(void)
 {
     static rcm c;
@@ -1717,6 +1746,7 @@ void suite_iconpen(void)
     test_main_takes_pens_at_boot();
     test_reopen_same_address();
     test_shared_not_retried();
+    test_plan_busy_pen_not_asked();
     test_pens47_owned();
     test_holder_owns_roles();
     test_plan_pens_held_by_the_screen_holder();

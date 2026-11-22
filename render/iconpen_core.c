@@ -108,6 +108,16 @@ static int ip_pen_is_ours(const ip_holder *h, int pen)
     return 0;
 }
 
+/* S92E-PENS: 1 when the exclusive obtain of `pen` succeeded. A pen not on the free list (held by anyone, us included, or one of the
+ * ROM-shared Workbench pens 0-3 and 12-15 at depth 4) is not asked for: that obtain can only fail, and the sync that retries it runs
+ * every tick. */
+static int ip_try_obtain(const ip_ops *o, int pen, unsigned r, unsigned g, unsigned b)
+{
+    if (o->is_free && !o->is_free(o->ctx, pen))
+        return 0;
+    return o->obtain(o->ctx, pen, r, g, b) == pen;
+}
+
 int ip_plan_sync(ip_holder *h, const ip_ops *o, const gt_plan_pen *plan, int n)
 {
     int i, j, k;
@@ -139,7 +149,7 @@ int ip_plan_sync(ip_holder *h, const ip_ops *o, const gt_plan_pen *plan, int n)
                     o->set_rgb(o->ctx, plan[j].pen, c);
             }
         } else if (h->pcount < GTE_COUNT &&
-                   o->obtain(o->ctx, plan[j].pen, (c >> 16) & 255, (c >> 8) & 255, c & 255) == plan[j].pen) {
+                   ip_try_obtain(o, plan[j].pen, (c >> 16) & 255, (c >> 8) & 255, c & 255)) {
             h->ppen[h->pcount] = plan[j].pen;
             h->prgb[h->pcount] = c;
             h->pcount++;
@@ -162,7 +172,7 @@ int ip_holder_obtain(ip_holder *h, const ip_ops *o, const void *screen, int dept
     for (i = 0; i < p.icon_count; i++) {
         const uint8_t *c = rgb[p.icon_slot + i];
         memcpy(h->rgb[i], c, 3);
-        if (o->obtain(o->ctx, p.icon_first + i, c[0], c[1], c[2]) == p.icon_first + i) {
+        if (ip_try_obtain(o, p.icon_first + i, c[0], c[1], c[2])) {
             h->have[i] = 1;
             h->held++;
         } else if (o->is_shared && o->is_shared(o->ctx, p.icon_first + i))
@@ -353,7 +363,7 @@ int ip_sync(ip_holder *h, const ip_ops *o, int hold, const void *screen, int dep
         for (k = 0; k < n; k++) {
             h->rpen[k] = lp[k];
             h->rrgb[k] = lc[k];
-            h->rhave[k] = (uint8_t)(o->obtain(o->ctx, lp[k], (lc[k] >> 16) & 255, (lc[k] >> 8) & 255, lc[k] & 255) == lp[k]);
+            h->rhave[k] = (uint8_t)(ip_try_obtain(o, lp[k], (lc[k] >> 16) & 255, (lc[k] >> 8) & 255, lc[k] & 255));
             if (h->rhave[k] && o->set_rgb)
                 o->set_rgb(o->ctx, lp[k], lc[k]);
             h->rrefused[k] = (uint8_t)(!h->rhave[k] && o->is_shared && o->is_shared(o->ctx, lp[k]));

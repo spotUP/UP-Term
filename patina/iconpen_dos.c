@@ -56,15 +56,22 @@ static void pen_release(void *ctx, int pen)
         ReleasePen(c->cur, (ULONG)pen);
 }
 
-/* The ColorMap's own answer: an exclusive obtain of a pen anyone holds fails; one that succeeds is handed straight back. */
+/* S92E-PENS: 1 when `pen` is on the ColorMap's free list, the pens an exclusive ObtainPen can take. Read from PalExtra under its
+ * semaphore (the leaf lock ObtainPen itself takes) instead of a probe obtain: the old exclusive-obtain probe failed on every pen in
+ * use, so each verify tick and label draw issued failed exclusive obtains (5261 in 20 s on rig 98). pe_AllocList is one UBYTE per
+ * pen on KS 3.1 (palprobe's free-list walk reads it so). */
 int ipd_pen_is_free(struct ColorMap *cm, int pen)
 {
-    if (!cm)
+    struct PaletteExtra *pe = cm ? cm->PalExtra : 0;
+    int i, p, n, on = 0;
+    if (!pe || pen < 0 || pen >= (int)cm->Count)
         return 0;
-    if ((LONG)ObtainPen(cm, (ULONG)pen, 0, 0, 0, PENF_EXCLUSIVE | PENF_NO_SETCOLOR) != (LONG)pen)
-        return 0;
-    ReleasePen(cm, (ULONG)pen);
-    return 1;
+    n = cm->Count > 256 ? 256 : cm->Count;
+    ObtainSemaphore(&pe->pe_Semaphore);
+    for (i = 0, p = pe->pe_FirstFree; i < pe->pe_NFree && p < n && !on; i++, p = pe->pe_AllocList[p])
+        on = p == pen;
+    ReleaseSemaphore(&pe->pe_Semaphore);
+    return on;
 }
 
 /* FLAT-PEN5-MAGENTA: 1 when no client holds `pen` exclusive: free, or shared (ObtainBestPen users; ObtainPen fails on any pen in use,
