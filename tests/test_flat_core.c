@@ -980,7 +980,7 @@ static void test_glyph_states(void)
     cn = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_NORMAL, n, FLAT_GLYPH_MAX_PRIMS);
     cs = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_SELECTED, s, FLAT_GLYPH_MAX_PRIMS);
     cd = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_INACTIVE, d, FLAT_GLYPH_MAX_PRIMS);
-    CHECK_INT(cn, 13);                                              /* the box, the four sides of the outline and one run per diagonal per row of the 4 inner rows */
+    CHECK_INT(cn, 9);                                               /* the box and two runs per row of the 4 cross rows */
     CHECK_INT(cs, cn);
     CHECK_INT(cd, cn);
     CHECK_INT(n[0].role, FLAT_ROLE_FRAME);                          /* first rect = the box in the frame's colour */
@@ -1000,16 +1000,17 @@ static void test_glyph_states(void)
     cv_clear();
     fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 1, 0, 0, 14, 12);
     CHECK_INT(cv[0][0], '#');
-    CHECK_INT(cv[3][4], '.');
+    CHECK_INT(cv[4][4], '.');
     cv_clear();
     fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 5, 0, 0, 14, 12);
     CHECK_INT(cv[0][0], '.');
-    CHECK_INT(cv[3][4], '+');
+    CHECK_INT(cv[4][4], '+');
     /* S93-GADGET-GLYPH: the close gadget is a cross inside the outline; the ground shows beside the diagonals */
     cv_clear();
     fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 14, 12);
-    CHECK_INT(cv[3][6], '#');
+    CHECK_INT(cv[4][4], '#');
     CHECK_INT(cv[5][6], '#');
+    CHECK_INT(cv[4][6], '.');
     CHECK_INT(cv[5][3], '.');
     CHECK_INT(cv[0][0], '.');
 }
@@ -1051,7 +1052,7 @@ static void test_glyph_solid_and_state_equal(void)
 }
 
 /* S93-GADGET-GLYPH (owner, OS 3.1 rig 93: "plain squares in different positions"): close, depth, zoom and iconify each draw
- * a different shape inside one shared frame (S93: same outer frame). Close = the empty frame; depth = the frame holding a smaller
+ * a different shape; depth, zoom and iconify share one outer frame. Close = a bare cross, no frame; depth = the frame holding a smaller
  * outline low left; zoom = an outline holding a solid block in its top-left corner; iconify = a solid block. */
 static void glyph_raster(unsigned long which, int w, int h, char c[24][24])
 {
@@ -1070,36 +1071,30 @@ static void test_glyph_gadgets_distinct(void)
     static char c[4][24][24];
     int z, i, k, x, y;
     for (z = 0; z < 2; z++) {
-        int w = dim[z][0], h = dim[z][1], fx0 = w, fy0 = h, fx1 = -1, fy1 = -1, holes = 0, corners = 0;
+        int w = dim[z][0], h = dim[z][1], fx0 = w, fy0 = h, fx1 = -1, fy1 = -1, cx0 = w, cy0 = h, cx1 = -1, cy1 = -1, holes = 0, corners = 0;
         memset(c, 0, sizeof c);
         for (i = 0; i < 4; i++)
             glyph_raster(win[i], w, h, c[i]);
         for (i = 0; i < 4; i++)                                     /* pairwise different pixels */
             for (k = i + 1; k < 4; k++)
                 CHECK(memcmp(c[i], c[k], sizeof c[i]) != 0);
-        for (y = 0; y < h; y++)                                     /* the close square's ink bounds */
-            for (x = 0; x < w; x++)
+        for (y = 0; y < h; y++)                                     /* the cross's ink bounds, and the shared frame's (depth ink) */
+            for (x = 0; x < w; x++) {
                 if (c[0][y][x] == '#') {
+                    cx0 = x < cx0 ? x : cx0; cy0 = y < cy0 ? y : cy0; cx1 = x > cx1 ? x : cx1; cy1 = y > cy1 ? y : cy1;
+                }
+                if (c[1][y][x] == '#') {
                     fx0 = x < fx0 ? x : fx0; fy0 = y < fy0 ? y : fy0; fx1 = x > fx1 ? x : fx1; fy1 = y > fy1 ? y : fy1;
                 }
-        CHECK(fx1 - fx0 >= 2 && fy1 - fy0 >= 2);
-        CHECK(c[0][fy0][fx0] == '#' && c[0][fy1][fx1] == '#');      /* close: outlined, a cross inside, ground beside it */
-        CHECK_INT(c[0][(fy0 + fy1) / 2][(fx0 + fx1) / 2], '#');
-        CHECK_INT(c[0][fy0 + 1][fx0 + 1], '#');                     /* both diagonals reach the free area's corners */
-        CHECK_INT(c[0][fy0 + 1][fx1 - 1], '#');
-        CHECK_INT(c[0][fy1 - 1][fx0 + 1], '#');
-        CHECK_INT(c[0][fy1 - 1][fx1 - 1], '#');
-        CHECK_INT(c[0][fy0 + 1][(fx0 + fx1) / 2], '.');             /* ground between the diagonals above the centre */
-        for (y = fy0; y <= fy1; y++)                                /* symmetric left to right and top to bottom */
-            for (x = fx0; x <= fx1; x++) {
-                CHECK(c[0][y][x] == c[0][y][fx0 + fx1 - x]);
-                CHECK(c[0][y][x] == c[0][fy0 + fy1 - y][x]);
             }
-        for (i = 1; i < 4; i++)                                     /* the frame ring is the same pixels in every gadget */
-            for (y = fy0; y <= fy1; y++)
-                for (x = fx0; x <= fx1; x++)
-                    if (y == fy0 || y == fy1 || x == fx0 || x == fx1)
-                        CHECK(c[0][y][x] == c[i][y][x]);
+        CHECK(cx1 - cx0 >= 2 && cy1 - cy0 >= 2);
+        CHECK_INT(c[0][(cy0 + cy1) / 2][(cx0 + cx1) / 2], '#');    /* close: a bare cross, centre inked */
+        CHECK(cx0 > fx0 && cx1 < fx1 && cy0 > fy0 && cy1 < fy1);   /* no ink on the gadget box's outer ring: the cross sits in the inner area */
+        for (y = cy0; y <= cy1; y++)                                /* symmetric left to right and top to bottom */
+            for (x = cx0; x <= cx1; x++) {
+                CHECK(c[0][y][x] == c[0][y][cx0 + cx1 - x]);
+                CHECK(c[0][y][x] == c[0][cy0 + cy1 - y][x]);
+            }
         for (y = 1; y < h - 1; y++)                                 /* depth: two outlines = two separate inner holes and */
             for (x = 1; x < w - 1; x++)                             /* two top-left outline corners, the back one up-right */
                 if (c[1][y][x] == '#' && c[1][y][x + 1] == '#' && c[1][y + 1][x] == '#' && c[1][y - 1][x] != '#' &&
@@ -1115,11 +1110,11 @@ static void test_glyph_gadgets_distinct(void)
                     c[2][y + 2][x + 2] == '#')
                     k = 1;
         CHECK(k);
-        for (i = 1; i < 4; i++)                                     /* the four gadgets share one outer frame: same ring pixels */
+        for (i = 2; i < 4; i++)                                     /* depth, zoom and iconify share one outer frame: same ring pixels */
             for (y = fy0; y <= fy1; y++)
                 for (x = fx0; x <= fx1; x++)
                     if (y == fy0 || y == fy1 || x == fx0 || x == fx1)
-                        CHECK_INT(c[i][y][x], c[0][y][x]);
+                        CHECK_INT(c[i][y][x], c[1][y][x]);
         CHECK_INT(c[3][fy1 - 2][fx0 + 2], '#');                     /* iconify: a solid block in the lower left, inside the frame */
         CHECK_INT(c[3][fy1 - 2][fx0 + 1], '.');                     /* one ground column between block and frame */
     }

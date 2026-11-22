@@ -67,13 +67,18 @@ static int gsq(const plan *g)
 /* S93-GADGET-GLYPH (owner): close, depth, zoom and iconify all draw the SAME outer frame, so the four gadgets look the same size.
  * It is gsq rows high and 1.5 x that wide in visual units (side columns per row), centred in the inner box; the single source of
  * that rectangle is gframe, which draws it and returns it: x0, y0 top left, fw columns, r rows. */
-static void gframe(plan *g, int *x0, int *y0, int *fw, int *r)
+static void gbox(const plan *g, int *x0, int *y0, int *fw, int *r)
 {
     int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1;
     *r = gsq(g);
     *fw = imin(iw, g->side * *r * 3 / 2);
     *x0 = g->ix0 + (iw - *fw) / 2;
     *y0 = g->iy0 + (ih - *r) / 2;
+}
+
+static void gframe(plan *g, int *x0, int *y0, int *fw, int *r)
+{
+    gbox(g, x0, y0, fw, r);
     frame(g, *x0, *y0, *x0 + *fw - 1, *y0 + *r - 1);
 }
 
@@ -93,22 +98,23 @@ static int cross_x(int k, int n, int span)
     return (2 * k * span + (n - 1)) / (2 * (n - 1));            /* the diagonal's column in row k, rounded half up */
 }
 
-/* close (owner: a cross like every modern app): the frame with both diagonals corner to corner of the free area, one row per step,
- * side columns wide like every other stroke; the second diagonal mirrors the first, so the cross is symmetric */
+/* close (owner: a cross like every modern app, no border): both diagonals corner to corner of the inner area of the shared gadget box,
+ * one row per step, 2 x side columns wide (owner: too thin at 1 x side); the second diagonal mirrors the first, so the cross is symmetric */
 static void g_close(plan *g)
 {
-    int x0, y0, fw, r, ax0, ax1, ay0, ay1, gap, k, n, span, lo, hi;
-    gframe(g, &x0, &y0, &fw, &r);
-    garea(g, x0, y0, fw, r, &ax0, &ax1, &ay0, &ay1, &gap);
+    int x0, y0, fw, r, ax0, ax1, ay0, ay1, gap, k, m, n, span, lo, hi, w = 2 * g->side;
+    gbox(g, &x0, &y0, &fw, &r);
+    garea(g, x0, y0, fw, r, &ax0, &ax1, &ay0, &ay1, &gap);       /* the inner area, as if the frame was there: not edge to edge */
     n = ay1 - ay0 + 1;
-    span = ax1 - ax0 + 1 - g->side;
+    span = ax1 - ax0 + 1 - w;
     if (n < 2 || span < 0)
         return;
     for (k = 0; k < n; k++) {                                   /* each row spans half way to its neighbours' columns: no gaps */
-        lo = k ? (cross_x(k - 1, n, span) + cross_x(k, n, span) + 1) / 2 : 0;
-        hi = k < n - 1 ? (cross_x(k, n, span) + cross_x(k + 1, n, span)) / 2 : span;
-        put(g, ax0 + lo, ay0 + k, ax0 + hi + g->side - 1, ay0 + k, g->fg);
-        put(g, ax0 + span - hi, ay0 + k, ax0 + span - lo + g->side - 1, ay0 + k, g->fg);
+        m = imin(k, n - 1 - k);                                 /* the lower half repeats the upper one: symmetric top to bottom */
+        lo = m ? (cross_x(m - 1, n, span) + cross_x(m, n, span) + 1) / 2 : 0;
+        hi = (cross_x(m, n, span) + cross_x(m + 1, n, span)) / 2;
+        put(g, ax0 + lo, ay0 + k, ax0 + hi + w - 1, ay0 + k, g->fg);
+        put(g, ax0 + span - hi, ay0 + k, ax0 + span - lo + w - 1, ay0 + k, g->fg);
     }
 }
 
