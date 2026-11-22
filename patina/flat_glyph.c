@@ -88,11 +88,28 @@ static void garea(const plan *g, int x0, int y0, int fw, int r, int *ax0, int *a
     *gap = *ay1 - *ay0 + 1 >= 4;
 }
 
-/* close: the empty frame */
+static int cross_x(int k, int n, int span)
+{
+    return (2 * k * span + (n - 1)) / (2 * (n - 1));            /* the diagonal's column in row k, rounded half up */
+}
+
+/* close (owner: a cross like every modern app): the frame with both diagonals corner to corner of the free area, one row per step,
+ * side columns wide like every other stroke; the second diagonal mirrors the first, so the cross is symmetric */
 static void g_close(plan *g)
 {
-    int x0, y0, fw, r;
+    int x0, y0, fw, r, ax0, ax1, ay0, ay1, gap, k, n, span, lo, hi;
     gframe(g, &x0, &y0, &fw, &r);
+    garea(g, x0, y0, fw, r, &ax0, &ax1, &ay0, &ay1, &gap);
+    n = ay1 - ay0 + 1;
+    span = ax1 - ax0 + 1 - g->side;
+    if (n < 2 || span < 0)
+        return;
+    for (k = 0; k < n; k++) {                                   /* each row spans half way to its neighbours' columns: no gaps */
+        lo = k ? (cross_x(k - 1, n, span) + cross_x(k, n, span) + 1) / 2 : 0;
+        hi = k < n - 1 ? (cross_x(k, n, span) + cross_x(k + 1, n, span)) / 2 : span;
+        put(g, ax0 + lo, ay0 + k, ax0 + hi + g->side - 1, ay0 + k, g->fg);
+        put(g, ax0 + span - hi, ay0 + k, ax0 + span - lo + g->side - 1, ay0 + k, g->fg);
+    }
 }
 
 /* depth: the frame holding a smaller outlined square (the front window) in the lower left, 2 x side columns and 1 row in */

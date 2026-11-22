@@ -37,7 +37,7 @@ typedef struct flat_prim {
     uint8_t role;               /* FLAT_ROLE_* */
 } flat_prim;
 
-#define FLAT_GLYPH_MAX_PRIMS 40
+#define FLAT_GLYPH_MAX_PRIMS 80
 #define FLAT_GLYPH_MIN_SIZE 7   /* a box smaller than this in either direction is left to the old hook */
 
 /* 1 when C2 draws this SYSIA_Which. */
