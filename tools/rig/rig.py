@@ -1205,7 +1205,25 @@ def dopus_install():
         print("[WARN] Directory Opus 5.104 is not installed in this rig's VTC: drawer (no current %s): the Workbench "
               "stays as the system has it; run `UPTERM_RIG=%d python3 tools/rig/rig.py dopus` once" % (DOPUS_STAMP, paths.RIG_N))
         return None
+    dopus_addon_stage(vtc)
     return vtc
+
+DOPUS_TOOLBAR = "build/dopus-toolbar"   # `make dopus-toolbar`: what dist/addons/dopus/install.dos copies from Files/toolbar
+
+def dopus_addon_stage(vtc):
+    """The Patina DOpus add-on, host side (install.dos' last step): toolbar images into DOpus5:Images/Patina and the
+    banks into DOpus5:Buttons, with the stale single bank and old size sets removed as install.dos does. DOpus5: is
+    VTCX:DOpus5 = vtc/DOpus5, so every clone and --os tree sees it. No built toolbar: a [WARN], the add-on is left out."""
+    src = ROOT / DOPUS_TOOLBAR
+    if not (src / "Buttons/Patina-toolbar-filled-24").exists():
+        print("[WARN] %s not built (make dopus-toolbar): the rig's Directory Opus has no Patina toolbar" % DOPUS_TOOLBAR)
+        return
+    dop = vtc / "DOpus5"
+    for old in (dop / "Buttons").glob("Patina-toolbar*"):
+        old.unlink()
+    shutil.rmtree(dop / "Images/Patina", ignore_errors=True)
+    shutil.copytree(src / "Images", dop / "Images/Patina")
+    shutil.copytree(src / "Buttons", dop / "Buttons", dirs_exist_ok=True)
 
 def os_tree_dopus(tree):
     """Directory Opus 5.104 on a host-directory system (--os <name>, --os32): the Installer's ';BEGIN DOpus5' block
