@@ -80,10 +80,10 @@ static void g_depth(plan *g)
 /* zoom: an outlined box with a smaller solid box in its top-left corner */
 static void g_zoom(plan *g)
 {
-    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, q = imax(3, imin(iw, ih) / 2);
-    int bw = imin(iw, g->side * ih), x0 = g->ix0 + (iw - bw) / 2;   /* S93-ZOOM-WIDE: the zoom gadget box is wide; the shape stays square on screen, centred */
-    frame(g, x0, g->iy0, x0 + bw - 1, g->iy1);
-    put(g, x0, g->iy0, x0 + g->side * q - 1, g->iy0 + q - 1, g->fg);
+    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, rows = imax(3, imin(iw, ih) * 2 / 3), q = imax(3, rows / 2);
+    int bw = imin(iw, g->side * rows), x0 = g->ix0 + (iw - bw) / 2, y0 = g->iy0 + (ih - rows) / 2;   /* S93-ZOOM-WIDE: same size as the depth square, square on screen, centred */
+    frame(g, x0, y0, x0 + bw - 1, y0 + rows - 1);
+    put(g, x0, y0, x0 + g->side * q - 1, y0 + q - 1, g->fg);
 }
 
 static void g_size(plan *g)
