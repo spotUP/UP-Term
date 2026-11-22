@@ -420,8 +420,13 @@ int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char
      * `wait` makes Hide post IPC_HIDE before Reveal posts IPC_SHOW on the same main port. (`dopus hide` is no command: rc 0, no-op.) */
     if (tb && tb->force) {
         sent += 2;
-        if (send(DOPUS_PORT, "command wait Hide", 0, 0, ud) != -1)
+        if (send(DOPUS_PORT, "command wait Hide", 0, 0, ud) != -1) {
+            /* S92d-PENS-HIDE-FIRST (rig 98, planar + DOpus): Hide frees Opus's pens and Reveal takes them again with ObtainBestPen and
+             * recolours them; the pen holder, which syncs on its tick, lost 4-15 to it every boot. The hook takes them while Opus is hidden. */
+            if (tb->hidden)
+                tb->hidden(th);
             send(DOPUS_PORT, "command wait Reveal", 0, 0, ud);
+        }
     }
     return sent;
 }

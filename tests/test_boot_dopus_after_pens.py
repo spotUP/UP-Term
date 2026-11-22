@@ -33,13 +33,25 @@ class BootDopusAfterPens(unittest.TestCase):
     def test_icon_pens_direct_rules(self):
         b = body(IPD, "int ipd_icon_pens_direct(void)")
         self.assertIn("ipd_pen_not_exclusive(", b, "a pen another client holds exclusive must be skipped")
-        self.assertIn("depth == 4 || depth == 5", b, "only depth 4/5 maps slots 8..15 onto pens 8..15 (ip_fold)")
+        self.assertIn("ip_holder_owns_roles(depth", b, "only depth 4/5 maps slots 8..15 onto pens 8..15 (ip_fold)")
         self.assertLess(b.index("ipd_icon_rgb("), b.index("LockPubScreenList()"), "theme read (DOS) under the list lock")
 
     def test_theme_send_honours_force(self):
         head = "int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char *line, char *result, int cap, void *ud),\n" \
                "                     void *ud, const dopus_tb_ops *tb)"
         self.assertIn("tb->force", body(MT, head))
+
+    def test_holder_syncs_while_opus_hidden(self):
+        """S92d-PENS-HIDE-FIRST: Reveal hands Opus the pens Hide freed; the holder must take 4-15 between the two."""
+        head = "int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char *line, char *result, int cap, void *ud),\n" \
+               "                     void *ud, const dopus_tb_ops *tb)"
+        b = body(MT, head)
+        hide, hook, reveal = b.index('"command wait Hide"'), b.index("tb->hidden(th)"), b.index('"command wait Reveal"')
+        self.assertLess(hide, hook)
+        self.assertLess(hook, reveal)
+        h = body(DESK, "static void dk_dopus_hidden(const gtheme *th)")
+        self.assertLess(h.index("ipd_resync()"), h.index("dk_live_pens("), "the holder owns the pens before the live writes")
+        self.assertIn("tb.hidden = dk_dopus_hidden", DESK)
 
 
 if __name__ == "__main__":
