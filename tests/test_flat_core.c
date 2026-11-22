@@ -980,7 +980,7 @@ static void test_glyph_states(void)
     cn = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_NORMAL, n, FLAT_GLYPH_MAX_PRIMS);
     cs = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_SELECTED, s, FLAT_GLYPH_MAX_PRIMS);
     cd = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_INACTIVE, d, FLAT_GLYPH_MAX_PRIMS);
-    CHECK_INT(cn, 5);                                               /* the box and the four sides of the outline (S93-GADGET-GLYPH) */
+    CHECK_INT(cn, 13);                                              /* the box, the four sides of the outline and one run per diagonal per row of the 4 inner rows */
     CHECK_INT(cs, cn);
     CHECK_INT(cd, cn);
     CHECK_INT(n[0].role, FLAT_ROLE_FRAME);                          /* first rect = the box in the frame's colour */
@@ -1005,11 +1005,12 @@ static void test_glyph_states(void)
     fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 5, 0, 0, 14, 12);
     CHECK_INT(cv[0][0], '.');
     CHECK_INT(cv[3][4], '+');
-    /* S93-GADGET-GLYPH: the close square is an outline, its inside shows the ground */
+    /* S93-GADGET-GLYPH: the close gadget is a cross inside the outline; the ground shows beside the diagonals */
     cv_clear();
     fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 14, 12);
     CHECK_INT(cv[3][6], '#');
-    CHECK_INT(cv[5][6], '.');
+    CHECK_INT(cv[5][6], '#');
+    CHECK_INT(cv[5][3], '.');
     CHECK_INT(cv[0][0], '.');
 }
 
@@ -1082,8 +1083,23 @@ static void test_glyph_gadgets_distinct(void)
                     fx0 = x < fx0 ? x : fx0; fy0 = y < fy0 ? y : fy0; fx1 = x > fx1 ? x : fx1; fy1 = y > fy1 ? y : fy1;
                 }
         CHECK(fx1 - fx0 >= 2 && fy1 - fy0 >= 2);
-        CHECK(c[0][fy0][fx0] == '#' && c[0][fy1][fx1] == '#');      /* close: outlined, ground inside */
-        CHECK_INT(c[0][(fy0 + fy1) / 2][(fx0 + fx1) / 2], '.');
+        CHECK(c[0][fy0][fx0] == '#' && c[0][fy1][fx1] == '#');      /* close: outlined, a cross inside, ground beside it */
+        CHECK_INT(c[0][(fy0 + fy1) / 2][(fx0 + fx1) / 2], '#');
+        CHECK_INT(c[0][fy0 + 1][fx0 + 1], '#');                     /* both diagonals reach the free area's corners */
+        CHECK_INT(c[0][fy0 + 1][fx1 - 1], '#');
+        CHECK_INT(c[0][fy1 - 1][fx0 + 1], '#');
+        CHECK_INT(c[0][fy1 - 1][fx1 - 1], '#');
+        CHECK_INT(c[0][fy0 + 1][(fx0 + fx1) / 2], '.');             /* ground between the diagonals above the centre */
+        for (y = fy0; y <= fy1; y++)                                /* symmetric left to right and top to bottom */
+            for (x = fx0; x <= fx1; x++) {
+                CHECK(c[0][y][x] == c[0][y][fx0 + fx1 - x]);
+                CHECK(c[0][y][x] == c[0][fy0 + fy1 - y][x]);
+            }
+        for (i = 1; i < 4; i++)                                     /* the frame ring is the same pixels in every gadget */
+            for (y = fy0; y <= fy1; y++)
+                for (x = fx0; x <= fx1; x++)
+                    if (y == fy0 || y == fy1 || x == fx0 || x == fx1)
+                        CHECK(c[0][y][x] == c[i][y][x]);
         for (y = 1; y < h - 1; y++)                                 /* depth: two outlines = two separate inner holes and */
             for (x = 1; x < w - 1; x++)                             /* two top-left outline corners, the back one up-right */
                 if (c[1][y][x] == '#' && c[1][y][x + 1] == '#' && c[1][y + 1][x] == '#' && c[1][y - 1][x] != '#' &&
