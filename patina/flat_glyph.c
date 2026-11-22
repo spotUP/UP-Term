@@ -57,31 +57,38 @@ static void frame(plan *g, int x0, int y0, int x1, int y1)
     put(g, x1 - g->side + 1, y0 + 1, x1, y1 - 1, g->fg);
 }
 
+/* S93-GADGET-FILL: the title-bar glyphs share one size: R rows tall (the inner height, at most the inner width in rows), g->side * R
+ * columns wide, so on hires and superhires they stay square on screen and fill their box instead of floating in it */
+static int gsq(const plan *g)
+{
+    return imax(3, imin(g->iy1 - g->iy0 + 1, (g->ix1 - g->ix0 + 1) / g->side));
+}
+
 /* S93-GADGET-GLYPH (owner): close, depth and zoom are outlines, so the four title-bar gadgets no longer read as the same
  * solid square in different places. Close = a small outlined square in the middle. */
 static void g_close(plan *g)
 {
-    int s = imax(3, imin(g->ix1 - g->ix0 + 1, g->iy1 - g->iy0 + 1) / 2 + 1);
-    int x0 = g->w / 2 - s / 2, y0 = g->h / 2 - s / 2;
-    frame(g, x0, y0, x0 + s - 1, y0 + s - 1);
+    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, r = gsq(g), bw = imin(iw, g->side * r);
+    int x0 = g->ix0 + (iw - bw) / 2, y0 = g->iy0 + (ih - r) / 2;
+    frame(g, x0, y0, x0 + bw - 1, y0 + r - 1);
 }
 
 /* depth: two overlapping outlined squares, the back one up-right, the front one down-left; the front one is filled with the
  * ground first so it hides the back one's lines */
 static void g_depth(plan *g)
 {
-    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, q = imax(3, imin(iw, ih) * 2 / 3), d = imax(1, q / 2);
-    int x0 = g->ix0 + (iw - q - d) / 2, y0 = g->iy0 + (ih - q - d) / 2;    /* the pair (q + d square) centred in the inner box */
-    frame(g, x0 + d, y0, x0 + d + q - 1, y0 + q - 1);
-    put(g, x0, y0 + d, x0 + q - 1, y0 + d + q - 1, g->bg);
-    frame(g, x0, y0 + d, x0 + q - 1, y0 + d + q - 1);
+    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, r = gsq(g), d = imax(2, r / 3), q = r - d;
+    int dw = g->side * d, qw = g->side * q, x0 = g->ix0 + (iw - dw - qw) / 2, y0 = g->iy0 + (ih - r) / 2;   /* the pair centred in the inner box */
+    frame(g, x0 + dw, y0, x0 + dw + qw - 1, y0 + q - 1);
+    put(g, x0, y0 + d, x0 + qw - 1, y0 + d + q - 1, g->bg);
+    frame(g, x0, y0 + d, x0 + qw - 1, y0 + d + q - 1);
 }
 
 /* zoom: an outlined box with a smaller solid box in its top-left corner */
 static void g_zoom(plan *g)
 {
-    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, rows = imax(3, imin(iw, ih) * 2 / 3), q = imax(3, rows / 2);
-    int bw = imin(iw, g->side * rows), x0 = g->ix0 + (iw - bw) / 2, y0 = g->iy0 + (ih - rows) / 2;   /* S93-ZOOM-WIDE: same size as the depth square, square on screen, centred */
+    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, rows = gsq(g), q = imax(3, rows / 2);
+    int bw = imin(iw, g->side * rows), x0 = g->ix0 + (iw - bw) / 2, y0 = g->iy0 + (ih - rows) / 2;
     frame(g, x0, y0, x0 + bw - 1, y0 + rows - 1);
     put(g, x0, y0, x0 + g->side * q - 1, y0 + q - 1, g->fg);
 }
@@ -101,8 +108,8 @@ static void g_size(plan *g)
 /* owner 2026-11-19: a small box in the lower left corner; the old 2-row bar read as a stray line */
 static void g_iconify(plan *g)
 {
-    int q = imax(3, imin(g->ix1 - g->ix0 + 1, g->iy1 - g->iy0 + 1) * 2 / 3);
-    box(g, g->ix0, g->iy1 - q + 1, g->ix0 + q - 1, g->iy1, g->fg);
+    int q = imax(3, gsq(g) * 2 / 3);
+    box(g, g->ix0, g->iy1 - q + 1, g->ix0 + g->side * q - 1, g->iy1, g->fg);
 }
 
 /* DOPUS-LOCK (O2/O3): a solid padlock, no inverted box. Visual units: a column is 1, a row is g->side. Body = the lower half of the
