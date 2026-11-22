@@ -65,6 +65,7 @@ typedef void (*flat_fill_fn)(void *ctx, int x0, int y0, int x1, int y1, int pen)
  * the scroller arrows widen with it so they keep their shape on hires. */
 unsigned long flat_lock_which(unsigned long which, unsigned long ids);
 int flat_lock_state(unsigned long which, unsigned long ids);
+int flat_glyph_dot(int ox, int oy, int w, int h, int pen, flat_fill_fn fill, void *ctx);   /* S93-MX-GROUND: one centred filled square, a quarter inset */
 int flat_glyph_tick(int ox, int oy, int w, int h, int pen, flat_fill_fn fill, void *ctx);
 /* DT-11: the DOpus lister toolbar "<<" arrow, two solid left triangles side by side, centred in the w x h box at (ox, oy)
  * with a 1 px margin, in pen. side = columns per visual row (flat_side_px), so the triangles keep their shape on hires.
