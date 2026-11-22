@@ -3325,6 +3325,58 @@ static void test_clone_clip_depth_marker(void)
     CHECK_INT(glyph, 74);                                            /* = the real-pen fixture g_os32_depth */
 }
 
+/* S93-INACTIVE-SHAPE: rig 93 (OS 3.1, intuition 40.85) STATUS grid of the inactive depth gadget (IDS_INACTIVENORMAL, 24x14) drawn
+ * with the marker pens: one uniform box (marker 10) and two left-corner pixels. No glyph can be mapped from it; the clone must take
+ * the IDS_NORMAL render's shape and paint it in the inactive pens, never fail into the solid plan glyph. */
+static const char *const g_v40_inactive_depth[14] = {
+    "4aaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaa", "5aaaaaaaaaaaaaaaaaaaaaaa",
+};
+static int g_v40_ids[4], g_v40_n;
+static int v40_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int h)
+{
+    int x, y;
+    if (g_v40_n < 4)
+        g_v40_ids[g_v40_n] = (int)ids;
+    g_v40_n++;
+    if (ids == 0)
+        return fake_render(ctx, ids, grid, w, h);
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++) {
+            char c = g_v40_inactive_depth[y][x];
+            grid[y * w + x] = (uint8_t)(c >= 'a' ? c - 'a' + 10 : c - '0');
+        }
+    return 1;
+}
+
+static void test_clone_v40_inactive_takes_normal_shape(void)
+{
+    flat_state st;
+    uint8_t grid[24 * 14], map[24 * 14];
+    int i;
+    glyph_state(&st);
+    st.enabled = 1;
+    g_v40_n = 0;
+    v40_render(0, 5, grid, 24, 14);
+    CHECK_INT(flat_clone_map(grid, 24, 14, map, 0), 0);             /* the V40 inactive render holds no glyph */
+    for (i = 0; i < 3; i++) {
+        unsigned long which = i == 0 ? FLAT_W_DEPTH : i == 1 ? FLAT_W_ZOOM : FLAT_W_CLOSE;
+        cv_clear();
+        g_v40_n = 0;
+        CHECK_INT(flat_clone_draw(&st, which, FLAT_IM_DRAW, 5, 0, 0, 24, 14, 'B', -1, 'T', 99, -1, v40_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+        CHECK_INT(g_v40_n, 2);
+        CHECK_INT(g_v40_ids[0], 5);
+        CHECK_INT(g_v40_ids[1], 0);                                     /* the retry asks for IDS_NORMAL */
+        CHECK(cv[3][3] == 'T' && cv[5][5] == 'T');                      /* the normal shape, in the inactive glyph pen */
+        CHECK(cv[1][1] == 'B' && cv[10][20] == 'B' && cv[3][6] == 'B'); /* the rest is the frame, not a solid block */
+    }
+    /* an active (normal) draw that maps nothing still fails once, no retry */
+    g_v40_n = 0;
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_DEPTH, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'B', -1, 'T', 99, -1, blank_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_FAIL);
+}
+
 static void test_clone_band_rows_strip(void)
 {
     flat_state st;
@@ -4309,6 +4361,7 @@ void suite_flat_core(void)
     test_clone_arrow_sizes();
     test_clone_no_dividers();
     test_clone_clip_depth_marker();
+    test_clone_v40_inactive_takes_normal_shape();
     test_clone_band_rows_strip();
     test_boot_before_workbench_retries_install();
     test_dopus_late_start_rescans();
