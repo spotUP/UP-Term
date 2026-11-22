@@ -486,6 +486,16 @@ int flat_glyph_tick(int ox, int oy, int w, int h, int pen, flat_fill_fn fill, vo
     return g.n;
 }
 
+int flat_glyph_dot(int ox, int oy, int w, int h, int pen, flat_fill_fn fill, void *ctx)
+{
+    int i;
+    if (!fill || w < FLAT_GLYPH_MIN_SIZE || h < FLAT_GLYPH_MIN_SIZE)
+        return 0;
+    i = imax(1, imin(w, h) / 4);
+    fill(ctx, ox + i, oy + i, ox + w - 1 - i, oy + h - 1 - i, pen);
+    return 1;
+}
+
 int flat_glyph_dleft(int ox, int oy, int w, int h, int side, int pen, flat_fill_fn fill, void *ctx)
 {
     int hw = (w - 2) / 2, rows, tw, x0, y0, i, k;

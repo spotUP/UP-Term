@@ -3819,6 +3819,12 @@ static void test_no_outlines(void)
         for (i = 0; i < tl.n; i++)
             if (tl.r[i][4] != 2 || tl.r[i][0] < 100 || tl.r[i][2] > 125 || tl.r[i][1] < 50 || tl.r[i][3] > 60) ok = 0;
         CHECK_INT(ok, 1);
+        CHECK_INT(flat_mx_image(0x0F), 1);      /* S93-MX-GROUND: MXIMAGE */
+        CHECK_INT(flat_mx_image(0x0E), 0);
+        memset(&tl, 0, sizeof tl);
+        CHECK_INT(flat_glyph_dot(100, 50, 11, 11, 2, rect_log_fill, &tl), 1);
+        CHECK_INT(tl.n == 1 && tl.r[0][0] == 102 && tl.r[0][1] == 52 && tl.r[0][2] == 108 && tl.r[0][3] == 58 && tl.r[0][4] == 2, 1);
+        CHECK_INT(flat_glyph_dot(0, 0, 3, 3, 2, rect_log_fill, &tl), 0);    /* below FLAT_GLYPH_MIN_SIZE */
     }
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_TRACK, 4, 0), 5);                         /* ground pen = the input ground pen */
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_DISPLAY, 4, 0), 5);

@@ -557,6 +557,9 @@ int flat_display_gadget(unsigned flags, unsigned activation);
 /* DOPUS-PROPKNOB: flat's own id (no SYSIA_Which of that value) for a frameiclass FRAME_PROPKNOB image an app passes as a propgclass
  * PGA_KnobImage (DOpus 5 lister, Intuition 47.44+). Recorded in the same table at its OM_NEW so the knob frame draw finds it. */
 #define FLAT_W_PROPKNOB 0x3D
+/* S93-MX-GROUND: GadTools MX_KIND renders a sysiclass MXIMAGE (SYSIA_Which 0x0F); same ground as the check box, a centred dot when selected. */
+#define FLAT_W_MXIMAGE 0x0F
+int flat_mx_image(unsigned long which);
 int flat_check_image(unsigned long which);
 int flat_check_ticked(unsigned long ids);
 /* S74-CHECKBOX-SQUARE (owner 2026-11-11): the stock image is 26x11; the flat box is visually square: h rows by h * side columns

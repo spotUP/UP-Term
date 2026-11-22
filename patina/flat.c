@@ -731,6 +731,7 @@ static ULONG c2_which_31(Object *obj, struct impDraw *d)
     return wh < 0 ? NOWHICH : (ULONG)wh;
 }
 
+#define C8_MX 0x1000                /* tick_pen >= C8_MX: an MX image, pen = tick_pen - C8_MX */
 static int c8_draw_on(Object *obj, Msg msg, int tick_pen);
 static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
 {
@@ -754,6 +755,8 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     raw_which = which;
     which = flat_which_alias(which);
     c2_get_pens(r, d, im, which, &pens);
+    if (flat_mx_image(which))
+        return c8_draw_on(obj, msg, pens.text + C8_MX);   /* S93-MX-GROUND: pens.text >= 0 */
     if (flat_check_image(which))
         return c8_draw_on(obj, msg, pens.text);   /* S74-CHECKBOX-GROUND; pen fallback in check_draw keeps this frame small */
     if (flat_clone_route(&r->st, which, msg->MethodID) && c2_clone(hk, obj, msg, reg, which, raw_which, &pens))
@@ -1228,6 +1231,7 @@ static LONG c8_on_private(void *a);
  * (flat_glyph_tick). Runs on the private stack (c8_draw_on). 0 = no input pen on this screen: the stock draw. */
 static int check_draw(Object *obj, Msg msg, int tick_pen)
 {
+    int mx = tick_pen >= C8_MX;
     flatshared *r = g_r;
     struct impDraw *d = (struct impDraw *)msg;
     struct Image *im = (struct Image *)obj;
@@ -1238,12 +1242,14 @@ static int check_draw(Object *obj, Msg msg, int tick_pen)
     int bw;
     if (pen < 0)
         return 0;
+    if (mx)
+        tick_pen -= C8_MX;
     if (tick_pen < 0)
         tick_pen = d->imp_DrInfo ? d->imp_DrInfo->dri_Pens[TEXTPEN] : 1;
     bw = flat_check_width(im->Width, im->Height, side_px(r, w->WScreen));   /* S74-CHECKBOX-SQUARE */
     ground_box(r, rp, x0, y0, x0 + bw - 1, y0 + im->Height - 1, pen);
     if (flat_check_ticked(d->imp_State))
-        flat_glyph_tick(x0, y0, bw, im->Height, tick_pen, c2_fill, rp);
+        (mx ? flat_glyph_dot : flat_glyph_tick)(x0, y0, bw, im->Height, tick_pen, c2_fill, rp);
     return 1;
 }
 /* The way into c8_on_private: always an indirect call (flat_on_stack's `jsr (a2)`, and the re-entry call below). The flat budget
