@@ -422,7 +422,18 @@ int flat_clone_draw_in(const flat_state *s, flat_clone_in *in, flat_render_fn re
     /* No glyph pixel is a failed clone, not a plain box: OS 3.2's sysiclass returns 1 from IM_DRAW for the window gadgets
      * yet puts nothing in our offscreen rastport, and drawing that empty map painted the active close/depth/zoom boxes solid. */
     in->dbg_glyph = in->dbg_gpen = in->dbg_bpen = -1;
-    if (!render(rctx, in->ids, grid, in->w, in->h) || (in->dbg_glyph = flat_clone_map(grid, in->w, in->h, map, flat_glyph_knob_gadget(in->which))) <= 0)
+    if (!render(rctx, in->ids, grid, in->w, in->h))
+        return FLAT_CLONE_FAIL;
+    in->dbg_glyph = flat_clone_map(grid, in->w, in->h, map, flat_glyph_knob_gadget(in->which));
+    /* S93-INACTIVE-SHAPE: OS 3.1's sysiclass renders an inactive title gadget with the marker pens as one uniform box (the glyph
+     * merges into the fill), so the map is empty and the plan glyph drew solid blocks. The shape is the normal state's: take it
+     * from an IDS_NORMAL render; the pens stay the inactive ones (state above). */
+    if (in->dbg_glyph <= 0 && state == FLAT_G_INACTIVE && in->ids != 0) {
+        memset(grid, 0, (size_t)(in->w * in->h));
+        if (render(rctx, 0, grid, in->w, in->h))
+            in->dbg_glyph = flat_clone_map(grid, in->w, in->h, map, flat_glyph_knob_gadget(in->which));
+    }
+    if (in->dbg_glyph <= 0)
         return FLAT_CLONE_FAIL;
     clone_pens(s, in, state, &gpen, &bpen);
     in->dbg_gpen = gpen; in->dbg_bpen = bpen;

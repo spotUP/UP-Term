@@ -290,7 +290,7 @@ static int clone_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int 
     struct impDraw m = *e->d;
     Object *po;
     int x, y, ok = 0;
-    (void)ids;
+    m.imp_State = ids;          /* S93-INACTIVE-SHAPE: the core may ask for another state's shape (IDS_NORMAL) */
     if (!e->d->imp_DrInfo) {
         e->why = CLONE_WHY_NODRI;
         return 0;
@@ -444,6 +444,7 @@ static void c2_clone_note_empty(flatshared *r, struct impDraw *d, struct Image *
             mk |= 1UL << (cl_scratch[i] & 31);
         }
     r->cf_ids |= 1UL << (d->imp_State & 31);
+    CopyMem(cl_scratch, r->cf_lgrid, sizeof r->cf_lgrid);
     r->cf_lwhich = which; r->cf_lsize = ((ULONG)im->Width << 8) | (ULONG)im->Height; r->cf_lnz = (ULONG)nz; r->cf_lmarks = mk;
 }
 
@@ -3197,6 +3198,7 @@ static void print_status(void)
     char sctask[16] = "";
     unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0, nwc = 0, nws = 0, nwz = 0;
     ULONG zcc[2][7];
+    static UBYTE grid[32 * 32];   /* S93: copy of cf_lgrid (static: print_status runs on the CLI's stack) */
     int zi;
     int apx = 0, sring[16][9], sn = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0, 0, 0 };
@@ -3223,7 +3225,7 @@ static void print_status(void)
         scb256 = r->cb256; scb8a = r->cb8a; scb8b = r->cb8b; schdr = r->chdr; scguard = r->cguard; scdeep = r->cdeep;
         cdraws = r->cdraws; cfall = r->cfall;
         cfb = r->cf_busy; cfd = r->cf_nodri; cfm = r->cf_nobm; cfe = r->cf_empty; cfk = r->cf_mask;
-        cfi = r->cf_ids; clw = r->cf_lwhich; cls = r->cf_lsize; cln = r->cf_lnz; clm = r->cf_lmarks;
+        cfi = r->cf_ids; clw = r->cf_lwhich; cls = r->cf_lsize; cln = r->cf_lnz; clm = r->cf_lmarks; CopyMem(r->cf_lgrid, grid, sizeof grid);
         nwc = r->nw_count; nws = r->nw_state; nwz = r->nw_size; memcpy(zcc, r->zc, sizeof zcc);
         apx = r->aspect_px; alooks = r->aspect_looks;
         memcpy(sring, r->sring, sizeof sring); sn = (int)(r->sring_n > 16 ? 16 : r->sring_n);
@@ -3393,6 +3395,19 @@ static void print_status(void)
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
+        if (cln) {   /* S93: the empty clone's grid, one row a line, a marker value a base-32 digit */
+            static const char b32[] = "0123456789abcdefghijklmnopqrstuv";
+            int gx, gy, gw = (int)((cls >> 8) & 255), gh = (int)(cls & 255);
+            for (gy = 0; gy < gh && gy * gw < 32 * 32; gy++) {
+                n = 0;
+                put_word(line, &n, "clone grid ");
+                for (gx = 0; gx < gw && gy * gw + gx < 32 * 32; gx++)
+                    line[n++] = b32[grid[gy * gw + gx] & 31];
+                line[n] = 0;
+                PutStr((STRPTR)line);
+                PutStr((STRPTR)"\n");
+            }
+        }
         n = 0;
         put_word(line, &n, "nowhich n=");           put_num(line, &n, nwc);
         put_word(line, &n, " last state=");         put_num(line, &n, nws);
