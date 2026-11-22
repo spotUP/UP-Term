@@ -299,8 +299,10 @@ static void desk_start_gate(long now)
 {
     struct Screen *scr;
     int ready;
-    if (g_desk_started)
+    if (g_desk_started) {
+        desk_dos_palette_quiet(now);            /* S93-PREFS-FLAT: once, DK_QUIET_SECS after the start (TICK_MAX_HOOKS is full) */
         return;                                 /* the tick hook stays; done costs nothing */
+    }
     scr = ipd_lock_wb_screen();
     if (scr)
         UnlockPubScreen(0, scr);
@@ -729,8 +731,7 @@ int main(void)
     else
         tick_hook(wb_gate);
     desk_start_gate(0);                         /* S32-START-LOOK: now if the Workbench screen is up, else from the 1 s tick */
-    if (!g_desk_started)
-        tick_hook(desk_start_gate);
+    tick_hook(desk_start_gate);                 /* S93-PREFS-FLAT: also after the start, for desk_dos_palette_quiet */
     if (!g_wb_hold)
         welcome_maybe();
     while (!g_quit) {

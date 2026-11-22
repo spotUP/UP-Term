@@ -3,7 +3,7 @@
 #ifndef PATINA_TICK_CORE_H
 #define PATINA_TICK_CORE_H
 
-#define TICK_MAX_HOOKS 10
+#define TICK_MAX_HOOKS 12   /* 11 can register (wbr_patch_poll, wb_gate, desk_start_gate all on) */
 
 typedef void (*tick_fn)(long now);
 

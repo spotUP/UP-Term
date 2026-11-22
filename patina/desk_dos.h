@@ -17,6 +17,7 @@ void desk_dos_dopus_theme(const gtheme *th);
 /* FLAT-PENS-STALE-FILE part 2: at start, with flat-system-look on and palette.prefs not holding the current flat pens, write it as a theme pick
  * does (current theme); else nothing (no Workbench reset). Returns 1 when it wrote the theme colours. */
 int desk_dos_flat_pens_refresh(void);
+void desk_dos_palette_quiet(long now);   /* S93-PREFS-FLAT: the 1 s tick writes the 3.1 flat palette.prefs once, after the start */
 int desk_dos_start_apply(void);   /* S31-START-APPLY: ENV: desk files match the prefs at start */
 int desk_dos_wb_ready(long now);  /* S57-START-POINTER-HANG: a DESK_WBR_* verdict (desk_wb_ready_state); now = elapsed 1 s ticks */
 int desk_dos_splash_open(void);  /* DOPUS-SPLASH-HOLD: 1 while the DOpus boot splash is on the Workbench screen */

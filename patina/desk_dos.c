@@ -2052,6 +2052,65 @@ static void dk_start_persist(unsigned plan, int flat)
         am_sentinel("PATINA_DESK_START_PERSISTS", (long)desk_dos_start_persists);
 }
 
+/* S93-PREFS-FLAT: on 3.1 the flat pen map never reached palette.prefs (dk_flat_pens and desk_dos_flat_pens_refresh stay gated there), and
+ * the boot palette goes on the screen live only (AGA-BOOT-DEADLOCK). So the Workbench DrawInfo kept the stock bevels (Font prefs window),
+ * and any IPrefs reset another prefs editor caused reopened it with the stock file. The start apply keeps the file the screen shows (theme
+ * colours, flat pens, 3.1-safe form); DK_QUIET_SECS after the start the tick writes it to ENVARC: and ENV: without an IPrefs notify:
+ * written as palette.prefs.s93, the old name renamed away, the new one renamed in (ram-handler notifies on a written close and a delete,
+ * not on a rename; the rename part is not measured directly). Nothing resets now; the next reset or boot reads the flat map.
+ * Rig 94, S93: both files written 11 s after the start; next boot Font prefs frame flat=6, Input prefs flat=14 (was flat=0). */
+#define DK_QUIET_SECS 10
+#define DK_PAL_ENV "ENV:Sys/palette.prefs"
+static unsigned char dk_quiet_pal[DK_BUF];
+static long dk_quiet_len, dk_quiet_due;
+unsigned long desk_dos_quiet_pal_writes;
+
+/* tmp written whole, then renamed in place of name; name's old bytes are renamed away first and deleted under the other name */
+static int dk_rename_in(const char *name, const unsigned char *buf, long len)
+{
+    char tmp[48], old[48];
+    strcpy(tmp, name);
+    strcat(tmp, ".s93");
+    strcpy(old, name);
+    strcat(old, ".old");
+    if (!dk_write(tmp, buf, len))
+        return 0;
+    DeleteFile((STRPTR)old);
+    if (dk_exists(name) && !Rename((STRPTR)name, (STRPTR)old)) {
+        DeleteFile((STRPTR)tmp);
+        return 0;
+    }
+    if (!Rename((STRPTR)tmp, (STRPTR)name)) {
+        Rename((STRPTR)old, (STRPTR)name);
+        DeleteFile((STRPTR)tmp);
+        return 0;
+    }
+    DeleteFile((STRPTR)old);
+    return 1;
+}
+
+void desk_dos_palette_quiet(long now)
+{
+    static unsigned char cur[DK_BUF];
+    long n;
+    if (dk_quiet_len <= 0)
+        return;
+    if (!dk_quiet_due) {
+        dk_quiet_due = now + DK_QUIET_SECS;   /* outside the IPrefs/DOpus start race */
+        return;
+    }
+    if (now < dk_quiet_due)
+        return;
+    n = dk_read("ENVARC:Sys/palette.prefs", cur, sizeof cur);
+    if (n != dk_quiet_len || memcmp(cur, dk_quiet_pal, (size_t)n))
+        dk_put_boot("ENVARC:Sys/palette.prefs", dk_quiet_pal, dk_quiet_len);   /* nobody watches ENVARC: */
+    n = dk_read(DK_PAL_ENV, cur, sizeof cur);
+    if ((n != dk_quiet_len || memcmp(cur, dk_quiet_pal, (size_t)n)) && dk_rename_in(DK_PAL_ENV, dk_quiet_pal, dk_quiet_len))
+        desk_dos_quiet_pal_writes++;
+    am_sentinel("PATINA_DESK_QUIET_PAL", (long)desk_dos_quiet_pal_writes);
+    dk_quiet_len = 0;
+}
+
 #define DK_START_ARC (DESK_START_POINTER | DESK_START_FONT | DESK_START_PATTERN)   /* written to ENVARC: only at boot */
 #define DK_START_RESETS (~(DESK_START_PALETTE | DK_START_ARC))                       /* the parts whose boot write resets the Workbench */
 int desk_dos_start_apply(void)
@@ -2192,6 +2251,14 @@ int desk_dos_start_apply(void)
         desk_dos_dopus_sends++;
         desk_dos_dopus_wait();
         dopus_theme_send(&th, dk_dopus_send, 0, &tb);
+    }
+    if (flat && !dk_flat_failed && !dk_palette_editor_ok()) {   /* S93-PREFS-FLAT: 3.2 writes its file on the gated paths */
+        if (pallen <= 0) {   /* no theme palette planned: the file in force (else the live colours) with the flat pens */
+            desk_pens_for(flat, pens);
+            pallen = dk_palette_base(0, pens, dk_screen_depth(), pal, sizeof pal);
+        }
+        dk_quiet_len = pallen > 0 ? desk_palette_31safe(pal, pallen, dk_quiet_pal, sizeof dk_quiet_pal) : 0;
+        dk_quiet_due = 0;
     }
     am_sentinel("PATINA_DESK_START_WRITES", (long)desk_dos_start_writes);
     return (int)plan;
