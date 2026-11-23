@@ -447,6 +447,14 @@ static const char *flat_prefs_status(void)
         copy = r->st;
     }
     Permit();
+    if (!found) {
+        /* Patina is the optional up-patina add-on: say so instead of the ambiguous "absent". */
+        BPTR lk = Lock((STRPTR)"UP-Term:bin/patina-flat", ACCESS_READ);
+        if (!lk)
+            return "Not installed (up-patina package)";
+        UnLock(lk);
+        return "Not running";
+    }
     if (!flat_status_text(&copy, found, text, sizeof text))
         return flat_status_word(&copy, found);
     return text;
