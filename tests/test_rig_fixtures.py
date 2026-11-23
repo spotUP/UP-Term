@@ -221,7 +221,7 @@ class InstallCases(unittest.TestCase):
                 self.assertIn('base' if name != 'nobase' else ir.based_ids()[0], pk, name)
             self.assertTrue(callable(fn), name)
         self.assertEqual(ir.standalone_ids(), ['claude', 'pi', 'python', 'dopus'])
-        self.assertEqual(ir.based_ids(), ['nvim', 'uhc'])
+        self.assertEqual(ir.based_ids(), ['nvim', 'uhc', 'patina'])
 
     def test_a_pass_with_the_same_kit_is_skipped_and_a_changed_archive_runs_again(self):
         for pkg in ir.package_ids(): self.kit(pkg)
