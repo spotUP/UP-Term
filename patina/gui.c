@@ -1755,8 +1755,9 @@ static void event_loop(gui *g)
                 mg_focus_active(&g->focus);
                 break;
             case IDCMP_INACTIVEWINDOW:      /* a launcher: another window taking the focus closes it */
-                /* the confirm requester this menu's own pick started keeps the window open */
-                if (mg_focus_inactive(&g->focus, 0))
+                /* the confirm requester this menu's own pick started keeps the window open; the welcome and
+                 * Help windows are not launchers and close only by Close, Esc or Enter */
+                if (!g->welcome && mg_focus_inactive(&g->focus, 0))
                     g->quit = g->stop = 1;
                 break;
             }
