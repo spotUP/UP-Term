@@ -9,8 +9,7 @@
 ; the same list); the first part, check, stops the install when up-term.lha is
 ; missing or too old (the reason is in ENV:UPTCHECK).
 FailAt 21
-; the archive's Files drawer: every name below is relative to it
-CD "{DIR}"
+; @include dist/common/kit-dir.dos
 ; every write into UP-Term: goes through UPTREAL: (UP-Term: may be a multi-directory assign: it writes to the first one)
 ; @include dist/common/@RECORDRESOLVE@
 If NOT "{STEP}" EQ ""

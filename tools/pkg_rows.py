@@ -21,7 +21,7 @@ What the recipe cannot say (prose of the Installer, README, the man page row) co
 cmd the command line the finish text and README show, default the first _BINS name; licenses_notes the bullets under Notes
 of LICENSES.txt, default the source-archive note; install_extra the install.dos lines after the copies (before the
 finish line), uninstall_extra the lines placed before the generated uninstall body, both default none; readme_use starting with ';' continues the sentence after the version) and falls back to text built from _SUMMARY; --man PATH adds a slim row,
---pkg-version, --base-version, --ixemul set the packages.txt columns (defaults 1.0, 1.0, 80).
+--pkg-version, --base-version, --ixemul set the packages.txt columns (defaults: the committed row's pkg version, else 1.0; 1.0; 80).
 """
 import argparse, json, os, pathlib, re, subprocess, sys, tempfile, textwrap
 
@@ -216,11 +216,14 @@ def main(argv=None):
     ap.add_argument('--replace', action='store_true', help='with --write: rewrite the rows of an id that already has them')
     ap.add_argument('--prose')
     ap.add_argument('--man', action='append', default=[])
-    ap.add_argument('--pkg-version', default='1.0')
+    ap.add_argument('--pkg-version', default=None, help='default: the committed row\'s (a revision bump is hand-set), else 1.0')
     ap.add_argument('--base-version', default='1.0')
     ap.add_argument('--ixemul', default='80')
     a = ap.parse_args(argv)
     ports, root = pathlib.Path(a.ports), pathlib.Path(a.root)
+    if a.pkg_version is None:
+        row = table_row(a.pkg, root)
+        a.pkg_version = row.split()[2] if row else '1.0'
     g = generate(a.pkg, ports, a)
     if g is None:
         print('pkg_rows: %s has no _FEED_ID: a base-kit program, no feed rows' % a.pkg)
