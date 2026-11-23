@@ -40,6 +40,9 @@ EndIf
 ; man patina (the base ships no Patina page since the split)
 MakeDir >NIL: UPTREAL:share/man/man1
 Copy man/patina.1 UPTREAL:share/man/man1 CLONE QUIET
+If WARN
+  Quit 20
+EndIf
 MakeDir >NIL: UPTREAL:bin
 Copy Patina patina-menu patina-gui patina-index patina-flat amnotify patina-icons AmTile UPTREAL:bin CLONE
 If WARN
