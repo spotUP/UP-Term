@@ -2478,7 +2478,7 @@ def _start(retries):
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     RIG.mkdir(parents=True, exist_ok=True)
     START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))
-    OWNER_FILE.write_text(json.dumps({"root": str(ROOT), "purpose": PURPOSE}))
+    OWNER_FILE.write_text(json.dumps({"root": str(ROOT), "purpose": PURPOSE, "pid": session_pid()}))
     paths.EMU_FILE.write_text(paths.EMU + "\n")   # stop/status of a later call find this rig's emulator without the flag
     setup_config_only()
     paths.cap_fsuae_log(limit=0)   # a fresh log per start (the tail of the last run stays in <name>.tail)
@@ -2837,12 +2837,45 @@ def idle_minutes():
         return int(sys.argv[sys.argv.index("--idle-minutes") + 1])
     return WATCHDOG_IDLE_MINUTES
 
-def watchdog_step(now, rig_n, idle_min, last_cmd, long_active, stop_fn):
-    """One watchdog check; calls stop_fn() and returns True when the rig has been idle long enough.
+def session_pid():
+    """pid of the Claude Code session that runs this command (nearest ancestor named `claude`), None outside one.
+    The watchdog stops the rig when that pid is gone (S94-STALE-GUARD: rig 3 ran 6.6 h after its session ended)."""
+    pid = os.getppid()
+    for _ in range(12):
+        out = subprocess.run(["ps", "-o", "ppid=,comm=", "-p", str(pid)], capture_output=True, text=True).stdout.split(None, 1)
+        if len(out) < 2:
+            return None
+        if os.path.basename(out[1].strip()) == "claude":
+            return pid
+        pid = int(out[0])
+        if pid <= 1:
+            return None
+    return None
+
+def owner_gone(owner_pid):
+    """True when the owner session pid was recorded and no longer runs."""
+    if not owner_pid:
+        return False
+    try:
+        os.kill(owner_pid, 0)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        pass
+    return False
+
+def watchdog_step(now, rig_n, idle_min, last_cmd, long_active, stop_fn, owner_dead=False):
+    """One watchdog check; calls stop_fn() and returns True when the rig has been idle long enough or its owner
+    session is gone (owner_dead beats a hold and long_active; never rig 1).
     Never rig 1, never with idle_min 0, never while a long run holds its flag, never within WATCHDOG_QUIET s of
     a command; a rig nothing ever talked to counts as idle from last_cmd None only when idle_min is exceeded
     by the caller's start stamp (start touches the stamp)."""
-    if rig_n == 1 or idle_min <= 0 or long_active or last_cmd is None:
+    if rig_n == 1:
+        return False
+    if owner_dead:
+        stop_fn()
+        return True
+    if idle_min <= 0 or long_active or last_cmd is None:
         return False
     quiet = now - last_cmd
     if quiet < WATCHDOG_QUIET or quiet < idle_min * 60:
@@ -2897,12 +2930,12 @@ def recover_reset_loop(log):
 def start_watchdog():
     """Launch the detached watchdog for this rig (not rig 1, not with --idle-minutes 0)."""
     n = idle_minutes()
-    if paths.RIG_N == 1 or n <= 0:
+    if paths.RIG_N == 1 or (n <= 0 and not session_pid()):
         return
     paths.touch_command()   # the idle clock starts at boot
     subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "watchdog", "--idle-minutes", str(n)],
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    print("watchdog: stops rig %d after %d idle minutes, restarts it from a reset loop (--idle-minutes 0 = off)" % (paths.RIG_N, n))
+    print("watchdog: stops rig %d after %d idle minutes or when session pid %s ends, restarts it from a reset loop (--idle-minutes 0 = idle off)" % (paths.RIG_N, n, session_pid()))
 
 def watchdog():
     """The loop `start` detaches: every WATCHDOG_EVERY s one watchdog_step; leaves when the rig is gone (stopped by
@@ -2911,15 +2944,20 @@ def watchdog():
     pidf.write_text(str(os.getpid()))
     log = RIG / "watchdog.log"
     n = idle_minutes()
+    try:
+        owner_pid = json.loads(OWNER_FILE.read_text()).get("pid")
+    except (OSError, ValueError):
+        owner_pid = None
     resets = None
     while pidf.exists() and pidf.read_text() == str(os.getpid()):
         if not mine():
             break
+        gone = owner_gone(owner_pid)
         def do_stop():
             with log.open("a") as f:
-                f.write("%s idle %d min: stopping rig %d\n" % (time.strftime("%F %T"), n, paths.RIG_N))
+                f.write("%s %s: stopping rig %d\n" % (time.strftime("%F %T"), "owner session pid %s gone" % owner_pid if gone else "idle %d min" % n, paths.RIG_N))
             stop()
-        if watchdog_step(time.time(), paths.RIG_N, n, paths.last_command(), paths.long_run_active(), do_stop):
+        if watchdog_step(time.time(), paths.RIG_N, n, paths.last_command(), paths.long_run_active(), do_stop, gone):
             break
         count = paths.fsuae_reset_count()
         if reset_loop_step(resets, count, lambda: recover_reset_loop(log)):

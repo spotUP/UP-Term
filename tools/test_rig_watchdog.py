@@ -56,5 +56,15 @@ with tempfile.TemporaryDirectory() as d:
     (p / "long-run").write_text("999999999\n")
     check(not rig.paths.long_run_active(p), "a dead holder's flag is stale")
 
+# S94-STALE-GUARD: a dead owner session stops the rig even under a hold; rig 1 never; no pid recorded = no binding.
+calls = []
+check(rig.watchdog_step(100.0, 7, 0, None, True, lambda: calls.append(1), True) and calls, "dead owner stops a held, idle-off rig")
+calls = []
+check(not rig.watchdog_step(100.0, 1, 0, None, True, lambda: calls.append(1), True) and not calls, "dead owner never stops rig 1")
+check(not rig.owner_gone(None) and not rig.owner_gone(os.getpid()), "no pid or a live pid is not gone")
+import subprocess  # noqa: E402
+dead = subprocess.Popen(["true"]); dead.wait()
+check(rig.owner_gone(dead.pid), "an exited pid is gone")
+
 print("FAILED %d" % fails if fails else "ok")
 sys.exit(1 if fails else 0)
