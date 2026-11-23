@@ -728,6 +728,9 @@ VIEWING FILES (hl, mdv)
   with + - |). hl --help and mdv --help list the options; Ctrl-C stops hl.
 
 PATINA
+  Patina is the optional up-patina add-on: the base Install offers it (default
+  yes), Uninstall removes it, and it needs base 1.2. Without it the Patina
+  programs and keys below are absent.
   Patina is a small commodity that gives the whole machine Super-key
   shortcuts, the way a tiling desktop does. Super is the Left Amiga key. It
   runs from boot (an icon in SYS:WBStartup starts UP-Term:bin/Patina), so
@@ -848,6 +851,7 @@ PATINA
   Left Amiga + B                     Status bar
   [end keys]
   The quick menu (Left Amiga + Space) is a short list you filter by typing;
+  (Patina menus and the key viewer need the up-patina add-on.)
   Left Amiga + K is the key viewer. Two programs draw them. patina-gui is
   the drawn menu: its own borderless window with an icon in front of each row.
   patina-menu is the text menu in a console window. The setting

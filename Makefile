@@ -2126,7 +2126,7 @@ dist-base: amiga jbmono bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-cons
 	@# the filetype file itself (the base Install's DOPUS option copies it to DOpus5:Filetypes/UP-Term)
 	python3 tools/gen_dopus_filetype.py $(KIT)/Files/dopus-filetype
 	mkdir -p $(KIT)/Files/userland/share/tutorial && cp dist/tutorial-lessons/*.lesson $(KIT)/Files/userland/share/tutorial/
-	mkdir -p $(KIT)/Files/userland/share/man/man1 && cp man/*.1 $(KIT)/Files/userland/share/man/man1/
+	mkdir -p $(KIT)/Files/userland/share/man/man1 && for f in man/*.1; do [ "$$f" = man/patina.1 ] || cp $$f $(KIT)/Files/userland/share/man/man1/; done
 	cp man/sz.1 $(KIT)/Files/userland/share/man/man1/rz.1
 	cp $(BUILD)/amiga/upprefs $(KIT)/Files/upprefs
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
@@ -2242,6 +2242,7 @@ dist-dopus: $(BUILD)/amiga/upupdate $(LHA)
 dist-patina: $(BUILD)/amiga/Patina $(BUILD)/amiga/patina-menu $(BUILD)/amiga/patina-gui $(BUILD)/amiga/patina-index $(BUILD)/amiga/patina-flat $(BUILD)/amiga/patina-icons $(BUILD)/amiga/amnotify $(BUILD)/amiga/AmTile $(LUCIDE_DAT) $(OUTLINE_DAT) $(BUILD)/amiga/upupdate $(LHA)
 	$(call ADDON_STAGE,patina)
 	cp $(BUILD)/amiga/Patina $(BUILD)/amiga/patina-menu $(BUILD)/amiga/patina-gui $(BUILD)/amiga/patina-index $(BUILD)/amiga/patina-flat $(BUILD)/amiga/amnotify $(BUILD)/amiga/patina-icons $(BUILD)/amiga/AmTile dist/bar.conf dist/instssblock.sh $(KIT_patina)/Files/
+	mkdir -p $(KIT_patina)/Files/man && cp man/patina.1 $(KIT_patina)/Files/man/
 	mkdir -p $(KIT_patina)/Files/wbstartup
 	python3 tools/mkicon.py $(KIT_patina)/Files/wbstartup/Patina.info --tool "UP-Term:bin/Patina" --plain --tooltype DONOTWAIT --tooltype STARTPRI=10
 	python3 tools/mkicon.py $(KIT_patina)/Files/wbstartup/patina-index.info --tool "UP-Term:bin/patina-index" --plain --tooltype DONOTWAIT --tooltype STARTPRI=-10 --tooltype TOOLPRI=-5

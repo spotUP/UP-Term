@@ -22,3 +22,4 @@ patina          Files/patina-themes
 patina          Files/lucide
 patina          Files/phosphor
 patina          Files/wbstartup
+patina          Files/man

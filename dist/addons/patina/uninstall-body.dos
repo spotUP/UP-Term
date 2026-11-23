@@ -88,4 +88,5 @@ UnSet upwait
 Delete >NIL: ENV:upflatdir QUIET
 ; the programs and data (a patina-flat that would not unload keeps its file until the next boot)
 Delete >NIL: UPTREAL:bin/Patina UPTREAL:bin/patina-menu UPTREAL:bin/patina-gui UPTREAL:bin/patina-index UPTREAL:bin/patina-flat UPTREAL:bin/amnotify UPTREAL:bin/patina-icons UPTREAL:bin/AmTile QUIET
+Delete >NIL: UPTREAL:share/man/man1/patina.1 QUIET
 Delete >NIL: UPTREAL:Patina ALL QUIET FORCE

@@ -132,7 +132,7 @@ class PatinaDocs(unittest.TestCase):
         for f in ('Patina', 'patina-menu', 'patina-gui', 'keymap'):
             self.assertTrue((KIT / 'Files' / f).is_file(), 'kit lacks Files/' + f)
             self.assertRegex(man, r'(?m)^tools \d+ [0-9a-f]{8} Files/%s$' % f)
-        self.assertTrue((KIT / 'Files/userland/share/man/man1/patina.1').is_file())
+        self.assertFalse((KIT / 'Files/userland/share/man/man1/patina.1').exists())  # ships with up-patina
         self.assertTrue((KIT / 'Files/userland/share/tutorial/14-patina-keys.lesson').is_file())
 
 

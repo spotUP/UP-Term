@@ -37,6 +37,9 @@ If WARN
 EndIf
 ; Patina (the Super-key commodity), patina-menu and patina-gui (the quick menu and key viewer its keys start), the
 ; app index, the flat UI patch, the notifier, the icon applier and AmTile.
+; man patina (the base ships no Patina page since the split)
+MakeDir >NIL: UPTREAL:share/man/man1
+Copy man/patina.1 UPTREAL:share/man/man1 CLONE QUIET
 MakeDir >NIL: UPTREAL:bin
 Copy Patina patina-menu patina-gui patina-index patina-flat amnotify patina-icons AmTile UPTREAL:bin CLONE
 If WARN
