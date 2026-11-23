@@ -32,7 +32,7 @@ class PatinaDocs(unittest.TestCase):
         as ENVARC:up-term/Dir says (SYS:UP-Term/bin/...), so that name is kept before Dir is deleted and matched."""
         un = read('dist/Uninstall')
         quit_at = un.index('"$updest/bin/Patina" >NIL: QUIT')
-        self.assertLess(un.index('\n  Assign UP-Term:\n'), quit_at)
+        self.assertLess(un.index('\n  Assign UP-Term: "$updest" PATH\n'), quit_at)
         self.assertLess(quit_at, un.index('Delete >NIL: "$updest" ALL QUIET'))
         keep = un.index('Copy >NIL: ENVARC:up-term/Dir ENV:upflatdir')
         self.assertLess(keep, un.index('Delete >NIL: ENVARC:up-term/Dir QUIET'))
@@ -97,29 +97,34 @@ class PatinaDocs(unittest.TestCase):
         self.assertIn('.Nm Patina', read('man/patina.1'))
 
     def test_install_rows_and_startup_block(self):
-        parts = read('dist/parts.txt')
-        for f in ('Patina', 'patina-menu', 'patina-gui', 'keymap'):
-            self.assertRegex(parts, r'(?m)^tools\s+Files/%s$' % f)
+        # the split: keymap stays in the base kit; the Patina programs are the up-patina add-on's `patina` part
+        self.assertRegex(read('dist/parts.txt'), r'(?m)^tools\s+Files/keymap$')
+        parts = read('dist/addons/patina/parts.txt')
+        for f in ('Patina', 'patina-menu', 'patina-gui'):
+            self.assertRegex(parts, r'(?m)^patina\s+Files/%s$' % f)
+        self.assertNotRegex(read('dist/parts.txt'), r'(?m)^\S+\s+Files/Patina$')
+        self.assertIn('Copy Patina patina-menu patina-gui patina-index patina-flat amnotify patina-icons AmTile UPTREAL:bin CLONE',
+                      read('dist/addons/patina/install.dos'))
         d = read('dist/install.dos')
-        self.assertIn('Copy Patina patina-menu patina-gui patina-index patina-flat amnotify patina-icons AmTile UP-Term:bin CLONE', d)
         # Leg W: Patina and the index start from SYS:WBStartup icons; the User-Startup blocks are only stripped
         self.assertNotIn('Echo >>S:User-Startup "Run >NIL: UP-Term:bin/Patina', d)
         self.assertIn('vsh unstartup.sh Patina', d)
         self.assertIn('vsh unstartup.sh "Patina index"', d)
-        self.assertIn('Copy wbstartup/Patina.info wbstartup/patina-index.info SYS:WBStartup CLONE', d)
+        self.assertIn('Copy wbstartup/Patina.info wbstartup/patina-index.info SYS:WBStartup CLONE', read('dist/addons/patina/install.dos'))
 
     def test_bar_conf_documented_and_installed_only_when_missing(self):
         man = read('man/patina.1')
         for w in ('super+b', 'ENVARC:Patina/bar.conf', 'clockalt', 'segment', 'Network emulated', 'No network',
                   'TOGGLE', 'PENS', '+N'):
             self.assertIn(w, man)
-        self.assertRegex(read('dist/parts.txt'), r'(?m)^tools\s+Files/bar\.conf$')
-        d = read('dist/install.dos')
+        self.assertRegex(read('dist/addons/patina/parts.txt'), r'(?m)^patina\s+Files/bar\.conf$')
+        d = read('dist/addons/patina/install.dos')
         i = d.index('If NOT EXISTS ENVARC:Patina/bar.conf')
         self.assertIn('Copy bar.conf ENVARC:Patina/bar.conf CLONE', d[i:i + 120])
         self.assertIn('ENVARC:Patina/bar.conf', read('dist/README.txt'))
-        self.assertIn('ENVARC:Patina/bar.conf', read('dist/Uninstall'))
-        self.assertNotRegex(read('dist/Uninstall'), r'(?m)^\s*Delete.*Patina/bar\.conf')
+        for u in ('dist/Uninstall', 'dist/addons/patina/uninstall-body.dos'):
+            self.assertIn('ENVARC:Patina/bar.conf', read(u))
+            self.assertNotRegex(read(u), r'(?m)^\s*Delete.*Patina/bar\.conf')
 
     def test_rules_commands_rows(self):
         r = read('RULES.md')
@@ -127,11 +132,12 @@ class PatinaDocs(unittest.TestCase):
             self.assertIn(w, r)
 
     @unittest.skipUnless((KIT / 'Files/MANIFEST').is_file(), 'built kit missing: make dist-base')
-    def test_built_base_kit_holds_patina(self):
+    def test_built_base_kit_lacks_patina_programs(self):
         man = (KIT / 'Files/MANIFEST').read_text(encoding='latin-1')
-        for f in ('Patina', 'patina-menu', 'patina-gui', 'keymap'):
-            self.assertTrue((KIT / 'Files' / f).is_file(), 'kit lacks Files/' + f)
-            self.assertRegex(man, r'(?m)^tools \d+ [0-9a-f]{8} Files/%s$' % f)
+        self.assertRegex(man, r'(?m)^tools \d+ [0-9a-f]{8} Files/keymap$')
+        self.assertTrue((KIT / 'Files/keymap').is_file())
+        for f in ('Patina', 'patina-menu', 'patina-gui'):   # ship with up-patina
+            self.assertFalse((KIT / 'Files' / f).exists(), 'base kit holds Files/' + f)
         self.assertFalse((KIT / 'Files/userland/share/man/man1/patina.1').exists())  # ships with up-patina
         self.assertTrue((KIT / 'Files/userland/share/tutorial/14-patina-keys.lesson').is_file())
 
