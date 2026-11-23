@@ -1296,6 +1296,9 @@ $(FLAT_ASM_DIR)/pubscr.s $(FLAT_ASM_DIR)/pubscr_core.s: $(FLAT_ASM_DIR)/%.s: han
 $(FLAT_ASM_DIR)/emoji.s: render/emoji.c render/emoji.h
 	@mkdir -p $(FLAT_ASM_DIR)
 	$(VC) -dontwarn=153,65 -S -o $@ $<
+$(FLAT_ASM_DIR)/flat_core.s: render/flat_core.c render/flat_core.h
+	@mkdir -p $(FLAT_ASM_DIR)
+	$(VC) -dontwarn=153,65 -S -o $@ $<
 
 # amnotify: the notice CLI (plan 2026-10-29-patina-p4-capture-notify-power.md R4.10). A plain vbcc DOS program; it sends
 # NOTIFY lines to PATINA.NOTIFY and shares note_core.c (its argument parse) with Patina.

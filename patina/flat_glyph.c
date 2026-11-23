@@ -48,13 +48,14 @@ static void box(plan *g, int x0, int y0, int x1, int y1, int role)
     put(g, x0, y0, x1, y1, role);
 }
 
-/* S93-GADGET-GLYPH: a 1-row outline; the side lines are g->side columns wide so they look as thick as the top and bottom */
-static void frame(plan *g, int x0, int y0, int x1, int y1)
+/* S93-GADGET-GLYPH: a 1-row outline of the box ix0..iy1; the side lines are g->side columns wide so they look as thick as the top
+ * and bottom. S93-BUDGET: the box comes from g, not 4 arguments, so fewer registers are saved on the deepest flat-budget chain. */
+static void frame(plan *g)
 {
-    put(g, x0, y0, x1, y0, g->fg);
-    put(g, x0, y1, x1, y1, g->fg);
-    put(g, x0, y0 + 1, x0 + g->side - 1, y1 - 1, g->fg);
-    put(g, x1 - g->side + 1, y0 + 1, x1, y1 - 1, g->fg);
+    put(g, g->ix0, g->iy0, g->ix1, g->iy0, g->fg);
+    put(g, g->ix0, g->iy1, g->ix1, g->iy1, g->fg);
+    put(g, g->ix0, g->iy0 + 1, g->ix0 + g->side - 1, g->iy1 - 1, g->fg);
+    put(g, g->ix1 - g->side + 1, g->iy0 + 1, g->ix1, g->iy1 - 1, g->fg);
 }
 
 /* S93-GADGET-FILL, wide glyphs: the title-bar glyphs share one row count R, taken from the inner HEIGHT only (owner chose wide
@@ -65,32 +66,27 @@ static int gsq(const plan *g)
 }
 
 /* S93-GADGET-GLYPH (owner): close, depth, zoom and iconify all draw the SAME outer frame, so the four gadgets look the same size.
- * It is gsq rows high and 1.5 x that wide in visual units (side columns per row), centred in the inner box; the single source of
- * that rectangle is gframe, which draws it and returns it: x0, y0 top left, fw columns, r rows. */
-static void gbox(const plan *g, int *x0, int *y0, int *fw, int *r)
+ * It is gsq rows high and 1.5 x that wide in visual units (side columns per row), centred in the inner box. gbox narrows the inner
+ * box ix0..iy1 to that rectangle in place (as g_arrow does); the framed glyphs then draw it with frame(). S93-BUDGET: no out-parameters, they sat as
+ * addressed locals in the g_* frames on the deepest flat-budget chain (_c2_disp_reg). */
+static void gbox(plan *g)
 {
-    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1;
-    *r = gsq(g);
-    *fw = imin(iw, g->side * *r * 3 / 2);
-    *x0 = g->ix0 + (iw - *fw) / 2;
-    *y0 = g->iy0 + (ih - *r) / 2;
+    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, r = gsq(g), fw = imin(iw, g->side * r * 3 / 2);
+    g->ix0 += (iw - fw) / 2;
+    g->iy0 += (ih - r) / 2;
+    g->ix1 = g->ix0 + fw - 1;
+    g->iy1 = g->iy0 + r - 1;
 }
 
-static void gframe(plan *g, int *x0, int *y0, int *fw, int *r)
+/* narrows the frame box to the free area inside it, one frame line (side columns, 1 row) in; returns the gap: 1 row when the area
+ * is tall enough (>= 4 rows) to leave a ground row below a motif, else 0 */
+static int garea(plan *g)
 {
-    gbox(g, x0, y0, fw, r);
-    frame(g, *x0, *y0, *x0 + *fw - 1, *y0 + *r - 1);
-}
-
-/* the free area inside the frame, one frame line (side columns, 1 row) in: *ax0..*ax1, *ay0..*ay1; *gap is 1 row when the area is
- * tall enough (>= 4 rows) to leave a ground row below a motif, else 0 */
-static void garea(const plan *g, int x0, int y0, int fw, int r, int *ax0, int *ax1, int *ay0, int *ay1, int *gap)
-{
-    *ax0 = x0 + g->side;
-    *ax1 = x0 + fw - 1 - g->side;
-    *ay0 = y0 + 1;
-    *ay1 = y0 + r - 2;
-    *gap = *ay1 - *ay0 + 1 >= 4;
+    g->ix0 += g->side;
+    g->ix1 -= g->side;
+    g->iy0++;
+    g->iy1--;
+    return g->iy1 - g->iy0 + 1 >= 4;
 }
 
 static int cross_x(int k, int n, int span)
@@ -102,11 +98,12 @@ static int cross_x(int k, int n, int span)
  * one row per step, 2 x side columns wide (owner: too thin at 1 x side); the second diagonal mirrors the first, so the cross is symmetric */
 static void g_close(plan *g)
 {
-    int x0, y0, fw, r, ax0, ax1, ay0, ay1, gap, k, m, n, span, lo, hi, w = 2 * g->side;
-    gbox(g, &x0, &y0, &fw, &r);
-    garea(g, x0, y0, fw, r, &ax0, &ax1, &ay0, &ay1, &gap);       /* the inner area, as if the frame was there: not edge to edge */
-    n = ay1 - ay0 + 1;
-    span = ax1 - ax0 + 1 - w;
+    int ax0, ay0, k, m, n, span, lo, hi, w = 2 * g->side;
+    gbox(g);
+    garea(g);                                                   /* the inner area, as if the frame was there: not edge to edge */
+    ax0 = g->ix0; ay0 = g->iy0;
+    n = g->iy1 - ay0 + 1;
+    span = g->ix1 - ax0 + 1 - w;
     if (n < 2 || span < 0)
         return;
     for (k = 0; k < n; k++) {                                   /* each row spans half way to its neighbours' columns: no gaps */
@@ -121,23 +118,31 @@ static void g_close(plan *g)
 /* depth: the frame holding a smaller outlined square (the front window) in the lower left, 2 x side columns and 1 row in */
 static void g_depth(plan *g)
 {
-    int x0, y0, fw, r, ax0, ax1, ay0, ay1, gap, w, h, bx0;
-    gframe(g, &x0, &y0, &fw, &r);
-    garea(g, x0, y0, fw, r, &ax0, &ax1, &ay0, &ay1, &gap);
-    bx0 = ax0 + 2 * g->side;
-    w = imin(ax1 - bx0 + 1, imax(g->side * 4, (ax1 - ax0 + 1) * 3 / 5));
-    h = imin(ay1 - gap - ay0 + 1, imax(3, (ay1 - ay0 + 1) * 3 / 5));
-    if (w > 0 && h > 0)
-        frame(g, bx0, ay1 - gap - h + 1, bx0 + w - 1, ay1 - gap);
+    int gap, w, h, bx0;
+    gbox(g);
+    frame(g);
+    gap = garea(g);
+    bx0 = g->ix0 + 2 * g->side;
+    w = imin(g->ix1 - bx0 + 1, imax(g->side * 4, (g->ix1 - g->ix0 + 1) * 3 / 5));
+    h = imin(g->iy1 - gap - g->iy0 + 1, imax(3, (g->iy1 - g->iy0 + 1) * 3 / 5));
+    if (w > 0 && h > 0) {
+        g->iy1 -= gap;                                          /* the front window becomes the box frame() outlines */
+        g->iy0 = g->iy1 - h + 1;
+        g->ix0 = bx0;
+        g->ix1 = bx0 + w - 1;
+        frame(g);
+    }
 }
 
 /* zoom: the frame with a smaller solid box in its top-left corner */
 static void g_zoom(plan *g)
 {
-    int x0, y0, fw, r, q;
-    gframe(g, &x0, &y0, &fw, &r);
-    q = imax(3, r / 2);
-    put(g, x0, y0, x0 + imin(fw, imax(g->side * 3, fw / 2)) - 1, y0 + q - 1, g->fg);
+    int fw, q;
+    gbox(g);
+    frame(g);
+    fw = g->ix1 - g->ix0 + 1;
+    q = imax(3, (g->iy1 - g->iy0 + 1) / 2);
+    put(g, g->ix0, g->iy0, g->ix0 + imin(fw, imax(g->side * 3, fw / 2)) - 1, g->iy0 + q - 1, g->fg);
 }
 
 static void g_size(plan *g)
@@ -155,14 +160,15 @@ static void g_size(plan *g)
 /* iconify: the frame holding a small solid box in the lower left, side columns and 1 row in (owner 2026-11-19: a box, not a bar) */
 static void g_iconify(plan *g)
 {
-    int x0, y0, fw, r, ax0, ax1, ay0, ay1, gap, w, h, bx0;
-    gframe(g, &x0, &y0, &fw, &r);
-    garea(g, x0, y0, fw, r, &ax0, &ax1, &ay0, &ay1, &gap);
-    bx0 = ax0 + g->side;
-    w = imin(ax1 - bx0 + 1, imax(g->side * 3, (ax1 - ax0 + 1) * 3 / 5));
-    h = imin(ay1 - gap - ay0 + 1, imax(2, (ay1 - ay0 + 1) * 3 / 5));
+    int gap, w, h, bx0;
+    gbox(g);
+    frame(g);
+    gap = garea(g);
+    bx0 = g->ix0 + g->side;
+    w = imin(g->ix1 - bx0 + 1, imax(g->side * 3, (g->ix1 - g->ix0 + 1) * 3 / 5));
+    h = imin(g->iy1 - gap - g->iy0 + 1, imax(2, (g->iy1 - g->iy0 + 1) * 3 / 5));
     if (w > 0 && h > 0)
-        box(g, bx0, ay1 - gap - h + 1, bx0 + w - 1, ay1 - gap, g->fg);
+        box(g, bx0, g->iy1 - gap - h + 1, bx0 + w - 1, g->iy1 - gap, g->fg);
 }
 
 /* DOPUS-LOCK (O2/O3): a solid padlock, no inverted box. Visual units: a column is 1, a row is g->side. Body = the lower half of the
@@ -529,7 +535,9 @@ static void plan_roles(plan *g, unsigned long which, int state)
     g->bg_pen = (short)flat_clone_pen(g->st, g->bg, g->frame_pen, g->knob_pen);
 }
 
-static int plan_run(plan *g, unsigned long which, int w, int h, int state, int side)
+/* S93-BUDGET: plan_run's setup, a sibling call, so plan_run keeps only g and which live across the glyph call: its frame sits on
+ * the deepest flat-budget chain (_c2_disp_reg) under every g_* function */
+static void plan_setup(plan *g, unsigned long which, int w, int h, int state, int side)
 {
     int i;
     g->n = 0; g->w = w; g->h = h; g->side = side < 1 ? 1 : side;
@@ -540,6 +548,11 @@ static int plan_run(plan *g, unsigned long which, int w, int h, int state, int s
         g->ix0 = 1; g->ix1 = w - 2;     /* S93-GADGET-FILL: wide glyphs span the cell */
     }
     put(g, 0, 0, w - 1, h - 1, g->bg);
+}
+
+static int plan_run(plan *g, unsigned long which, int w, int h, int state, int side)
+{
+    plan_setup(g, which, w, h, state, side);
     switch (which) {
     case FLAT_W_CLOSE: g_close(g); break;
     case FLAT_W_DEPTH: g_depth(g); break;
