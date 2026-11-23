@@ -6914,13 +6914,13 @@ static void sbar_route(con *c, ULONG id, ULONG top);
 /* A size drag queues one NEWSIZE per step; each handled one repaints the whole grid, so a full screen
  * of text keeps repainting after the mouse stops. Only the last queued NEWSIZE matters: the window's
  * size is read from the window, not from the message. */
-static int newsize_queued(struct MsgPort *port)
+static int class_queued(struct MsgPort *port, ULONG cls)
 {
     struct Node *n;
     int found = 0;
     Forbid();
     for (n = port->mp_MsgList.lh_Head; n->ln_Succ; n = n->ln_Succ)
-        if (((struct IntuiMessage *)n)->Class == IDCMP_NEWSIZE) {
+        if (((struct IntuiMessage *)n)->Class == cls) {
             found = 1;
             break;
         }
@@ -6958,7 +6958,7 @@ static void idcmp(con *c)
             ReplyMsg((struct Message *)im);
             continue;
         }
-        if (cls == IDCMP_NEWSIZE && newsize_queued(c->own_win->UserPort)) {
+        if ((cls == IDCMP_NEWSIZE || cls == IDCMP_REFRESHWINDOW) && class_queued(c->own_win->UserPort, cls)) {
             ReplyMsg((struct Message *)im); /* a later one repaints once, at the final size */
             continue;
         }
