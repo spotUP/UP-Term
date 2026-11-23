@@ -84,8 +84,12 @@ def dist_stack_problems(kit, is_base):
 
 def makefile():
     """The Makefile with its backslash continuations joined."""
-    with open(os.path.join(ROOT, 'Makefile')) as f:
-        return re.sub(r'\\\n', ' ', f.read())
+    text = ''
+    for name in ('Makefile', 'sources.mk'):      # sources.mk holds the source-list variables the rules expand
+        with open(os.path.join(ROOT, name)) as f:
+            text += f.read() + '\n'
+    text = re.sub(r'\$\(call cl_src,([^)]*)\)', r'\1', text)   # cl_src only prefixes CL_DIR, empty here
+    return re.sub(r'\\\n', ' ', text)
 
 
 def expand(mk, words, depth=0):
@@ -105,10 +109,10 @@ def kit_programs(mk):
     """{kit name: build target name} for each $(BUILD)/amiga/<name> the kit recipe copies."""
     out = {}
     for line in mk.splitlines():
-        if not line.startswith('\tcp ') or '$(KIT)/Files' not in line:
+        if not line.startswith('\tcp ') or '/Files' not in line or '$(KIT' not in line:
             continue
         srcs = re.findall(r'\$\(BUILD\)/amiga/([A-Za-z0-9_.-]+)', line)
-        dest = re.search(r'"?\$\(KIT\)/Files/([^"]*)"?\s*$', line).group(1)
+        dest = re.search(r'"?\$\(KIT[A-Za-z_]*\)/Files/([^"]*)"?\s*$', line).group(1)
         if len(srcs) == 1 and dest and not dest.endswith('/'):
             out[os.path.basename(dest)] = srcs[0]
         else:
