@@ -3,7 +3,7 @@
 A modern terminal, a Unix userland and a flat desktop for AmigaOS 3.x (68020 or better, AmigaOS 3.0 and up; tested most on 3.2).
 
 - **UP-Term / vtcon**: a console window (`XCON:`) with a real terminal inside: 16, 256 and RGB colours, alternate screen, mouse, bracketed paste, sixel and kitty pictures, tabs, lines that re-wrap on resize. Unix ports (bash-compatible `vsh`, vim, tmux, less, git, ssh, curl) and Amiga programs both render right.
-- **Patina** (the optional up-patina add-on, installed by default from the base Install, removable, needs base 1.2): a desktop suite on top of Workbench: Left Amiga key shortcuts for the whole machine, a bar, menus, notices, themes, and `patina-flat`, which gives system gadgets (buttons, check boxes, input fields, sliders, Preferences programs) a flat look.
+- **Patina** (the optional up-patina add-on, installed by default from the base Install, removable, needs base 1.2): a desktop suite on top of Workbench: Left Amiga key shortcuts for the whole machine, a bar, menus, notices, themes, and `patina-flat`, which gives system gadgets (buttons, check boxes, input fields, sliders, Preferences programs) a flat look. Own page, screenshots and releases: https://github.com/spotUP/patina
 - **upkg**: a package manager (opkg) with a feed of 28 add-ons: Neovim, Python 3.14, git, Perl, vim, BitchX, vbcc, Directory Opus 5.104 and more, from the Shell or a Workbench window.
 
 ![The Patina desktop](docs/screenshots/patina-desktop.png)
