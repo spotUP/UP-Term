@@ -63,8 +63,19 @@ def code_hunks(d):
     return out
 
 
+def in_table(code, o):
+    """True when the words around o hold at least 4 longwords that look like code offsets (a jump or
+    string-pointer table inside the code hunk: its low halves can equal a frame opcode)."""
+    hit = 0
+    for q in range(max(0, o - 16), min(len(code) - 4, o + 16) + 1, 2):
+        v = struct.unpack('>I', code[q:q + 4])[0]
+        if 0x100 < v < len(code) and v % 4 == 0:
+            hit += 1
+    return hit >= 4
+
+
 def frames(code):
-    """(offset, size) for every frame opening in a code hunk, word aligned."""
+    """(offset, size) for every frame opening in a code hunk, word aligned, data tables skipped."""
     res = []
     for o in range(0, len(code) - 6, 2):
         w = code[o:o + 2]
@@ -78,7 +89,7 @@ def frames(code):
             n = struct.unpack('>i', code[o + 2:o + 6])[0]
         else:
             continue
-        if n > 0:
+        if n > 0 and not in_table(code, o):
             res.append((o, n))
     return res
 
