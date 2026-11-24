@@ -2194,6 +2194,44 @@ static void test_desk_start_prefs_on_writes_theme_palette(void)
     CHECK_INT(desk_start_palette(amconf_desk_mask(&p), 1, &t, 3, base, n, base, n, again, sizeof again), 0);
 }
 
+/* PREFS-RESET-THEME: on 3.1 (palette_ok 0) the start palette.prefs carries the theme colours with the desk pens, never the flat map,
+ * so an IPrefs reset from Input or Font prefs reopens the Workbench in the theme colours; 3.2 keeps the flat map */
+static void test_desk_start_31_palette_keeps_theme_colours_without_flat_pens(void)
+{
+    static const unsigned short stock[8] = { 0xaaa, 0x000, 0xfff, 0x68b, 0xe44, 0x5d5, 0x04d, 0xe90 };
+    static unsigned char base[1024], out[1024], safe[1024], ref[1024], refsafe[1024];
+    unsigned char pens[DK_SLOTS], flatpens[DK_SLOTS], deskpens[DK_SLOTS];
+    gtheme t;
+    long n, m, k, rn;
+    int r;
+    gt_builtin(&t);
+    desk_pens_flat(flatpens);
+    desk_pens(deskpens);
+    CHECK(memcmp(flatpens, deskpens, DK_SLOTS) != 0);
+    desk_start_file_pens(1, 0, pens);
+    CHECK_INT(memcmp(pens, deskpens, DK_SLOTS), 0);
+    desk_start_file_pens(0, 0, pens);
+    CHECK_INT(memcmp(pens, deskpens, DK_SLOTS), 0);
+    desk_start_file_pens(1, 1, pens);
+    CHECK_INT(memcmp(pens, flatpens, DK_SLOTS), 0);
+    desk_start_file_pens(0, 1, pens);
+    CHECK_INT(memcmp(pens, deskpens, DK_SLOTS), 0);
+    /* the bytes the 3.1 quiet write puts in ENV: and ENVARC: with flat on: theme colours, desk pen lists, 3.1-safe */
+    desk_start_file_pens(1, 0, pens);
+    n = desk_palette_live(stock, 8, 3, pens, base, sizeof base);
+    CHECK(n > 0);
+    m = desk_start_palette(1u << DT_PALETTE, 1, &t, 3, base, n, base, n, out, sizeof out);
+    CHECK(m > 0);
+    k = desk_palette_31safe(out, m, safe, sizeof safe);
+    CHECK_INT(k, m);
+    for (r = 0; r < 4; r++)
+        CHECK_INT(desk_palette_rgb(safe, k, r, 3), desk_pen_colour(&t, r, 1));
+    rn = desk_palette_live(stock, 8, 3, deskpens, ref, sizeof ref);
+    CHECK_INT(desk_palette_31safe(ref, rn, refsafe, sizeof refsafe), k);
+    CHECK_INT(memcmp(safe + 0x32, refsafe + 0x32, 0x20), 0);   /* both pen lists: the desk map */
+    CHECK_INT(memcmp(safe + 0x72, refsafe + 0x72, 0x20), 0);
+}
+
 /* S31-START-PARTS: the pointer, font and icontrol parts of the theme are also planned at start (before, only a theme pick wrote them):
  * a stock file is rewritten with the theme, a second start finds the result and writes nothing, the part off in the mask writes nothing */
 static void test_desk_start_prefs_on_writes_pointer_font_icontrol(void)
@@ -2436,6 +2474,7 @@ void suite_desk(void)
     test_desk_pointer_gate();
     test_desk_palette_gate();
     test_desk_palette_31safe();
+    test_desk_start_31_palette_keeps_theme_colours_without_flat_pens();
     test_desk_palette_31_pen5();
     test_desk_palette_31_fix_plan();
     test_desk_palette_31_wired();
