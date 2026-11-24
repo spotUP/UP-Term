@@ -1808,8 +1808,16 @@ def step16(port):
         rows = [json.loads(x) for x in (hist.read_text(errors='replace').splitlines() if hist.exists() else []) if x.strip()]
         shown = [(r.get('display'), r.get('project')) for r in rows if isinstance(r, dict)]
         (paths.reports_dir() / 'amigapi16-history.txt').write_text(repr(shown))
-        check('16b prompt-history holds line-mode ALPHA, BETA as project ""',
-              ('PIPROMPT-ALPHA', '') in shown and ('PIPROMPT-BETA', '') in shown, repr(shown))
+        ok16b = ('PIPROMPT-ALPHA', '') in shown and ('PIPROMPT-BETA', '') in shown
+        check('16b prompt-history holds line-mode ALPHA, BETA as project ""', ok16b, repr(shown))
+        if not ok16b:
+            # where the handler wrote, if anywhere: every prompt-history on the rig's volumes, from the Amiga's side
+            diag = VTC / 'pi16diag.txt'
+            for vol in ('VTC:', 'SYS:', 'ENVARC:', 'RAM:'):
+                c.run('List %s ALL PAT=#?history#? LFORMAT "%%p%%n %%l" >>VTC:pi16diag.txt' % vol, 120)
+            c.run('List VTC:%s/var/amiga-pi >>VTC:pi16diag.txt' % paths.UPTERM_DRAWER, 20)
+            (paths.reports_dir() / 'amigapi16-where.txt').write_text(
+                diag.read_text(errors='replace') if diag.exists() else 'no listing')
         tw.key(UP, wait=1)
         t = tw.screen_text('RAM:pi16-shell.txt')
         (paths.reports_dir() / 'amigapi16-shell.txt').write_text(t)
@@ -1823,7 +1831,7 @@ def step16(port):
         tw.key(tw.RET, wait=1)
         wait_requests(4)
         time.sleep(2)
-        rows = [json.loads(x) for x in hist.read_text(errors='replace').splitlines() if x.strip()]
+        rows = [json.loads(x) for x in (hist.read_text(errors='replace').splitlines() if hist.exists() else []) if x.strip()]
         ds = [r.get('display') for r in rows if isinstance(r, dict) and r.get('project') == '']
         ups = len(ds) - max(i for i, d in enumerate(ds) if d == 'PIPROMPT-ALPHA') if 'PIPROMPT-ALPHA' in ds else 4
         for _ in range(ups):
