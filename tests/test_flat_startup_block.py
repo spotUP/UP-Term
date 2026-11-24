@@ -18,7 +18,8 @@ def run(script, args, t):
 
 class FlatStartupBlock(unittest.TestCase):
     def test_install_writes_no_flat_line_to_user_startup(self):
-        self.assertNotRegex(DOS, r"Echo >>S:User-Startup \"[^\n]*patina-flat")
+        # the icon pens block's guard and its one-shot "patina-flat PENS" (S92e) start nothing resident
+        self.assertNotRegex(DOS, r'Echo >>S:User-Startup "\s*(Run >NIL: )?\S*patina-flat(\s+BOOT)?"')
 
     def test_install_inserts_the_block_before_iprefs_with_the_absolute_path(self):
         self.assertRegex(DOS, r'vsh instssblock\.sh Patina-Flat IPrefs "If EXISTS \$upflatdir/bin/patina-flat" '

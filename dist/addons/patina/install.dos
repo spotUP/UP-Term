@@ -95,6 +95,28 @@ If EXISTS ENVARC:up-term/Dir
   EndIf
   Delete >NIL: ENV:upflatdir QUIET
 EndIf
+; PENS-BEFORE-LISTER (S92e): a marked block at the end of S:User-Startup (after IPrefs and the base's UP-Term: assign,
+; before LoadWB) runs "patina-flat PENS": it opens the Workbench screen and lets the running patina-flat's icon pen
+; holder take its pens before LoadWB starts. DOpus LoadDB (as LoadWB) otherwise takes pens 9-11 shared for its lister
+; and buttons the moment the screen opens. Guarded by the assign and by If EXISTS on the binary: with this package
+; removed the block does nothing. This archive's Uninstall strips it; the base Uninstall strips it with every block.
+Search >NIL: S:User-Startup ";BEGIN UP-Term Patina-Pens"
+If WARN
+  If NOT EXISTS S:User-Startup.before-UP-Term
+    Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    If WARN
+      Quit 20
+    EndIf
+  EndIf
+  Echo >>S:User-Startup ";BEGIN UP-Term Patina-Pens"
+  Echo >>S:User-Startup "Assign >NIL: UP-Term: EXISTS"
+  Echo >>S:User-Startup "If NOT WARN"
+  Echo >>S:User-Startup "  If EXISTS UP-Term:bin/patina-flat"
+  Echo >>S:User-Startup "    UP-Term:bin/patina-flat PENS"
+  Echo >>S:User-Startup "  EndIf"
+  Echo >>S:User-Startup "EndIf"
+  Echo >>S:User-Startup ";END UP-Term Patina-Pens"
+EndIf
 ; Leg W: Patina and the app index start from Workbench's own startup drawer. Two PROJECT icons (default tools
 ; UP-Term:bin/Patina and UP-Term:bin/patina-index, no binary copied, so an Update leaves no stale twin) carry
 ; DONOTWAIT (Workbench does not wait for the program), STARTPRI (Patina 10, the index -10: Patina first) and,

@@ -2,6 +2,8 @@
  *
  *   patina-flat            start: make the public state block "Patina.Flat", print its STATUS, wait for Ctrl-C
  *   patina-flat STATUS     print the STATUS line of the running program and return (flat=on|off|absent|held)
+ *   patina-flat PENS       the S:User-Startup form: open the Workbench screen and let the icon pen holder take its pens
+ *                           before LoadWB (DOpus LoadDB) runs; returns at once
  *   patina-flat BOOT       the startup-sequence form (FLAT-C4): return at once, nothing resident, when neither
  *                           flat-system-look nor flat-window-gadgets is on in the Patina prefs; else start as above
  *
@@ -3478,6 +3480,14 @@ static int is_dopus(const char *a)
            (a[3] == 'U' || a[3] == 'u') && (a[4] == 'S' || a[4] == 's') && (a[5] == 0 || a[5] == ' ' || a[5] == '\t' || a[5] == '\n');
 }
 
+static int is_pens(const char *a)
+{
+    while (*a == ' ' || *a == '\t')
+        a++;
+    return (a[0] == 'P' || a[0] == 'p') && (a[1] == 'E' || a[1] == 'e') && (a[2] == 'N' || a[2] == 'n') &&
+           (a[3] == 'S' || a[3] == 's') && (a[4] == 0 || a[4] == ' ' || a[4] == '\t' || a[4] == '\n');
+}
+
 static int is_help(const char *a)
 {
     while (*a == ' ' || *a == '\t')
@@ -4109,6 +4119,21 @@ int main(void)
         else
             PutStr((STRPTR)"patina-flat: not running\n");
         return q ? 0 : 5;
+    }
+    if (is_pens(args)) {
+        /* S92e PENS-BEFORE-LISTER: S:User-Startup runs it after IPrefs, before LoadWB (DOpus LoadDB on a DOpus system). LoadDB
+         * opens the Workbench and its lister and buttons take pens 9-11 shared at once, before the running program's 1 s
+         * screen watch (pens_sync) sees the screen, so the holder got only 4-8 (rig 98). Open the screen here and sync the
+         * holder from this process: the pens belong to the screen's ColorMap, not to us, so they stay held after we return. */
+        IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
+        GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
+        if (IntuitionBase && GfxBase && OpenWorkBench())
+            ipd_resync();               /* no record (patina-flat not running): nothing to do */
+        if (GfxBase)
+            CloseLibrary((struct Library *)GfxBase);
+        if (IntuitionBase)
+            CloseLibrary((struct Library *)IntuitionBase);
+        return 0;
     }
     if (is_boot(args) && !boot_wanted())
         return 0;

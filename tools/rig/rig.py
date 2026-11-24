@@ -1042,6 +1042,22 @@ def user_startup_with_rig_blocks(data):
     return user_startup_with_block_before_kit(data, SOLIDWIN_UP_BLOCK, SOLIDWIN_UP_BLOCK_TEXT)
 
 
+# PENS-BEFORE-LISTER (S92e): the kit block install.dos appends to S:User-Startup (same text). A clone of an image installed by
+# an older kit lacks it, so the rig appends it like a fresh Install would (RIG-KIT-DERIVE: the clone boots what the build installs).
+KIT_PENS_BLOCK = "UP-Term Patina-Pens"
+KIT_PENS_BLOCK_TEXT = (";BEGIN UP-Term Patina-Pens\nAssign >NIL: UP-Term: EXISTS\nIf NOT WARN\n  If EXISTS UP-Term:bin/patina-flat\n"
+                       "    UP-Term:bin/patina-flat PENS\n  EndIf\nEndIf\n;END UP-Term Patina-Pens\n")
+
+
+def user_startup_with_kit_pens_block(data):
+    """data with the kit's icon pens block at the end (after the assign block), when it is not there yet."""
+    if (";BEGIN %s\n" % KIT_PENS_BLOCK).encode("latin-1") in data:
+        return data
+    if data and not data.endswith(b"\n"):
+        data += b"\n"
+    return data + KIT_PENS_BLOCK_TEXT.encode("latin-1")
+
+
 def sys_hdf_shadows_block(image):
     """RIG-BOOT-STALE-BIN: the rig's shadow block goes into the image's S:User-Startup before the kit's Patina block."""
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
@@ -1050,7 +1066,7 @@ def sys_hdf_shadows_block(image):
     if subprocess.run([xdf, str(image), "read", "S/User-Startup", str(us)], capture_output=True).returncode != 0:
         return
     data = us.read_bytes()
-    new = user_startup_with_rig_blocks(data)
+    new = user_startup_with_kit_pens_block(user_startup_with_rig_blocks(data))
     if new != data:
         us.write_bytes(new)
         subprocess.run([xdf, str(image), "delete", "S/User-Startup"], check=True, capture_output=True)
@@ -1064,7 +1080,7 @@ def os_tree_shadows_block(tree):
         us = pathlib.Path(tree) / sub / "User-Startup"
         if us.is_file():
             data = us.read_bytes()
-            new = user_startup_with_rig_blocks(data)
+            new = user_startup_with_kit_pens_block(user_startup_with_rig_blocks(data))
             if new != data:
                 us.write_bytes(new)
 
