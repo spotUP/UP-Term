@@ -904,6 +904,9 @@ typedef struct flat_trow_tab {
 void flat_trow_init(flat_trow_tab *t);
 /* 1 when the FilePart of the program name (after the last ':' or '/') equals "Time", case ignored as AmigaDOS does. */
 int flat_trow_name(const char *prog);
+/* MUI-FLAT: the UP-*.mcc class (MusicPlayer up-mcc) a stock built-in MUI class name maps to while flat is on, or 0 (stay
+ * stock). The UP class answers the stock MUIA_* IDs itself, so the name is all Patina swaps. Exact name, case kept. */
+const char *flat_mui_map(const char *cls);
 /* Year: new left = row left + frame_out (frame_out = columns the drawn INTEGER frame stands outside its NewGadget box; 0 when the
  * NewGadget carries the frame box). 0 (leave it) unless that moves the box left and every value is sane. */
 int flat_trow_year(int row_left, int frame_out, int yl, int yw, int *new_left);

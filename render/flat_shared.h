@@ -118,6 +118,13 @@ typedef struct flatshared {
     char cgname[8];             /* scratch for the calling CLI command name, used only under Forbid (flat.c cg_feed) */
     WORD trow_raw[2][5];        /* rig evidence: the last INTEGER [0] / CYCLE [1] NewGadget of a program named Time, as given: left top width height id */
     char scrname[MAXPUBSCREENNAME + 1]; /* the default public screen's name for cg_feed, used only under ss (no 140-byte name in that frame: the flat budget) */
+    /* MUI-FLAT: the muimaster.library MUI_NewObjectA (-30) / MUI_MakeObjectA (-120) patches that hand a stock app the
+     * UP-*.mcc twin of a built-in class while flat is on (flat.c mu_install, flat_core.c flat_mui_map) */
+    flat_swap munsw, mmsw;
+    uintptr_t *munslot, *mmslot;
+    struct flat_gate *mungate, *mmgate; /* FLAT-UNLOAD-INFLIGHT: never freed (flat.c gate_make) */
+    struct Library *muibase;    /* muimaster.library, open while the patches are in place */
+    ULONG munew, mumake, muiredir; /* sentinels: patched NewObject calls, MakeObject calls, objects handed the UP twin */
     /* the icon pens are no longer here: the shared holder record IPD_SEM_NAME owns them (iconpen_dos.h, F14) */
 } flatshared;
 

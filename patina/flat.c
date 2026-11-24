@@ -3058,6 +3058,139 @@ static int cg_remove(flatshared *r)
     return rc;
 }
 
+/* MUI-FLAT (owner 2026-11-24, thoughts/shared/mui-flat-plan.md): while flat is on, a stock MUI app that asks muimaster for a
+ * mapped built-in class (flat_mui_map: Cycle.mui) gets the UP-*.mcc twin, which answers the stock MUIA_* IDs itself. Two gated
+ * vectors, because MUI_MakeObjectA builds its Cycle inside muimaster without going through the NewObject LVO (spike rig 8).
+ * Only names are swapped: no code of ours lives in the objects, so unload stays safe once gate_wait sees the calls out.
+ * No UP class installed: the stock class is made, as without the patch. */
+#define FLAT_LVO_MUI_NEWOBJECTA  (-30)
+#define FLAT_LVO_MUI_MAKEOBJECTA (-120)
+#define FLAT_MUIO_CYCLE          4              /* libraries/mui.h (not on the vbcc include path) */
+#define FLAT_MUIA_CYCLE_ENTRIES  0x80420629UL
+#define FLAT_MUIA_CONTROLCHAR    0x8042120bUL
+#define FLAT_MUIA_CYCLECHAIN     0x80421ce7UL
+#define FLAT_MUIA_FONT           0x8042be50UL
+#define FLAT_MUIV_FONT_BUTTON    (-7)
+typedef APTR (*munewfn)(__reg("a0") char *, __reg("a1") struct TagItem *, __reg("a6") struct Library *);
+typedef APTR (*mumakefn)(__reg("d0") LONG, __reg("a0") ULONG *, __reg("a6") struct Library *);
+extern void flat_mui_tpl(void), flat_mui_tpl_end(void);
+
+static APTR mu_new_up(flatshared *r, const char *up, struct TagItem *tags)
+{
+    APTR o = up && r->munsw.saved ? ((munewfn)r->munsw.saved)((char *)up, tags, r->muibase) : 0;
+    if (o)
+        r->muiredir++;
+    return o;
+}
+
+APTR flat_muinew_c(ULONG d0, char *cls, struct TagItem *tags)
+{
+    flatshared *r = g_r;
+    APTR o = 0;
+    (void)d0;
+    r->munew++;
+    if (r->st.enabled && !r->st.held)
+        o = mu_new_up(r, flat_mui_map(cls), tags);
+    return o ? o : ((munewfn)r->munsw.saved)(cls, tags, r->muibase);
+}
+
+/* MUIO_Cycle (label, entries) as stock muimaster builds it (KeyCycle: button font, entries, the key after '_' in the label). */
+APTR flat_muimake_c(ULONG type, ULONG *params, APTR a1)
+{
+    flatshared *r = g_r;
+    APTR o = 0;
+    (void)a1;
+    r->mumake++;
+    if (type == FLAT_MUIO_CYCLE && params && r->st.enabled && !r->st.held) {
+        const char *l = (const char *)params[0], *u = l ? strchr(l, '_') : 0;
+        struct TagItem t[5];
+        t[0].ti_Tag = FLAT_MUIA_FONT, t[0].ti_Data = (ULONG)FLAT_MUIV_FONT_BUTTON;
+        t[1].ti_Tag = FLAT_MUIA_CYCLE_ENTRIES, t[1].ti_Data = params[1];
+        t[2].ti_Tag = FLAT_MUIA_CYCLECHAIN, t[2].ti_Data = 1;
+        t[3].ti_Tag = u && u[1] ? FLAT_MUIA_CONTROLCHAR : TAG_IGNORE;
+        t[3].ti_Data = u && u[1] >= 'A' && u[1] <= 'Z' ? (ULONG)(u[1] + 32) : u ? (ULONG)(unsigned char)u[1] : 0;
+        t[4].ti_Tag = TAG_DONE, t[4].ti_Data = 0;
+        o = mu_new_up(r, flat_mui_map("Cycle.mui"), t);
+    }
+    return o ? o : ((mumakefn)r->mmsw.saved)((LONG)type, params, r->muibase);
+}
+
+static int mu_patch(flatshared *r, flat_swap *sw, uintptr_t **slot, struct flat_gate **gate, int lvo, ULONG handler)
+{
+    unsigned char *entry = (unsigned char *)r->muibase + lvo;
+    int rc;
+    if (!flat_jmp_target(entry))
+        return -100;
+    flat_swap_init(sw);
+    if (!*gate)                         /* FLAT-UNLOAD-INFLIGHT: see gate_make */
+        *gate = gate_make((void *)flat_mui_tpl, (void *)flat_mui_tpl_end, handler);
+    if (!*gate)
+        return -101;
+    g_r = r;
+    Forbid();
+    rc = flat_swap_install(sw, (uintptr_t *)(entry + 2), (uintptr_t)(*gate)->code);
+    if (rc == FLAT_OK) {
+        gate_open(*gate, sw->saved);
+        *slot = (uintptr_t *)(entry + 2);
+        libpatch_done(r->muibase);
+    }
+    Permit();
+    return rc;
+}
+
+static int mu_unpatch(flatshared *r, flat_swap *sw, uintptr_t **slot, struct flat_gate *gate)
+{
+    int rc = FLAT_NOT_INSTALLED;
+    if (!sw->installed)
+        return rc;
+    gate_close(gate);
+    Forbid();
+    rc = flat_swap_remove(sw, *slot, &r->st);
+    if (rc == FLAT_REMOVED)
+        libpatch_done(r->muibase);
+    Permit();
+    if (rc != FLAT_REMOVED)
+        gate_reopen(gate);
+    if (rc == FLAT_REMOVED) {
+        gate_wait(gate);
+        *slot = 0;
+    }
+    return rc;
+}
+
+static int mu_remove(flatshared *r);
+
+/* No MUI on the system (muimaster.library does not open): nothing to patch, not an error. */
+static int mu_install(flatshared *r)
+{
+    int rc;
+    if (!r->muibase)
+        r->muibase = OpenLibrary((STRPTR)"muimaster.library", 19);
+    if (!r->muibase)
+        return FLAT_OK;
+    rc = mu_patch(r, &r->munsw, &r->munslot, &r->mungate, FLAT_LVO_MUI_NEWOBJECTA, (ULONG)flat_muinew_c);
+    if (rc == FLAT_OK)
+        rc = mu_patch(r, &r->mmsw, &r->mmslot, &r->mmgate, FLAT_LVO_MUI_MAKEOBJECTA, (ULONG)flat_muimake_c);
+    if (rc != FLAT_OK)
+        mu_remove(r);
+    return rc;
+}
+
+static int mu_remove(flatshared *r)
+{
+    int rc = mu_unpatch(r, &r->mmsw, &r->mmslot, r->mmgate);
+    if (rc == FLAT_STILL_CHAINED)
+        return rc;
+    rc = mu_unpatch(r, &r->munsw, &r->munslot, r->mungate);
+    if (rc == FLAT_STILL_CHAINED)
+        return rc;
+    if (r->muibase && !r->munsw.installed && !r->mmsw.installed) {
+        CloseLibrary(r->muibase);       /* only now: muimaster may expunge once nothing points into it */
+        r->muibase = 0;
+    }
+    return rc;
+}
+
 static flatshared *find_record(void)
 {
     flatshared *r;
@@ -4102,6 +4235,8 @@ static int install_all(flatshared *r, poll_timer *tm, int *marker_live)
         PutStr((STRPTR)"patina-flat: Text patch not installed\n");
     if (cg_install(r) != FLAT_OK)
         PutStr((STRPTR)"patina-flat: CreateGadgetA patch not installed\n");
+    if (mu_install(r) != FLAT_OK)
+        PutStr((STRPTR)"patina-flat: MUI class patch not installed\n");
     pt_start(tm, (unsigned long)FLAT_MARKER_SECS * 1000000UL);
     return rc;
 }
@@ -4316,6 +4451,11 @@ int main(void)
         if (cg_remove(r) == FLAT_STILL_CHAINED) {
             refused(r, FLAT_REF_GADTOOLS);
             PutStr((STRPTR)"patina-flat: a patch is still chained on gadtools CreateGadgetA, not unloading\n");
+            continue;
+        }
+        if (mu_remove(r) == FLAT_STILL_CHAINED) {
+            refused(r, FLAT_REF_GADTOOLS);  /* shortcut: no own FLAT_REF for MUI; add one if the status row must tell them apart */
+            PutStr((STRPTR)"patina-flat: a patch is still chained on muimaster NewObject or MakeObject, not unloading\n");
             continue;
         }
         STG(FLAT_STG_HOOK_REMOVE);

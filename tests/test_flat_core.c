@@ -4176,6 +4176,8 @@ static int trow_ground(int side, int al, int at, int ar, int ab, int bl, int bt,
 static void test_trow_name(void)
 {
     CHECK_INT(flat_trow_name("Time"), 1);
+    CHECK_INT(!strcmp(flat_mui_map("Cycle.mui"), "UP-Cycle.mcc"), 1);   /* MUI-FLAT */
+    CHECK_INT(flat_mui_map("cycle.mui") == 0 && flat_mui_map("Group.mui") == 0 && flat_mui_map(0) == 0, 1);
     CHECK_INT(flat_trow_name("time"), 1);
     CHECK_INT(flat_trow_name("SYS:Prefs/TIME"), 1);
     CHECK_INT(flat_trow_name("Work:Time"), 1);

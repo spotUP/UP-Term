@@ -1680,6 +1680,11 @@ void flat_trow_init(flat_trow_tab *t)
     memset(t, 0, sizeof(*t));
 }
 
+const char *flat_mui_map(const char *cls)
+{
+    return cls && !strcmp(cls, "Cycle.mui") ? "UP-Cycle.mcc" : 0;
+}
+
 int flat_trow_name(const char *prog)
 {
     const char *p, *f;
