@@ -2047,6 +2047,9 @@ IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
 # UPTERM_PORTS is set near the top so every upterm-ports path follows it.
 # tools/pkgs.py reads a ports package's Description from its recipe there
 export UPTERM_PORTS
+# tools/mkkit.py and tools/mkversions.sh read UPTERM_ROOT; unexported they fall back to vtcon's parent, which in
+# a worktree is .claude/worktrees and makes Files/VERSIONS say "(upterm unknown)" (KIT-VERSIONS-NONE-UNKNOWN)
+export UPTERM_ROOT
 PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
 # tests/test_dist_slim.py reads the staged kit from PORTS_KIT; without the export a UPTERM_PORTS override moved
 # make dist but not make dist-check, which then read the workspace checkout's stale kit (2026-11-07)
