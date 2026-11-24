@@ -455,6 +455,23 @@ int desk_dos_splash_open(void)
     return dk_wb_windows(1) > 0;
 }
 
+/* WBRESET-HOLD: 1 while DOpus is installed (the DOpus5: assign exists) but its port is not up yet; Patina's start holds, as for the splash */
+int desk_dos_dopus_pending(void)
+{
+    BPTR l;
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR oldwin = me->pr_WindowPtr;
+    if (rexx_port_exists(DOPUS_PORT))
+        return 0;
+    me->pr_WindowPtr = (APTR)-1;        /* an assign whose volume is absent is an answer, not a requester */
+    l = Lock((STRPTR)"DOpus5:", ACCESS_READ);
+    me->pr_WindowPtr = oldwin;
+    if (!l)
+        return 0;
+    UnLock(l);
+    return 1;
+}
+
 /* Close our Workbench windows; returns 1 when the bar was open (the state to restore: the want flag is never touched).
  * Another process sends BAR STATUS / BAR OFF; the main process installs direct hooks. */
 static int dk_windows_close(void)
@@ -1283,7 +1300,12 @@ static int dk_wb_restore(void)
     dk_copy_name(DK_WB_ENV, name);
     if (dk_read(name, one, 0) < 0)
         dk_wb_absent();
-    else
+    else if (dk_arc_only) {   /* WBRESET-HOLD: under DOpus the saved bytes go to ENVARC: alone, no editor run */
+        static unsigned char wbuf[DK_IC_BUF];
+        long n = dk_read(name, wbuf, sizeof wbuf);
+        if (n > 0)
+            dk_put_boot("ENVARC:Sys/workbench.prefs", wbuf, n);
+    } else
         dk_editor("Workbench", name);
     dk_copy_file(DK_WBB_SNAP, DK_WBB_PREV);
     dk_copy_file(DK_WBG_SNAP, DK_WBG_PREV);
@@ -1753,6 +1775,8 @@ static void dk_restore_targets(unsigned mask, const char *dir)
     flat_pens = amconf_desk_flat_pens(ap);
     dmask = amconf_desk_mask(ap);
     amconf_return(ap);                  /* both values read once: the restore below is long DOS work */
+    if (dk_arc_only)   /* WBRESET-HOLD: ENVARC: copies only, no editor run, no window close, no Workbench reset under DOpus */
+        pal = 0;
     if (mask & ((1u << DT_FONT) | (1u << DT_POINTER) | (1u << DT_ICONTROL)))
         idle = dk_iprefs_idle_mask();
     if (pal) {
@@ -1767,6 +1791,17 @@ static void dk_restore_targets(unsigned mask, const char *dir)
         if (ed[i].t == DT_PALETTE)
             dk_palette_31_fix(name); /* S56-PALETTE-31-SAFE: the copy the editor and dk_env_fix_file put into ENV: */
         len = dk_read(name, buf, 1);
+        if (dk_arc_only) {
+            char arc[48];
+            strcpy(arc, "ENVARC:Sys/");
+            strcat(arc, strrchr(ed[i].file, '/') + 1);
+            len = dk_read(name, buf, sizeof buf);
+            if (len < 0)
+                DeleteFile((STRPTR)arc);
+            else if (len > 0)
+                dk_put_boot(arc, buf, len);
+            continue;
+        }
         if (len < 0)
             DeleteFile((STRPTR)ed[i].file);
         else if (ed[i].t == DT_PALETTE && !dk_palette_editor_ok())
@@ -1896,7 +1931,9 @@ int desk_dos_marker_recover(void)
         dk_write(DK_PENDING, num, n);
     }
     desk_dos_marker_reverts++;
+    dk_arc_only = rexx_port_exists(DOPUS_PORT);   /* WBRESET-HOLD: same rule as the start apply, a leftover marker never resets the Workbench under DOpus */
     desk_dos_revert();
+    dk_arc_only = 0;
     /* published by the process that recovers (Patina, at its start): the menu's copy of the counter stays 0 */
     am_sentinel("PATINA_DESK_MARKER_REVERTS", (long)desk_dos_marker_reverts);
     am_sentinel("PATINA_DESK_ORIG_DROPPED", (long)desk_dos_originals_dropped);

@@ -311,7 +311,7 @@ static void desk_start_gate(long now)
     ready = scr && g_tick_ok && !g_wb_hold ? desk_dos_wb_ready(now) != DESK_WBR_WAIT : 1;
     if (!desk_start_due(g_desk_started, scr != 0, g_tick_ok, g_wb_hold, ready))
         return;                                 /* S32-GREEN-LINE-96: wb_gate runs first on the tick and ends the hold */
-    if (scr && g_tick_ok && desk_start_hold(desk_dos_splash_open(), &g_splash_since, now))
+    if (scr && g_tick_ok && desk_start_hold(desk_dos_splash_open() || desk_dos_dopus_pending(), &g_splash_since, now))
         return;                                 /* DOPUS-SPLASH-HOLD: no IPrefs write while the DOpus splash is up */
     g_desk_started = 1;
     desk_dos_flat_ensure();                     /* FLAT-ABSENT-AT-BOOT: flat on means patina-flat runs before any flat pen reaches the screen here */
