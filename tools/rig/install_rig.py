@@ -2015,9 +2015,11 @@ def status_processes():
 def case_legw(ck):
     """Leg W W8: where the install starts Patina. Install on a clean image, the blocks and icons, a reboot, the start
     order, Uninstall. The one reachability test of plan 2026-11-08-legw-startup-move.md (D1, D4, D6)."""
-    prepare(None)
+    prepare(None, ['patina'])   # Patina is the up-patina add-on since a60c6561: the Patina-Flat block and the WBStartup icons come from it
     before = Before()
+    plant('patina')
     base_install(ck)
+    addon_install(ck, 'patina')
     dest = run('Type ENVARC:up-term/Dir')[1].strip()
     sseq = run('Type S:Startup-Sequence')[1]
     lines = sseq.splitlines()
