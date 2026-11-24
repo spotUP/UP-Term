@@ -459,9 +459,13 @@ int desk_dos_splash_open(void)
 int desk_dos_dopus_pending(void)
 {
     BPTR l;
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR oldwin = me->pr_WindowPtr;
     if (rexx_port_exists(DOPUS_PORT))
         return 0;
+    me->pr_WindowPtr = (APTR)-1;        /* an assign whose volume is absent is an answer, not a requester */
     l = Lock((STRPTR)"DOpus5:", ACCESS_READ);
+    me->pr_WindowPtr = oldwin;
     if (!l)
         return 0;
     UnLock(l);
