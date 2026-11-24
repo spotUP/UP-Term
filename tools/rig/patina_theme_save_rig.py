@@ -138,7 +138,7 @@ def keep_requester(secs=5, t0=None, settled=None, expect=False):
         except AttributeError:
             return False   # a stub ami (the unit test of the pick order) has no wasabi connection
         except Exception as e:
-            if str(e) not in logged:
+            if 'no window titled' not in str(e) and str(e) not in logged:   # "no window yet" is the normal poll before the requester opens
                 logged.add(str(e))
                 print('[INFO] keep_requester: Keep click raised %s: %s' % (type(e).__name__, e), flush=True)
             if not expect and settled is not None and settled() and not requester_open():
