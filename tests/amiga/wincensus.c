@@ -33,8 +33,8 @@ int main(void)
         Forbid();
         p = (wbr_pub *)FindSemaphore((STRPTR)WBR_SEM_NAME);
         if (p) {
-            printf("WBR phase=%u busy=%u closes=%lu opens=%lu failed=%lu timeouts=%lu diag_vis=%d diag_wins=%d diag_ok=%ld\n",
-                (unsigned)p->rec.phase, (unsigned)p->rec.busy, (unsigned long)p->rec.closes, (unsigned long)p->rec.opens,
+            printf("WBR phase=%u closing=%u closes=%lu opens=%lu failed=%lu timeouts=%lu diag_vis=%d diag_wins=%d diag_ok=%ld\n",
+                (unsigned)p->rec.phase, (unsigned)p->rec.closing, (unsigned long)p->rec.closes, (unsigned long)p->rec.opens,
                 (unsigned long)p->rec.failed, (unsigned long)p->rec.timeouts, p->rec.diag_vis, p->rec.diag_wins, (long)p->rec.diag_ok);
             for (i = 0; i < WBR_MAX; i++)
                 if (p->rec.c[i].task)
