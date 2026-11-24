@@ -1686,6 +1686,14 @@ $(BUILD)/amiga/muigroupbtn: tools/rig/fixtures/mui-group-button/muigroupbtn.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -I$(MUI_INC) -o $@ tools/rig/fixtures/mui-group-button/muigroupbtn.c -lamiga
 
+# MUI-REDIRECT-SPIKE: Cycle.mui -> UP-Cycle.mcc while flat is on (muiredir) and its stock-app fixture (muicycle)
+$(BUILD)/amiga/muiredir: tests/amiga/muiredir.c render/flat_shared.h render/flat_core.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -I$(MUI_INC) -o $@ tests/amiga/muiredir.c -lamiga
+$(BUILD)/amiga/muicycle: tests/amiga/muicycle.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -I$(MUI_INC) -o $@ tests/amiga/muicycle.c -lamiga
+
 # Windows with sysiclass gadgets opened in a loop, and a hash of their frame pixels (FLAT-C1 rig, tools/rig/patina_flat_rig.py)
 $(BUILD)/amiga/flatwin: tests/amiga/flatwin.c render/flat_core.h
 	@mkdir -p $(BUILD)/amiga
