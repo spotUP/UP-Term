@@ -2738,6 +2738,29 @@ def wb_reset_retry_gadgets(tree):
     return gads, " ; ".join(other)
 
 
+LATE_REQ_WATCH = 65   # s after the RTG switch a late System Request may still come (IPrefs on the RTG DOpus screen, ~boot+65 s)
+
+
+def late_sysreq(ami, log, after):
+    """RIG-LATE-REQ: a System Request raised AFTER the Workbench turned RTG (IPrefs' second reset, on the
+    'Directory Opus' screen) was never seen and start returned 0. Fail the start on it, and keep its window
+    list in paths.REPORTS (retry.log goes when the rig stops). Retry is not clicked: windows are open by then."""
+    tree = ami.req(0x0D).decode("latin-1").splitlines()
+    gads, other = wb_reset_retry_gadgets(tree)
+    sysreq = [l.strip() for l in tree if l.startswith("W ") and '"System Request"' in l]
+    if not (gads or other or sysreq):
+        return
+    shown = " | ".join(l.strip() for l in tree if l.startswith(("S ", "W ", "G ")))
+    line = "%.0fs after RTG: late System Request: %s\n" % (after, shown)
+    log.write(line)
+    log.flush()
+    paths.REPORTS.mkdir(parents=True, exist_ok=True)
+    with open(paths.REPORTS / "late-sysreq.log", "a") as f:
+        f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + line + "\n".join(tree) + "\n")
+    sys.exit("rig: a System Request came %.0f s after the Workbench turned RTG (RIG-LATE-REQ; IPrefs reset on the RTG "
+             "screen?). Saw: %s (see %s)" % (after, shown, paths.REPORTS / "late-sysreq.log"))
+
+
 def retry_wb_reset():
     """--060: the boot comes up on a PAL Workbench with Intuition's "attempting
     to reset the Workbench screen ... close all windows" requester (IPrefs'
@@ -2746,6 +2769,7 @@ def retry_wb_reset():
     wasabid answers, so wait for it (up to two minutes) and click the
     gadget labelled Retry.
     A saved native (chipset) ScreenMode has no RTG switch to wait for: it returns at once.
+    Once RTG it keeps looking for a late System Request for LATE_REQ_WATCH s (late_sysreq).
     What it saw goes to build/rig/retry.log."""
     sys.path.insert(0, str(ROOT / "tools/rig"))
     import ami
@@ -2757,15 +2781,26 @@ def retry_wb_reset():
         return
     t0 = time.time()
     clicks = 0
-    while time.time() - t0 < 120:
+    rtg0 = None   # when the Workbench last turned RTG
+    noted = False
+    while rtg0 is not None or time.time() - t0 < 120:
         b = ami.req(0x0A)
         width, height = int.from_bytes(b[2:4], "big"), int.from_bytes(b[4:6], "big")
         if (width, height) not in NATIVE_WB:   # the 640x360 RTG mode is 640 wide too
-            if time.time() - t0 > 20:   # RTG, and nothing came for 20 s
-                log.write("%.0fs RTG %dx%d\n" % (time.time() - t0, width, height))
+            now = time.time()
+            if rtg0 is None:
+                rtg0 = now
+            if now - t0 > 20 and not noted:   # RTG, and nothing came for 20 s
+                noted = True
+                log.write("%.0fs RTG %dx%d\n" % (now - t0, width, height))
+                log.flush()
+            if now - rtg0 > LATE_REQ_WATCH:
                 return
+            if now - t0 > 20:
+                late_sysreq(ami, log, now - rtg0)
             time.sleep(2)
             continue
+        rtg0 = None
         tree = ami.req(0x0D).decode("latin-1").splitlines()
         log.write("%.0fs PAL\n%s\n" % (time.time() - t0, "\n".join(tree[:20])))
         # the requester: the gadget labelled Retry; ami.py's UITREE gives gadgets
