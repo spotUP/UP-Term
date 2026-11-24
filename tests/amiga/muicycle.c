@@ -54,7 +54,7 @@ int main(void)
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
     if (!IntuitionBase || !(MUIMasterBase = OpenLibrary((STRPTR)"muimaster.library", 19))) { puts("no muimaster"); return 20; }
     c[0] = CycleObject, MUIA_Cycle_Entries, ents, MUIA_Cycle_Active, 1, End;
-    c[1] = MUI_MakeObject(MUIO_Cycle, "_Mode", ents);
+    c[1] = MUI_MakeObject(MUIO_Cycle, (ULONG)"_Mode", ents);
     app = ApplicationObject, MUIA_Application_Title, "MuiCycle", MUIA_Application_Base, "MUICYCLE",
         SubWindow, win = WindowObject, MUIA_Window_Title, "MUI Cycle Redirect Test", MUIA_Window_ID, 1,
             WindowContents, VGroup, Child, c[0], Child, c[1], End,
