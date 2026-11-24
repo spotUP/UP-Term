@@ -460,8 +460,12 @@ static void test_dopus_decide(void)
     CHECK_INT(flat_dopus_decide(&s, FLAT_EL_FIELDBOX, 0, 5, 0, 0x1A1B26, 0x1A1B26), FLAT_DRAW_SKIP);
     CHECK_INT(flat_dopus_decide(&s, FLAT_EL_DRAWBOX, 0, 2, 0, 0xFFFFFF, 0xAAAAAA), FLAT_DRAW_STOCK);
     CHECK_INT(flat_dopus_decide(&s, FLAT_EL_DRAWBOX, 0, 2, 0, 0x1A1B26, -1), FLAT_DRAW_STOCK);   /* one colour unknown: pens decide */
+    /* FLAT-INPUT-NOT-FLAT: an input field under flat on is flat with stock pens too (rig 7 Workbench: SHINE a9b1d6, BACK 1a1b26) */
+    CHECK_INT(flat_dopus_decide(&s, FLAT_EL_FIELDBOX, 0, 2, 0, 0xA9B1D6, 0x1A1B26), FLAT_DRAW_SKIP);
+    CHECK_INT(flat_dopus_decide(&s, FLAT_EL_FIELDBOX, 1, 2, 0, -1, -1), FLAT_DRAW_SKIP);
     s.held = 1;
     CHECK_INT(flat_dopus_decide(&s, FLAT_EL_DRAWBOX, 0, 0, 0, -1, -1), FLAT_DRAW_STOCK);       /* kill switch */
+    CHECK_INT(flat_dopus_decide(&s, FLAT_EL_FIELDBOX, 0, 2, 0, -1, -1), FLAT_DRAW_STOCK);      /* kill switch holds for fields too */
     s.held = 0;
     CHECK_INT(flat_dopus_decide(&s, 5, 0, 0, 0, -1, -1), FLAT_DRAW_STOCK);
     CHECK_INT(flat_dopus_decide(0, FLAT_EL_DRAWBOX, 0, 0, 0, -1, -1), FLAT_DRAW_STOCK);

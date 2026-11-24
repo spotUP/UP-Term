@@ -332,7 +332,9 @@ int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_sh
         return FLAT_DRAW_STOCK;
     if (!s->enabled || s->held)
         return FLAT_DRAW_STOCK;
-    if (pen_shine == pen_back)
+    /* FLAT-INPUT-NOT-FLAT (2026-11-25): an input field is always ours under flat on, whatever the pens: the stock pens of a
+     * themed Workbench (SHINE a9b1d6, BACKGROUND 1a1b26 on rig 7) left the DOpus 5.82 getstring field a stock ridge */
+    if (pen_shine == pen_back || element == FLAT_EL_FIELDBOX)
         return FLAT_DRAW_SKIP;
     /* B10 (a): different pens, same colour is flat too; an unknown colour (-1) leaves the pen numbers to decide */
     if (rgb_shine >= 0 && rgb_back >= 0 && rgb_shine == rgb_back)
