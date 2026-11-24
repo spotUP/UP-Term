@@ -2118,7 +2118,8 @@ int desk_dos_start_apply(void)
     static unsigned char wb[DK_BUF], pat[DK_BUF], out[DK_BUF], pal[DK_BUF], pcur[8192], pnew[8192], fcur[DK_BUF], fnew[DK_BUF];
     am_prefs *ap;
     gtheme th;
-    unsigned mask, plan;
+    unsigned mask, plan, plan_resets;
+    int arc;
     unsigned char sv[2], pens[DK_SLOTS];
     int flat, depth, saved = -1, gsaved = -1, was, icon_text;
     unsigned long idle = 0;
@@ -2187,7 +2188,16 @@ int desk_dos_start_apply(void)
      * Workbench screen. Please close the..."), so our windows close around them, as dk_apply closes them around a reset. With
      * plan 0 the palette already matches (a fresh ENV: always plans the WB bit when flat), so dk_flat_pens writes nothing. */
     was = -1;
-    if (plan & DK_START_RESETS) {   /* palette, pointer, font and pattern write no ENV: file at boot, so they reset nothing */
+    /* AM-WBRESET-RECUR: the flat-pens palette/pattern, Workbench.prefs border and icontrol writes below went to ENV: with DOpus up, and
+     * IPrefs reset the Workbench under DOpus's windows (System Request at Patina start). With DOpus up they go to ENVARC: only, as
+     * desk_dos_apply does (S92-DKAPPLY); nothing resets, so no window close and no persist copy (ENV: holds the old bytes). */
+    arc = dk_arc_only = rexx_port_exists(DOPUS_PORT);
+    am_sentinel("PATINA_DESK_START_ARC_ONLY", (long)arc);
+    if (arc)
+        plan_resets = 0;
+    else
+        plan_resets = plan & DK_START_RESETS;
+    if (plan_resets) {   /* palette, pointer, font and pattern write no ENV: file at boot, so they reset nothing */
         idle = dk_iprefs_idle_mask();
         desk_dos_wb_closes++;
         was = dk_windows_close();
@@ -2220,7 +2230,8 @@ int desk_dos_start_apply(void)
         UnLock(CreateDir((STRPTR)DK_WORK));
         if (ic_act == DK_IC_RESTORE ? dk_icontrol_restore() : dk_icontrol(1, &th))
             desk_dos_start_writes++;
-        dk_wait_iprefs(idle);
+        if (!arc)
+            dk_wait_iprefs(idle);
     }
     if (flat)
         dk_flat_pens(&th);   /* idempotent: writes palette / own backdrop only when they differ */
@@ -2236,11 +2247,13 @@ int desk_dos_start_apply(void)
         if (!dk_pending_mask())
             DeleteFile((STRPTR)DK_WBPEND);   /* no confirm owns the Workbench.prefs snapshot */
     }
-    if (plan & DK_START_RESETS) {
+    if (plan_resets) {
         dk_wait_iprefs(idle);
         dk_windows_open(was);
     }
-    dk_start_persist(plan & ~DK_START_ARC, flat);   /* ENV: still holds the old bytes of the ENVARC:-only parts: no copy over them */
+    dk_arc_only = 0;
+    if (!arc)
+        dk_start_persist(plan & ~DK_START_ARC, flat);   /* ENV: still holds the old bytes of the ENVARC:-only parts: no copy over them */
     if (dk_live_want)
         dk_live_pens(dk_live_want > 0 ? &th : 0, dk_live_flat);
     if (plan & DESK_START_PALETTE) {
