@@ -1620,18 +1620,24 @@ static void test_which_from_gtype(void)
         flat_state fs;
         memset(&fs, 0, sizeof fs);
         fs.enabled = 1;
-        CHECK_INT(flat_frame_decide(&fs, 0x202UL, 0, 0), FLAT_DRAW_SKIP);
-        CHECK_INT(flat_frame_decide(&fs, FLAT_IM_DRAWFRAME, 2, 2), FLAT_DRAW_SKIP);
-        CHECK_INT(flat_frame_decide(&fs, 0x202UL, 2, 0), FLAT_DRAW_STOCK);        /* stock pens keep stock bevels */
-        CHECK_INT(flat_frame_decide(&fs, 0x203UL, 0, 0), FLAT_DRAW_STOCK);        /* IM_ERASE */
-        CHECK_INT(flat_frame_decide(&fs, 0x204UL, 0, 0), FLAT_DRAW_STOCK);        /* IM_HITTEST: never skipped */
-        CHECK_INT(flat_frame_decide(&fs, 0x0UL, 0, 0), FLAT_DRAW_STOCK);
+        CHECK_INT(flat_frame_decide(&fs, 0x202UL, 0, 0, 0), FLAT_DRAW_SKIP);
+        CHECK_INT(flat_frame_decide(&fs, FLAT_IM_DRAWFRAME, 2, 2, 0), FLAT_DRAW_SKIP);
+        CHECK_INT(flat_frame_decide(&fs, 0x202UL, 2, 0, 0), FLAT_DRAW_STOCK);        /* stock pens off a themed screen keep stock bevels */
+        /* FONT-PREFS-NOT-FLAT: Font prefs on the 3.1 Workbench (stock pen map SHINE 2, BACK 0) draws flat frames */
+        CHECK_INT(flat_frame_decide(&fs, 0x202UL, 2, 0, 1), FLAT_DRAW_SKIP);
+        CHECK_INT(flat_frame_decide(&fs, FLAT_IM_DRAWFRAME, 2, 0, 1), FLAT_DRAW_SKIP);
+        CHECK_INT(flat_frame_decide(&fs, 0x203UL, 2, 0, 1), FLAT_DRAW_STOCK);     /* IM_ERASE stays stock on a themed screen */
+        CHECK_INT(flat_frame_decide(&fs, 0x203UL, 0, 0, 0), FLAT_DRAW_STOCK);        /* IM_ERASE */
+        CHECK_INT(flat_frame_decide(&fs, 0x204UL, 0, 0, 0), FLAT_DRAW_STOCK);        /* IM_HITTEST: never skipped */
+        CHECK_INT(flat_frame_decide(&fs, 0x0UL, 0, 0, 0), FLAT_DRAW_STOCK);
         fs.held = 1;
-        CHECK_INT(flat_frame_decide(&fs, 0x202UL, 0, 0), FLAT_DRAW_STOCK);
+        CHECK_INT(flat_frame_decide(&fs, 0x202UL, 0, 0, 0), FLAT_DRAW_STOCK);
+        CHECK_INT(flat_frame_decide(&fs, 0x202UL, 2, 0, 1), FLAT_DRAW_STOCK);
         fs.held = 0;
         fs.enabled = 0;
-        CHECK_INT(flat_frame_decide(&fs, 0x202UL, 0, 0), FLAT_DRAW_STOCK);
-        CHECK_INT(flat_frame_decide(0, 0x202UL, 0, 0), FLAT_DRAW_STOCK);
+        CHECK_INT(flat_frame_decide(&fs, 0x202UL, 0, 0, 0), FLAT_DRAW_STOCK);
+        CHECK_INT(flat_frame_decide(&fs, 0x202UL, 2, 0, 1), FLAT_DRAW_STOCK);
+        CHECK_INT(flat_frame_decide(0, 0x202UL, 0, 0, 0), FLAT_DRAW_STOCK);
     }
     {
         char fl[64];

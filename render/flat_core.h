@@ -310,10 +310,12 @@ int flat_dopus_image_which(int type);
 
 /* FLAT-C8: frameiclass (every GadTools bevel and ridge: buttons, strings, checkboxes, cycles, listviews, DrawBevelBox).
  * The same decision for one method call of the class: SKIP only for IM_DRAW (0x202) and IM_DRAWFRAME (0x206), when the
- * switch is on, not held, and the screen pens are flat (shine == background). Any other method (OM_GET, IM_ERASE,
+ * switch is on, not held, and either the screen pens are flat (shine == background) or the screen is one Patina themes
+ * (themed: the Workbench or a listed screen; FONT-PREFS-NOT-FLAT, on KS 3.1 the Workbench pen map stays stock because
+ * palette.prefs cannot carry it, yet the frame draws from Patina's own screen pens). Any other method (OM_GET, IM_ERASE,
  * IM_HITFRAME, ...) is STOCK. A missing state is STOCK. */
 #define FLAT_IM_DRAWFRAME 0x206UL
-int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, int pen_back);
+int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, int pen_back, int themed);
 /* STATUS line of the frameiclass hook: "frame=absent" or "frame=hooked calls=N flat=N busy=N nostk=N" (flat = draws skipped; busy / nostk =
  * stock-draw fallbacks of c8_draw_on: semaphore busy / no private stack). */
 int flat_frame_status_line(int installed, unsigned long calls, unsigned long flat, unsigned long busy, unsigned long nostk,
