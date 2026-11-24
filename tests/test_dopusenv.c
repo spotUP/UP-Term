@@ -107,4 +107,29 @@ void suite_dopusenv(void)
     CK("pick: copy goes back to the saved original", strcmp(de_orig_pick("DOpus5:Buttons/Patina-bank-mybar-filled-24", "DH1:Mine/mybar"), "DH1:Mine/mybar") == 0);
     CK("pick: copy without a usable record is stock flow", !de_orig_pick("DOpus5:Buttons/Patina-bank-mybar-filled-24", NULL) && !de_orig_pick("DOpus5:Buttons/Patina-bank-mybar-filled-24", "") && !de_orig_pick("DOpus5:Buttons/Patina-bank-mybar-filled-24", "DOpus5:Buttons/Patina-bank-mybar-outline-16"));
     CK("pick: empty and NULL", !de_orig_pick("", "x") && !de_orig_pick(NULL, "x"));
+
+    /* user pens: ENVR palette_count (offset 308, upstream 8) to 0 in place, every other byte unchanged */
+    {
+        uint8_t e[1024], u[1024], env[320];
+        size_t en, k, at = 12 + 8 + DE_ENVR_USERPENS;
+        int same = 1;
+        memset(env, 7, sizeof env);
+        env[DE_ENVR_USERPENS] = 0;
+        env[DE_ENVR_USERPENS + 1] = 8;
+        memcpy(e, "FORM\0\0\0\0EPUS", 12);
+        en = put_chunk(e, 12, "ENVR", (const char *)env, sizeof env);
+        en = put_chunk(e, en, "TBAR", DE_STOCK, strlen(DE_STOCK) + 1);
+        e[6] = (uint8_t)((en - 8) >> 8); e[7] = (uint8_t)(en - 8);
+        memcpy(u, e, en);
+        CI("user pens 8 to 0", de_userpens_zero(u, en), 1);
+        CK("user pens field 0", u[at] == 0 && u[at + 1] == 0);
+        for (k = 0; k < en; k++)
+            if (k != at + 1 && u[k] != e[k]) same = 0;
+        CK("user pens: only the field changes", same);
+        CI("user pens already 0", de_userpens_zero(u, en), 0);
+        CI("user pens: ENVR too short", de_userpens_zero(a, an), DE_BAD);
+        memcpy(u, e, en); memcpy(u + 12, "ENV2", 4);
+        CI("user pens: no ENVR", de_userpens_zero(u, en), DE_NOENVR);
+        CI("user pens: truncated", de_userpens_zero(e, en - 30), DE_BAD);
+    }
 }

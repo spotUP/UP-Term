@@ -14,7 +14,14 @@
 #define DE_BANK_B    "PROGDIR:Buttons/Patina-toolbar-"
 #define DE_BANK_C    "DOpus5:Buttons/Patina-bank-"   /* flattened copy of a user bank: Patina-bank-<bank>-<set> (dt_bank_name); never matches bank A */
 
-enum { DE_OK = 0, DE_BAD = -1 /* not FORM EPUS, truncated, chunk past the end */, DE_NOTBAR = -2, DE_FULL = -3 /* output or path too small */ };
+enum { DE_OK = 0, DE_BAD = -1 /* not FORM EPUS, truncated, chunk past the end */, DE_NOTBAR = -2, DE_FULL = -3 /* output or path too small */,
+       DE_NOENVR = -4 };
+
+/* Offset of `WORD palette_count` ("Number of user colours", Environment > Palette) in the ENVR body: CFG_ENVR in dopus5
+ * Program/dopus_config.h (screen_mode 4, 4 UWORDs, palette[50], pubscreen_name[80], IBox 8, general_screen_flags 4,
+ * source_col 2, dest_col 2). Upstream ships 8: on the Workbench screen DOpus then takes 8 pens (4..11 at depth 4) with an
+ * exact ObtainBestPen each (palette_routines.c get_colour_table), the pens Patina's icon pen holder needs. */
+#define DE_ENVR_USERPENS 308
 
 /* Copies TBAR's string to out (NUL ended, at most cap bytes). DE_OK, DE_BAD, DE_NOTBAR, DE_FULL (string does not fit or is not NUL ended). */
 int de_tbar_get(const uint8_t *buf, size_t len, char *out, size_t cap);
@@ -22,6 +29,10 @@ int de_tbar_get(const uint8_t *buf, size_t len, char *out, size_t cap);
 /* Writes buf with TBAR's body replaced by path + NUL (+ pad to even) to out, FORM size fixed, every other byte unchanged.
  * Returns the new length (>= 0), or DE_BAD / DE_NOTBAR / DE_FULL; out is untouched on failure. A missing TBAR is not added. */
 long de_tbar_set(const uint8_t *buf, size_t len, const char *path, uint8_t *out, size_t outcap);
+
+/* Sets ENVR's palette_count to 0 in place (length unchanged): DOpus then draws in the Workbench's pens only.
+ * 1 when changed, 0 when already 0, DE_BAD (also an ENVR too short for the field) or DE_NOENVR. */
+int de_userpens_zero(uint8_t *buf, size_t len);
 
 /* 1 when cur is our bank (DE_BANK_A / B / C prefix, any case). */
 int de_is_ours(const char *cur);

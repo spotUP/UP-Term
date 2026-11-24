@@ -33,13 +33,38 @@ class BootDopusAfterPens(unittest.TestCase):
     def test_icon_pens_direct_rules(self):
         b = body(IPD, "int ipd_icon_pens_direct(void)")
         self.assertIn("ipd_pen_not_exclusive(", b, "a pen another client holds exclusive must be skipped")
-        self.assertIn("depth == 4 || depth == 5", b, "only depth 4/5 maps slots 8..15 onto pens 8..15 (ip_fold)")
+        self.assertIn("ip_holder_owns_roles(depth", b, "only depth 4/5 maps slots 8..15 onto pens 8..15 (ip_fold)")
         self.assertLess(b.index("ipd_icon_rgb("), b.index("LockPubScreenList()"), "theme read (DOS) under the list lock")
 
     def test_theme_send_honours_force(self):
         head = "int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char *line, char *result, int cap, void *ud),\n" \
                "                     void *ud, const dopus_tb_ops *tb)"
         self.assertIn("tb->force", body(MT, head))
+
+
+class PensBeforeLister(unittest.TestCase):
+    """S92e PENS-BEFORE-LISTER: the holder syncs on an open Workbench before LoadWB (DOpus LoadDB) runs."""
+    FLAT = (ROOT / "patina" / "flat.c").read_text()
+    DOS = (ROOT / "dist" / "addons" / "patina" / "install.dos").read_text()
+    UNINST = (ROOT / "dist" / "addons" / "patina" / "uninstall-body.dos").read_text()
+
+    def test_pens_form_opens_the_workbench_then_syncs(self):
+        k = self.FLAT.index("if (is_pens(args)) {")
+        b = self.FLAT[k:self.FLAT.index("return 0;", k)]
+        self.assertLess(b.index("OpenWorkBench()"), b.index("ipd_resync()"))
+        self.assertLess(k, self.FLAT.index("if (is_boot(args)"), "PENS must return before the resident start")
+
+    def test_patina_install_appends_the_block_with_the_rig_text(self):
+        import re
+        sys.path.insert(0, str(ROOT / "tools" / "rig"))
+        import rig
+        k = self.DOS.index('Echo >>S:User-Startup ";BEGIN UP-Term Patina-Pens"')
+        self.assertIn("unstartup.sh Patina-Pens", self.UNINST)
+        body = re.findall(r'(?m)^  Echo >>S:User-Startup "(.*)"$', self.DOS[k - 40:self.DOS.index(";END UP-Term Patina-Pens", k) + 40])
+        self.assertEqual("\n".join(body) + "\n", rig.KIT_PENS_BLOCK_TEXT)
+        once = rig.user_startup_with_kit_pens_block(b";BEGIN UP-Term assign\n;END UP-Term assign")
+        self.assertTrue(once.endswith(rig.KIT_PENS_BLOCK_TEXT.encode()))
+        self.assertEqual(rig.user_startup_with_kit_pens_block(once), once)
 
 
 if __name__ == "__main__":

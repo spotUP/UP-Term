@@ -52,8 +52,12 @@ int ip_fold(const gtheme *t, int slot, int depth)
         return 0;
     if (depth >= 6)
         return IP_FIRST + slot;
-    if (depth >= 4 && slot >= 8)
-        return slot;
+    if (depth >= 4) {
+        desk_pen_plan p;
+        desk_pen_plan_for(depth, &p);
+        if (slot >= p.icon_slot && slot < p.icon_slot + p.icon_count)
+            return p.icon_first + slot - p.icon_slot;
+    }
     ip_colours(t, desk_role(t, DK_BG), rgb);   /* the fold picks among the role pens, which are drawn on the panel tone */
     return gt_nearest_role_pen(t, ((uc_u32)rgb[slot][0] << 16) | ((uc_u32)rgb[slot][1] << 8) | rgb[slot][2], depth);
 }
@@ -84,6 +88,8 @@ int ip_holder_release(ip_holder *h, const ip_ops *o)
         n++;
     }
     h->pcount = 0;
+    memset(h->refused, 0, sizeof h->refused);
+    memset(h->rrefused, 0, sizeof h->rrefused);
     h->held = 0;
     h->recheck = 0;
     h->screen = NULL;            /* nothing is obtained on any screen now: the next sync obtains again */
@@ -100,6 +106,16 @@ static int ip_pen_is_ours(const ip_holder *h, int pen)
         if (h->rpen[i] == pen && h->rhave[i])
             return 1;
     return 0;
+}
+
+/* S92E-PENS: 1 when the exclusive obtain of `pen` succeeded. A pen not on the free list (held by anyone, us included, or one of the
+ * ROM-shared Workbench pens 0-3 and 12-15 at depth 4) is not asked for: that obtain can only fail, and the sync that retries it runs
+ * every tick. */
+static int ip_try_obtain(const ip_ops *o, int pen, unsigned r, unsigned g, unsigned b)
+{
+    if (o->is_free && !o->is_free(o->ctx, pen))
+        return 0;
+    return o->obtain(o->ctx, pen, r, g, b) == pen;
 }
 
 int ip_plan_sync(ip_holder *h, const ip_ops *o, const gt_plan_pen *plan, int n)
@@ -133,7 +149,7 @@ int ip_plan_sync(ip_holder *h, const ip_ops *o, const gt_plan_pen *plan, int n)
                     o->set_rgb(o->ctx, plan[j].pen, c);
             }
         } else if (h->pcount < GTE_COUNT &&
-                   o->obtain(o->ctx, plan[j].pen, (c >> 16) & 255, (c >> 8) & 255, c & 255) == plan[j].pen) {
+                   ip_try_obtain(o, plan[j].pen, (c >> 16) & 255, (c >> 8) & 255, c & 255)) {
             h->ppen[h->pcount] = plan[j].pen;
             h->prgb[h->pcount] = c;
             h->pcount++;
@@ -156,10 +172,11 @@ int ip_holder_obtain(ip_holder *h, const ip_ops *o, const void *screen, int dept
     for (i = 0; i < p.icon_count; i++) {
         const uint8_t *c = rgb[p.icon_slot + i];
         memcpy(h->rgb[i], c, 3);
-        if (o->obtain(o->ctx, p.icon_first + i, c[0], c[1], c[2]) == p.icon_first + i) {
+        if (ip_try_obtain(o, p.icon_first + i, c[0], c[1], c[2])) {
             h->have[i] = 1;
             h->held++;
-        }
+        } else if (o->is_shared && o->is_shared(o->ctx, p.icon_first + i))
+            h->refused[i] = 1;
     }
     return h->held;
 }
@@ -232,7 +249,10 @@ int ip_holder_verify(ip_holder *h, const ip_ops *o, const void *screen, int dept
         return 0;
     if (h->depth == depth)
         for (i = 0; i < h->count; i++) {
-            int fr = o->is_free(o->ctx, h->first + i);
+            int fr;
+            if (h->refused[i])
+                continue;                /* S92E-PENS: another client shares it; no probe until the holder is forgotten */
+            fr = o->is_free(o->ctx, h->first + i);
             if (fr && h->have[i])
                 lost = 1;
             else if (fr)
@@ -240,7 +260,10 @@ int ip_holder_verify(ip_holder *h, const ip_ops *o, const void *screen, int dept
         }
     if (h->depth == depth)
         for (i = 0; i < h->rcount; i++) {
-            int fr = o->is_free(o->ctx, h->rpen[i]);
+            int fr;
+            if (h->rrefused[i])
+                continue;
+            fr = o->is_free(o->ctx, h->rpen[i]);
             if (fr && h->rhave[i])
                 lost = 1;
             else if (fr)
@@ -340,9 +363,10 @@ int ip_sync(ip_holder *h, const ip_ops *o, int hold, const void *screen, int dep
         for (k = 0; k < n; k++) {
             h->rpen[k] = lp[k];
             h->rrgb[k] = lc[k];
-            h->rhave[k] = (uint8_t)(o->obtain(o->ctx, lp[k], (lc[k] >> 16) & 255, (lc[k] >> 8) & 255, lc[k] & 255) == lp[k]);
+            h->rhave[k] = (uint8_t)(ip_try_obtain(o, lp[k], (lc[k] >> 16) & 255, (lc[k] >> 8) & 255, lc[k] & 255));
             if (h->rhave[k] && o->set_rgb)
                 o->set_rgb(o->ctx, lp[k], lc[k]);
+            h->rrefused[k] = (uint8_t)(!h->rhave[k] && o->is_shared && o->is_shared(o->ctx, lp[k]));
         }
     }
     h->new_identity = ip_sync_new_identity(old, screen, act, lost);

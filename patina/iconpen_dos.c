@@ -56,15 +56,22 @@ static void pen_release(void *ctx, int pen)
         ReleasePen(c->cur, (ULONG)pen);
 }
 
-/* The ColorMap's own answer: an exclusive obtain of a pen anyone holds fails; one that succeeds is handed straight back. */
+/* S92E-PENS: 1 when `pen` is on the ColorMap's free list, the pens an exclusive ObtainPen can take. Read from PalExtra under its
+ * semaphore (the leaf lock ObtainPen itself takes) instead of a probe obtain: the old exclusive-obtain probe failed on every pen in
+ * use, so each verify tick and label draw issued failed exclusive obtains (5261 in 20 s on rig 98). pe_AllocList is one UBYTE per
+ * pen on KS 3.1 (palprobe's free-list walk reads it so). */
 int ipd_pen_is_free(struct ColorMap *cm, int pen)
 {
-    if (!cm)
+    struct PaletteExtra *pe = cm ? cm->PalExtra : 0;
+    int i, p, n, on = 0;
+    if (!pe || pen < 0 || pen >= (int)cm->Count)
         return 0;
-    if ((LONG)ObtainPen(cm, (ULONG)pen, 0, 0, 0, PENF_EXCLUSIVE | PENF_NO_SETCOLOR) != (LONG)pen)
-        return 0;
-    ReleasePen(cm, (ULONG)pen);
-    return 1;
+    n = cm->Count > 256 ? 256 : cm->Count;
+    ObtainSemaphore(&pe->pe_Semaphore);
+    for (i = 0, p = pe->pe_FirstFree; i < pe->pe_NFree && p < n && !on; i++, p = pe->pe_AllocList[p])
+        on = p == pen;
+    ReleaseSemaphore(&pe->pe_Semaphore);
+    return on;
 }
 
 /* FLAT-PEN5-MAGENTA: 1 when no client holds `pen` exclusive: free, or shared (ObtainBestPen users; ObtainPen fails on any pen in use,
@@ -89,6 +96,13 @@ static int ipd_pen_not_exclusive(struct ColorMap *cm, int pen)
 static int pen_is_free(void *ctx, int pen)
 {
     return ipd_pen_is_free(((pen_ctx *)ctx)->cur, pen);
+}
+
+/* S92E-PENS: in use, but not exclusive: another client holds it shared (ip_ops.is_shared) */
+static int pen_is_shared(void *ctx, int pen)
+{
+    struct ColorMap *cm = ((pen_ctx *)ctx)->cur;
+    return !ipd_pen_is_free(cm, pen) && ipd_pen_not_exclusive(cm, pen);
 }
 
 static void pen_set_rgb(void *ctx, int pen, uc_u32 rgb)
@@ -348,6 +362,7 @@ static void pens_sync(ipd_rec *r)
     o.obtain = pen_obtain;
     o.release = pen_release;
     o.is_free = pen_is_free;
+    o.is_shared = pen_is_shared;
     o.theme = pens_theme_cached;
     o.set_rgb = pen_set_rgb;
     o.theme_ready = pens_theme_ready;
@@ -546,6 +561,7 @@ void ipd_recolour(void)
     o.obtain = pen_obtain;
     o.release = pen_release;
     o.is_free = pen_is_free;
+    o.is_shared = pen_is_shared;
     o.theme = pens_theme_cached;
     o.set_rgb = pen_set_rgb;
     o.ctx = &c;
@@ -594,6 +610,7 @@ int ipd_icon_pens_direct(void)
     struct List *pl;
     struct Screen *sc;
     ip_holder *h = r ? &r->t.slot[0].sh.h : 0;
+    desk_pen_plan pp;
     int i, depth, n = 0;
     ipd_icon_rgb(rgb);              /* DOS reads: before any lock */
     if (r)
@@ -601,8 +618,9 @@ int ipd_icon_pens_direct(void)
     pl = LockPubScreenList();
     sc = ipd_wb_screen_in(pl);
     depth = sc ? ip_screen_depth(sc->BitMap.Depth, (sc->ViewPort.Modes & EXTRA_HALFBRITE) != 0) : 0;
+    desk_pen_plan_for(depth, &pp);
     if (ip_holder_owns_roles(depth, 1))
-        for (i = 8; i < IP_PENS; i++)
+        for (i = pp.icon_first; i < pp.icon_first + pp.icon_count; i++)
             if (!(h && sc == h->screen && i >= h->first && i < h->first + h->count && h->have[i - h->first]) && ipd_pen_not_exclusive(sc->ViewPort.ColorMap, i)) {
                 SetRGB32(&sc->ViewPort, (ULONG)i, ip_scale32(rgb[i][0]), ip_scale32(rgb[i][1]), ip_scale32(rgb[i][2]));
                 n++;

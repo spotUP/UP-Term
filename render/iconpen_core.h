@@ -30,7 +30,8 @@ void ip_colours(const gtheme *t, uc_u32 ground, uint8_t rgb[IP_PENS][3]);
 uc_u32 ip_ground(const gtheme *t, int flat, unsigned mask);
 
 /* The screen pen that icon slot (0..15) is drawn with at screen depth `depth` (EHB counts as 5):
- * depth >= 6: IP_FIRST + slot (held); depth 4 and 5: slots 8..15 are pens 8..15 (held), slots 0..7 fold; depth 2 and 3: every
+ * depth >= 6: IP_FIRST + slot (held); depth 5: slots 8..15 are pens 8..15 (held); depth 4: slots 8..11 are pens 8..11 (held);
+ * the other slots fold (S92E-PENS: desk_pen_plan_for is the range); depth 2 and 3: every
  * slot folds. A fold lands on the theme role pen (DK_BG..DK_MUTED, 0..5; 0..3 on depth 2) whose colour is nearest the
  * slot's colour (ties: the lower pen), never on DK_GREEN / DK_BACKDROP. */
 int ip_fold(const gtheme *t, int slot, int depth);
@@ -54,6 +55,10 @@ typedef struct ip_ops {
     /* TE-10.5b2: optional, 0 = absent (the plan is empty). Used by ip_sync_plan only: the pen plan (gt_screen_apply_plan) of the screen
      * the select callback chose, written into out[0..cap); returns the entries written. */
     int (*plan)(void *ctx, int depth, gt_plan_pen *out, int cap);
+    /* S92E-PENS: optional, 0 = absent. 1 when another client holds `pen` SHARED (in use, not exclusive). An obtain refused on such a
+     * pen is not retried: the pen is marked refused and ip_holder_verify no longer probes it (no failed exclusive ObtainPen per tick)
+     * until the holder is forgotten or released (screen reopen, new depth, hold off). */
+    int (*is_shared)(void *ctx, int pen);
 } ip_ops;
 
 typedef struct ip_holder {
@@ -76,6 +81,8 @@ typedef struct ip_holder {
     int pcount;
     short ppen[GTE_COUNT];
     uc_u32 prgb[GTE_COUNT];      /* the colour each plan pen carries now (ip_plan_sync recolours when the plan changes it) */
+    uint8_t refused[IP_PENS];    /* S92E-PENS: refused[i] = 1 when icon pen first + i was held shared by another client at the obtain */
+    uint8_t rrefused[4];         /* the same for rpen[i] */
 } ip_holder;
 
 void ip_holder_init(ip_holder *h);

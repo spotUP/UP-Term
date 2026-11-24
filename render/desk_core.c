@@ -201,7 +201,9 @@ void desk_pen_plan_for(int depth, desk_pen_plan *p)
     p->backdrop = depth >= PT_DEPTH_MAX ? DK_BACKDROP : desk_pen_fold(DK_DARKER, 1 << (depth > 0 ? depth : 1)); /* FLAT-COLOUR-OVERHAUL: pen 7 is its own backdrop pen; FILENAME-PEN: below 3 planes the shared darker pen (5) is off the screen and folds to DK_BG, the same rule as the 4-colour pen map */
     if (depth >= 6) {
         p->icon_first = 32; p->icon_count = 16; p->icon_slot = 0;
-    } else if (depth >= 4) {
+    } else if (depth == 4) {
+        p->icon_first = 8; p->icon_count = 4; p->icon_slot = 8;   /* S92E-PENS: 12-15 stay for other clients (DOpus, MagicWB tools); 4-11 is Patina's */
+    } else if (depth == 5) {
         p->icon_first = 8; p->icon_count = 8; p->icon_slot = 8;
     } else {
         p->icon_first = 0; p->icon_count = 0; p->icon_slot = 0;

@@ -5,8 +5,8 @@
 static uint32_t rd32(const uint8_t *p) { return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3]; }
 static void wr32(uint8_t *p, uint32_t v) { p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16); p[2] = (uint8_t)(v >> 8); p[3] = (uint8_t)v; }
 
-/* Walks every chunk (so a truncated one anywhere is DE_BAD). *off = offset of the first TBAR chunk header, *size = its body size. */
-static int find_tbar(const uint8_t *buf, size_t len, size_t *off, uint32_t *size)
+/* Walks every chunk (so a truncated one anywhere is DE_BAD). *off = offset of the first chunk id's header, *size = its body size. */
+static int find_chunk(const uint8_t *buf, size_t len, const char *id, size_t *off, uint32_t *size)
 {
     size_t i = 12, end;
     int hit = 0;
@@ -18,11 +18,31 @@ static int find_tbar(const uint8_t *buf, size_t len, size_t *off, uint32_t *size
         if (end - i < 8) return DE_BAD;
         sz = rd32(buf + i + 4);
         if (sz > end - i - 8) return DE_BAD;
-        if (!hit && memcmp(buf + i, "TBAR", 4) == 0) { *off = i; *size = sz; hit = 1; }
+        if (!hit && memcmp(buf + i, id, 4) == 0) { *off = i; *size = sz; hit = 1; }
         i += 8 + (size_t)sz;
         if (sz & 1) { if (i < end) i++; else if (i > end) return DE_BAD; }  /* the pad may be missing on the last chunk only */
     }
     return hit ? DE_OK : DE_NOTBAR;
+}
+
+static int find_tbar(const uint8_t *buf, size_t len, size_t *off, uint32_t *size)
+{
+    return find_chunk(buf, len, "TBAR", off, size);
+}
+
+int de_userpens_zero(uint8_t *buf, size_t len)
+{
+    size_t off;
+    uint32_t sz;
+    uint8_t *p;
+    int r = find_chunk(buf, len, "ENVR", &off, &sz);
+    if (r != DE_OK) return r == DE_NOTBAR ? DE_NOENVR : r;
+    if (sz < DE_ENVR_USERPENS + 2) return DE_BAD;
+    p = buf + off + 8 + DE_ENVR_USERPENS;
+    if (p[0] == 0 && p[1] == 0) return 0;
+    p[0] = 0;
+    p[1] = 0;
+    return 1;
 }
 
 int de_tbar_get(const uint8_t *buf, size_t len, char *out, size_t cap)
