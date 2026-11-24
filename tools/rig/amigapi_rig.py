@@ -1761,7 +1761,14 @@ def step16(port):
     assert 'UP-TERM' in had, 'rig.py setup (UT1) assigns UP-Term: to VTC:Apps; reboot the rig'
     log = paths.reports_dir() / 'amigapi_fixture16.log'
     dump = paths.reports_dir() / 'amigapi_dump16'
-    hist = VTC / paths.UPTERM_DRAWER / 'var' / 'amiga-pi' / 'prompt-history'
+    # the drawer amiga-pi really uses (claude/datadir.c dd_dir): the one ENVARC:up-term/Dir names, else UP-Term:var
+    dirf = (ami.read_file('ENVARC:up-term/Dir') or b'').decode('latin-1').splitlines()
+    real = dirf[0].strip() if dirf else ''
+    drawer = (real + ('' if real[-1:] in (':', '/') else '/') if real else 'UP-Term:') + 'var/amiga-pi'
+    hist_path = drawer + '/prompt-history'
+
+    def read_hist():
+        return (ami.read_file(hist_path) or b'').decode('utf-8', 'replace').splitlines()
     agent = VTC / 'pi16agent'
     shutil.rmtree(dump, ignore_errors=True)
     dump.mkdir(parents=True)
@@ -1788,7 +1795,7 @@ def step16(port):
             'baseUrl': 'http://127.0.0.1:%d/v1' % port, 'api': 'openai-completions', 'apiKey': '!Echo rig-test-key',
             'models': [{'id': 'm2', 'contextWindow': 32000}]}}}))
         (agent / 'settings.json').write_text(json.dumps({'enabledModels': ['fixo/m2']}))
-        c.run('Delete VTC:%s/var/amiga-pi/prompt-history QUIET' % paths.UPTERM_DRAWER)
+        c.run('Delete "%s" QUIET' % hist_path)
         tw.open_xcon('amiga-pi step 16', '0/12/760/440')
         for line in ('Stack 32768', 'SetEnv PI_CODING_AGENT_DIR VTC:pi16agent', 'CD RAM:'):
             tw.typ(line)
@@ -1805,7 +1812,7 @@ def step16(port):
               repr(last_user()))
         tw.typ('/quit')
         tw.key(tw.RET, wait=4)
-        rows = [json.loads(x) for x in (hist.read_text(errors='replace').splitlines() if hist.exists() else []) if x.strip()]
+        rows = [json.loads(x) for x in read_hist() if x.strip()]
         shown = [(r.get('display'), r.get('project')) for r in rows if isinstance(r, dict)]
         (paths.reports_dir() / 'amigapi16-history.txt').write_text(repr(shown))
         ok16b = ('PIPROMPT-ALPHA', '') in shown and ('PIPROMPT-BETA', '') in shown
@@ -1815,7 +1822,7 @@ def step16(port):
             diag = VTC / 'pi16diag.txt'
             for vol in ('VTC:', 'SYS:', 'ENVARC:', 'RAM:'):
                 c.run('List %s ALL PAT=#?history#? LFORMAT "%%p%%n %%l" >>VTC:pi16diag.txt' % vol, 120)
-            c.run('List VTC:%s/var/amiga-pi >>VTC:pi16diag.txt' % paths.UPTERM_DRAWER, 20)
+            c.run('List "%s" >>VTC:pi16diag.txt' % drawer, 20)
             (paths.reports_dir() / 'amigapi16-where.txt').write_text(
                 diag.read_text(errors='replace') if diag.exists() else 'no listing')
         tw.key(UP, wait=1)
@@ -1831,7 +1838,7 @@ def step16(port):
         tw.key(tw.RET, wait=1)
         wait_requests(4)
         time.sleep(2)
-        rows = [json.loads(x) for x in (hist.read_text(errors='replace').splitlines() if hist.exists() else []) if x.strip()]
+        rows = [json.loads(x) for x in read_hist() if x.strip()]
         ds = [r.get('display') for r in rows if isinstance(r, dict) and r.get('project') == '']
         ups = len(ds) - max(i for i, d in enumerate(ds) if d == 'PIPROMPT-ALPHA') if 'PIPROMPT-ALPHA' in ds else 4
         for _ in range(ups):
