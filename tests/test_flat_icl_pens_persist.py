@@ -32,6 +32,13 @@ class FlatIclPensPersist(unittest.TestCase):
         self.assertLess(b.index("icl_tab_for("), b.index("icl_cache_verify(icx.pc, cm_pen_is_free, icx.cm)"))
         self.assertLess(b.index("icl_cache_verify(icx.pc, cm_pen_is_free, icx.cm)"), b.index("icl_run("))
 
+    def test_label_call_drops_recoloured_shades(self):
+        b = body("static int icl_label(")
+        # S98-SHARED-PEN-RECOLOUR: after the identity verify, before drawing, recoloured shared pens leave the cache and are released
+        self.assertLess(b.index("icl_cache_verify(icx.pc"), b.index("icl_cache_recoloured(icx.pc, cm_pen_rgb, icx.cm, icl_rel)"))
+        self.assertLess(b.index("icl_cache_recoloured("), b.index("icl_run("))
+        self.assertIn("icl_rgb(cm, (ULONG)pen)", body("static int icl_pen_for("))
+
     def test_watch_step_verifies_flat_pens(self):
         b = body("static void pens_run(")
         self.assertLess(b.index("flat_pens_verify(sl"), b.index("flat_pens_follow_on(sl"))
