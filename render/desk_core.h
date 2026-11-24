@@ -69,6 +69,10 @@ void desk_pen_plan_for(int depth, desk_pen_plan *p);
 
 /* FLAT-P1-3: the pen map the palette write carries: desk_pens_flat when flat-system-look is on (flat), else desk_pens */
 void desk_pens_for(int flat, unsigned char pens[DK_SLOTS]);
+/* PREFS-RESET-THEME (owner 2026-11-22): the pen map the Patina-start palette.prefs carries. palette_ok (SYS:Prefs/Palette 47+, 3.2):
+ * desk_pens_for(flat). Below 47 (3.1) always desk_pens: the flat map stays out of the file there (the dk_flat_pens guards); the file
+ * holds the theme colours only, so an IPrefs reset from another prefs editor reopens the Workbench in the theme colours. */
+void desk_start_file_pens(int flat, int palette_ok, unsigned char pens[DK_SLOTS]);
 
 /* R1.17: 1 when a Palette USE of the pens desk_pens_for(flat) gives makes IPrefs reset the Workbench screen. DrawInfo dri_Pens are fixed
  * at screen open, so only a pen array that differs from the live screen's (cur, ncur = dri_NumPens, the first ncur slots are

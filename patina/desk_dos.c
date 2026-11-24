@@ -371,6 +371,15 @@ static int dk_live_palette(const unsigned char *pal, long len)
     return n;
 }
 
+/* S93-PREFS-FLAT / PREFS-RESET-THEME: the 3.1 palette.prefs desk_dos_palette_quiet writes to ENVARC: and ENV: DK_QUIET_SECS later */
+static unsigned char dk_quiet_pal[DK_BUF];
+static long dk_quiet_len, dk_quiet_due;
+static void dk_quiet_arm(const unsigned char *buf, long len)
+{
+    dk_quiet_len = len > 0 ? desk_palette_31safe(buf, len, dk_quiet_pal, sizeof dk_quiet_pal) : 0;
+    dk_quiet_due = 0;
+}
+
 unsigned long desk_dos_pal31_puts;
 static int dk_put_palette(const unsigned char *buf, long len)
 {
@@ -384,6 +393,8 @@ static int dk_put_palette(const unsigned char *buf, long len)
          * the work copy never equalled ENV: (S82-SKIP-UNCHANGED never fired). The safe bytes go to ENV: directly, as
          * dk_palette_31_start already does; running the editor and then copying would reset the Workbench twice. */
         ok = dk_put(0, DK_WORK "/palette.prefs", buf, len);
+        if (ok && dk_arc_only)
+            dk_quiet_arm(buf, len);   /* PREFS-RESET-THEME: ENV: still holds the old colours; the tick renames the new ones in */
     } else if (dk_arc_only)
         ok = dk_put(0, DK_WORK "/palette.prefs", buf, len);   /* S92-DKAPPLY: ENVARC: alone, no editor run */
     else
@@ -2094,12 +2105,12 @@ static void dk_start_persist(unsigned plan, int flat)
  * and any IPrefs reset another prefs editor caused reopened it with the stock file. The start apply keeps the file the screen shows (theme
  * colours, flat pens, 3.1-safe form); DK_QUIET_SECS after the start the tick writes it to ENVARC: and ENV: without an IPrefs notify:
  * written as palette.prefs.s93, the old name renamed away, the new one renamed in (ram-handler notifies on a written close and a delete,
- * not on a rename; the rename part is not measured directly). Nothing resets now; the next reset or boot reads the flat map.
+ * not on a rename; the rename part is not measured directly). Nothing resets now; the next reset or boot reads the file.
+ * PREFS-RESET-THEME (owner 2026-11-22): the file holds the theme colours with the desk pens, never the flat map (desk_start_file_pens);
+ * a 3.1 theme pick under DOpus (ENVARC: only) arms the same write. Flat frames on a stock pen map: FONT-PREFS-NOT-FLAT (flat_core).
  * Rig 94, S93: both files written 11 s after the start; next boot Font prefs frame flat=6, Input prefs flat=14 (was flat=0). */
 #define DK_QUIET_SECS 10
 #define DK_PAL_ENV "ENV:Sys/palette.prefs"
-static unsigned char dk_quiet_pal[DK_BUF];
-static long dk_quiet_len, dk_quiet_due;
 unsigned long desk_dos_quiet_pal_writes;
 
 /* tmp written whole, then renamed in place of name; name's old bytes are renamed away first and deleted under the other name */
@@ -2186,7 +2197,7 @@ int desk_dos_start_apply(void)
     /* S31-START-PALETTE: the theme colours, as dk_apply's palette part writes them (dk_flat_pens leaves them to it) */
     pallen = 0;
     if ((mask >> DT_PALETTE) & 1) { /* S56-PALETTE-31-SAFE: 3.1 too, dk_put_palette writes the safe form */
-        desk_pens_for(flat, pens);
+        desk_start_file_pens(flat, dk_palette_editor_ok(), pens);   /* PREFS-RESET-THEME: 3.1 file keeps the desk pens */
         len = dk_palette_base(0, pens, dk_screen_depth(), out, sizeof out);
         curlen = dk_read("ENV:Sys/Palette.prefs", wb, sizeof wb);   /* wb is free: desk_start_plan has read it */
         pallen = desk_start_palette(mask, flat, &th, dk_screen_depth(), out, len, curlen > 0 ? wb : 0, curlen, pal, sizeof pal);
@@ -2244,8 +2255,7 @@ int desk_dos_start_apply(void)
          * LockPubScreen in that gap ran ROM OpenWorkBench (holding IBase+$B3A) and waited on intuition lock 4, which IPrefs held
          * while it spun for $B3A = 0, and the planar AGA boot froze. The theme colours go live on the screen instead; a theme pick
          * (dk_apply) still writes the file.
-         * shortcut: a later IPrefs reset from another prefs file brings back the file's colours until Patina applies again; write
-         * the file after boot (outside the IPrefs/DOpus start race) if that matters. */
+         * PREFS-RESET-THEME: on 3.1 the file follows DK_QUIET_SECS after the start (dk_quiet_arm below), outside that race. */
         am_sentinel("PATINA_DESK_START_LIVE_PAL", (long)dk_live_palette(pal, pallen));
         dk_live_want = 1;
         dk_live_flat = flat;
@@ -2302,14 +2312,11 @@ int desk_dos_start_apply(void)
         desk_dos_dopus_wait();
         dopus_theme_send(&th, dk_dopus_send, 0, &tb);
     }
-    if (flat && !dk_flat_failed && !dk_palette_editor_ok()) {   /* S93-PREFS-FLAT: 3.2 writes its file on the gated paths */
-        if (pallen <= 0) {   /* no theme palette planned: the file in force (else the live colours) with the flat pens */
-            desk_pens_for(flat, pens);
-            pallen = dk_palette_base(0, pens, dk_screen_depth(), pal, sizeof pal);
-        }
-        dk_quiet_len = pallen > 0 ? desk_palette_31safe(pal, pallen, dk_quiet_pal, sizeof dk_quiet_pal) : 0;
-        dk_quiet_due = 0;
-    }
+    /* PREFS-RESET-THEME (owner 2026-11-22): on 3.1 the theme colours went on the screen live only, so an IPrefs reset from another
+     * prefs editor (Input, Font) reopened the Workbench in the file's stock colours. The file now gets the theme colours (desk pens,
+     * never the flat map: desk_start_file_pens) after the start, flat or not; 3.2 writes its file on the gated paths. */
+    if (pallen > 0 && !dk_palette_editor_ok())
+        dk_quiet_arm(pal, pallen);
     am_sentinel("PATINA_DESK_START_WRITES", (long)desk_dos_start_writes);
     return (int)plan;
 }

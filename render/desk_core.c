@@ -195,6 +195,11 @@ void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])
         desk_pens(pens);
 }
 
+void desk_start_file_pens(int flat, int palette_ok, unsigned char pens[DK_SLOTS])
+{
+    desk_pens_for(flat && palette_ok, pens);
+}
+
 void desk_pen_plan_for(int depth, desk_pen_plan *p)
 {
     p->button = DK_SELECTION;
