@@ -28,7 +28,8 @@ ANX_FILES = $(filter-out Developer Developer.info,$(notdir $(wildcard $(ANX_SRC)
 ANX_COPY = cd $(ANX_SRC) && cp -R $(ANX_FILES) $(abspath $(1))/
 UPTERM_ROOT ?= $(abspath $(shell python3 -I $(CURDIR)/tools/rig/paths.py main-checkout)/..)
 # the upterm-ports checkout (a worktree works too); every upterm-ports path uses it
-UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
+# default: the kit-main worktree (the stale main checkout lacks git_SUMMARY); dist-check-ports refuses a checkout without it
+UPTERM_PORTS ?= $(if $(wildcard $(UPTERM_ROOT)/upterm-ports/.claude/worktrees/kit-main),$(UPTERM_ROOT)/upterm-ports/.claude/worktrees/kit-main,$(UPTERM_ROOT)/upterm-ports)
 # The directory of the projects that are not UP-Term repos (DCTelnet/, AmiExpress/, UpRough/): CODE_ROOT, else the
 # nearest ancestor of UPTERM_ROOT holding DCTelnet/. One rule for the flat layout and the ~/Code/UP-Term umbrella;
 # it lives in tools/rig/paths.py (code_root), which the rig scripts read too.
@@ -66,7 +67,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_layout.c tests/test_splits_state.c tests/test_tabslot.c tests/test_menudef.c tests/test_telnet.c tests/test_upagent.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
            tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_sh_jobgone.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_ttyown.c tests/test_closeeof.c tests/test_upassign.c tests/test_bigvol.c tests/test_fssm.c tests/test_clips.c tests/test_shot_core.c tests/test_win.c tests/test_tile.c
 
-.PHONY: symbolsnerd phosphor lucide lucide-dat screennotify jbmono wasabi wasabi-clean nas-deploy nas-deploy-dry bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
+.PHONY: symbolsnerd phosphor lucide lucide-dat screennotify jbmono wasabi wasabi-clean nas-deploy nas-deploy-dry bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check dist-check-ports golden vttest venv capture quirks amiga clean
 
 # ONLY=iterm2 iTerm2 inline images (OSC 1337 File=): arg parser, units, BEL/ST ends, inline=0 saved through the host writer, name sanitising, 4 MB cap, ReportCellSize, cap, placement and cursor through the engine input (tests/test_iterm2.c)
 # ONLY=desk the native desktop theme core: palette/pointer/font/wbpattern prefs bytes, darker tone, readability guard, targets and marker (tests/test_desk.c)
@@ -2377,7 +2378,10 @@ dist-src: $(LHA)
 
 # The kit says what it was built from: Files/VERSIONS has a line per part, and
 # it is in the lha archive.
-dist-check: flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/Patina $(BUILD)/amiga/patina-gui $(BUILD)/amiga/patina-flat $(BUILD)/amiga/patina-icons $(BUILD)/amiga/patina-menu $(BUILD)/updiff_kit_drv $(CHKABORT_PROGRAMS:%=$(BUILD)/amiga/%) $(BUILD)/amiga/patina-index $(BUILD)/amiga/amnotify $(BUILD)/amiga/AmTile
+dist-check-ports:
+	@grep -q '^git_SUMMARY' $(UPTERM_PORTS)/pkgs/git/recipe.mk 2>/dev/null || { echo "dist-check: UPTERM_PORTS=$(UPTERM_PORTS) has no pkgs/git/recipe.mk git_SUMMARY (stale checkout): create the kit-main worktree at $(UPTERM_ROOT)/upterm-ports/.claude/worktrees/kit-main or set UPTERM_PORTS"; exit 1; }
+
+dist-check: dist-check-ports flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/Patina $(BUILD)/amiga/patina-gui $(BUILD)/amiga/patina-flat $(BUILD)/amiga/patina-icons $(BUILD)/amiga/patina-menu $(BUILD)/updiff_kit_drv $(CHKABORT_PROGRAMS:%=$(BUILD)/amiga/%) $(BUILD)/amiga/patina-index $(BUILD)/amiga/amnotify $(BUILD)/amiga/AmTile
 	python3 tests/test_dist_installer.py
 	KITSIZE_REQUIRE=1 python3 tests/test_dist_kitsize.py
 	python3 tests/test_dist_addons.py
