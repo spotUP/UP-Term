@@ -1532,6 +1532,8 @@ def setup():
     # only: the default rig's serial and other settings stay as they were.
     sysconf = RIG / "boot/devs/system-configuration"
     if STOCK:
+        if not (RIG / "os32/Devs/system-configuration").is_file():
+            sys.exit("rig: --stock copies the 3.2 install's Devs/system-configuration: start it with --os32")
         sysconf.parent.mkdir(exist_ok=True)
         shutil.copyfile(RIG / "os32/Devs/system-configuration", sysconf)
     elif sysconf.exists():
