@@ -185,8 +185,18 @@ uint32_t flat_jmp_target(const unsigned char *e)
 uint32_t flat_fieldbox_body(const unsigned char *s, uint32_t stub_addr)
 {
     static const unsigned char head[4] = {0x2f, 0x0a, 0x2f, 0x39}, tail[8] = {0x2f, 0x0a, 0x2f, 0x09, 0x2f, 0x08, 0x4e, 0xba};
+    /* 5.82: subq.w #4,sp; move.l a4,-(sp); lea 48(a6),a4; move.l <global>(a4),-(sp); a2/a1/a0 pushed; a6 to 20(sp);
+     * bsr.w body. Same four stack arguments at 4..16(sp) on entry, so the same body hook fits. */
+    static const unsigned char head82[6] = {0x59, 0x4f, 0x2f, 0x0c, 0x49, 0xee},
+                               tail82[12] = {0x2f, 0x0a, 0x2f, 0x09, 0x2f, 0x08, 0x2f, 0x4e, 0x00, 0x14, 0x61, 0x00};
     int16_t d;
-    if (!s || memcmp(s, head, 4) || memcmp(s + 8, tail, 8))
+    if (!s)
+        return 0;
+    if (!memcmp(s, head82, 6) && !memcmp(s + 12, tail82, 12)) {
+        d = (int16_t)(((unsigned)s[24] << 8) | s[25]);
+        return stub_addr + 24 + (uint32_t)(int32_t)d;
+    }
+    if (memcmp(s, head, 4) || memcmp(s + 8, tail, 8))
         return 0;
     d = (int16_t)(((unsigned)s[16] << 8) | s[17]);
     return stub_addr + 16 + (uint32_t)(int32_t)d;
@@ -196,13 +206,14 @@ int flat_body_prologue(int el, const unsigned char *body)
 {
     static const unsigned char box[6] = {0x48, 0xe7, 0x30, 0x12, 0x24, 0x08};
     static const unsigned char field[8] = {0x48, 0xe7, 0x20, 0x32, 0x41, 0xef, 0x00, 0x14};
+    static const unsigned char field82[6] = {0x59, 0x4f, 0x48, 0xe7, 0x00, 0x36}; /* 5.82: subq.w #4,sp; movem.l a2/a3/a5/a6,-(sp) */
     static const unsigned char bevel[8] = {0x48, 0xe7, 0x38, 0x32, 0x41, 0xef, 0x00, 0x20};
     if (!body)
         return 0;
     if (el == FLAT_EL_DRAWBOX)
         return memcmp(body, box, sizeof box) ? 0 : (int)sizeof box;
     if (el == FLAT_EL_FIELDBOX)
-        return memcmp(body, field, sizeof field) ? 0 : (int)sizeof field;
+        return !memcmp(body, field, sizeof field) ? (int)sizeof field : !memcmp(body, field82, sizeof field82) ? (int)sizeof field82 : 0;
     if (el == FLAT_EL_BEVEL)
         return memcmp(body, bevel, sizeof bevel) ? 0 : (int)sizeof bevel;
     return 0;

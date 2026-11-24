@@ -351,6 +351,20 @@ static void test_dopus_body_hook(void)
     memcpy(s2, stub, 18); s2[13] = 0x09;                               /* other code: no body */
     CHECK_INT(flat_fieldbox_body(s2, 0x245c4), 0);
     CHECK_INT(flat_fieldbox_body(0, 0x245c4), 0);
+    {   /* DOpus 5.82 FieldBox stub and body, read from rig 7 (stub 0x10270876, body 0x1027089a): the requester string
+         * field stayed stock because neither matched and FieldBox fell back to the LVO swap dopusstrgclass never calls */
+        static const unsigned char st82[32] = {0x59, 0x4f, 0x2f, 0x0c, 0x49, 0xee, 0x00, 0x30, 0x2f, 0x2c, 0x06, 0x70,
+                                               0x2f, 0x0a, 0x2f, 0x09, 0x2f, 0x08, 0x2f, 0x4e, 0x00, 0x14, 0x61, 0x00,
+                                               0x00, 0x0c, 0x4f, 0xef, 0x00, 0x10, 0x28, 0x5f};
+        static const unsigned char bd82[8] = {0x59, 0x4f, 0x48, 0xe7, 0x00, 0x36, 0x24, 0x6f};
+        unsigned char bad[32];
+        CHECK_INT(flat_fieldbox_body(st82, 0x10270876), 0x1027089a);
+        memcpy(bad, st82, 32); bad[22] = 0x4e;                          /* not a bsr.w: refused */
+        CHECK_INT(flat_fieldbox_body(bad, 0x10270876), 0);
+        CHECK_INT(flat_body_prologue(FLAT_EL_FIELDBOX, bd82), 6);
+        CHECK_INT(flat_body_prologue(FLAT_EL_DRAWBOX, bd82), 0);
+        CHECK_INT(flat_body_prologue(FLAT_EL_BEVEL, bd82), 0);
+    }
     CHECK_INT(flat_body_prologue(FLAT_EL_DRAWBOX, box), 6);
     CHECK_INT(flat_body_prologue(FLAT_EL_FIELDBOX, field), 8);
     CHECK_INT(flat_body_prologue(FLAT_EL_FIELDBOX, box), 0);           /* each element only its own prologue */
