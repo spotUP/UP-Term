@@ -2583,11 +2583,26 @@ static void arrow_bbox(const flat_state *st, unsigned long w, int bw, int bh, in
     if (bot) *bot = y1;
 }
 
+/* S69-ARROW-SPACING: the margin around every arrow is the same rule on every box and pixel aspect: centred on both axes, left
+ * and right (top and bottom) margins differ by at most the one odd pixel. */
+static void test_arrow_spacing(void)
+{
+    flat_state st; unsigned long w; int side, i, x0, x1, rows, top, bot;
+    int bs[3][2] = { {16,10}, {18,11}, {18,12} };
+    flat_init(&st); desk_flat_state(1, 1, 1, &st);
+    for (side = 1; side <= 2; side++) for (i = 0; i < 3; i++) for (w = FLAT_W_LEFT; w <= FLAT_W_DOWN; w++) {
+        int bw = bs[i][0], bh = bs[i][1];
+        arrow_bbox(&st, w, bw, bh, side, &x0, &x1, &rows, &top, &bot);
+        CHECK(abs(x0 - (bw - 1 - x1)) <= 1);
+        CHECK(abs(top - (bh - 1 - bot)) <= 1);
+    }
+}
+
 static void test_arrow_aspect(void)
 {
     flat_state st;
     unsigned long w;
-    int side, x0, x1, rows, top, bot, lw[3] = { 0 }, uh[3] = { 0 }, gap[3] = { 0 }, lb[3] = { 0 }, ub[3] = { 0 };
+    int side, x0, x1, rows, top, bot, lw[3] = { 0 }, uh[3] = { 0 }, lb[3] = { 0 }, ub[3] = { 0 };
     flat_init(&st);
     desk_flat_state(1, 1, 1, &st);
     for (side = 1; side <= 2; side++) {
@@ -2604,8 +2619,6 @@ static void test_arrow_aspect(void)
                 CHECK(abs(x0 - (18 - 1 - x1)) <= 1);
                 uh[side] = rows;
                 ub[side] = x1 - x0 + 1;
-                if (w == FLAT_W_UP) gap[side] += 11 - 1 - bot;    /* up box sits above the down box */
-                else gap[side] += top;
             }
         }
     }
@@ -2614,9 +2627,6 @@ static void test_arrow_aspect(void)
     /* S69-ARROW-EQUAL: on each screen the up/down base and the left/right base match within one row (visual units) */
     for (side = 1; side <= 2; side++)
         CHECK(abs(ub[side] - lb[side]) <= side);
-    /* S31-ARROW-GAP: the shorter hires glyphs sit toward the shared edge, so the empty rows between the up and the down
-     * glyph stay what they are on a square-pixel screen (owner: "the vertical spacing between the arrows are bigger"). */
-    CHECK_INT(gap[2], gap[1]);
 }
 
 /* S69-ARROW-ASPECT: arrows and the size gadget are flat's own glyphs, never the clone of the 2:1 stock shape. At side 1 the arms
@@ -4426,6 +4436,7 @@ void suite_flat_core(void)
     test_button_pen_held();
     test_arrow_glyph_pens();
     test_arrow_knob_colour();
+    test_arrow_spacing();
     test_arrow_aspect();
     test_arrow_s69_shape();
     test_clone_arrows();

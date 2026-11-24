@@ -256,9 +256,10 @@ static void g_arrow(plan *g, unsigned long which)
                 put(g, xs + lmax - len, g->iy0 + k, xs + lmax - 1, g->iy0 + k, g->fg);
         }
     } else {
-        /* Up sits on the bottom of its box, down on the top: the up gadget is above the down gadget, so on hires (fewer
-         * rows) the pair keeps the gap a full-height glyph pair has instead of growing apart (S31-ARROW-GAP). */
-        int n = imin(ih, (imax(1, imin(g->h * g->side - 3, g->w - 2)) - 1) / (2 * g->side) + 1), ys = which == FLAT_W_UP ? g->iy1 - n + 1 : g->iy0;
+        /* S69-ARROW-SPACING: every arrow is centred in its own gadget box on both axes (an odd leftover pixel goes to the
+         * trailing side, the same for all four), so the margin around a glyph no longer depends on its orientation. Before,
+         * up sat on the bottom and down on the top of the box (S31-ARROW-GAP), leaving 2 px against the left/right arrows' 1. */
+        int n = imin(ih, (imax(1, imin(g->h * g->side - 3, g->w - 2)) - 1) / (2 * g->side) + 1), ys = (g->h - n) / 2;
         for (k = 0; k < n; k++) {
             int row = which == FLAT_W_UP ? k : n - 1 - k;
             int len = imin(iw, 2 * g->side * row + 1), x0 = g->ix0 + (iw - len) / 2;
