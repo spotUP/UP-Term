@@ -76,6 +76,21 @@ class ReportsOutsideRigDir(unittest.TestCase):
         self.assertNotEqual(paths.REPORTS, paths.RIG)
 
 
+class EveryReportsUserCreatesItsDir(unittest.TestCase):
+    def test_modules_using_reports_or_results_create_the_folder(self):
+        """A module that joins paths.REPORTS / paths.RESULTS must mkdir, call reports_dir() or open a verdicts.Store."""
+        bad = []
+        for f in sorted(RIG_DIR.glob("*.py")):
+            t = f.read_text(encoding="utf-8")
+            if f.name != "paths.py" and re.search(r"paths\.(REPORTS|RESULTS)\b", t) and not re.search(r"mkdir|makedirs|reports_dir|verdicts\.Store", t):
+                bad.append(f.name)
+        self.assertEqual(bad, [])
+
+    def test_results_is_not_inside_the_rig_folder(self):
+        self.assertNotIn(paths.RIG, (paths.RESULTS, *paths.RESULTS.parents))
+        self.assertNotEqual(paths.RESULTS, paths.RIG)
+
+
 class ReportsDir(unittest.TestCase):
     def test_reports_dir_creates_what_it_returns(self):
         root = pathlib.Path(tempfile.mkdtemp())

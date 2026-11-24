@@ -14,7 +14,7 @@ Cases, in this order (each sets the progress file it needs, so --only runs any c
   resume        progress 1: :quit in lesson 2, then `tutorial next` starts lesson 2 again
   hint-after    progress 1: a fresh vsh window prints no hint
 
-Verdicts go to build/<rig>/tutorial.verdicts.json when a case ends; a passed case with the same files is skipped.
+Verdicts go to build/rig-reports/<rig>/tutorial.verdicts.json when a case ends; a passed case with the same files is skipped.
   tutorial_rig.py                 every case not yet passed
   tutorial_rig.py --only menu     one case (repeat for more), even when it passed
   tutorial_rig.py --force         every case, from zero

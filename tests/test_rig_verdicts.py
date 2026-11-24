@@ -144,8 +144,8 @@ class ResultsLiveInThisCheckout(unittest.TestCase):
         # a worktree's RIG_HOME is the MAIN checkout's build/ (the rig is a machine resource); the verdicts are
         # results of this checkout's files and must not be written into another checkout
         import tutorial_rig
-        self.assertEqual(paths.RESULTS, ROOT / "build" / paths.RIG_NAME)
-        self.assertEqual(pathlib.Path(tutorial_rig.VERDICTS).parent, ROOT / "build" / paths.RIG_NAME)
+        self.assertEqual(paths.RESULTS, ROOT / "build" / "rig-reports" / paths.RIG_NAME)
+        self.assertEqual(pathlib.Path(tutorial_rig.VERDICTS).parent, ROOT / "build" / "rig-reports" / paths.RIG_NAME)
 
 
 class TutorialCasesSetTheirOwnProgress(unittest.TestCase):

@@ -82,7 +82,8 @@ RIG = RIG_HOME / RIG_NAME
 # Verdicts are results of THIS checkout's files (their fingerprints name its sources), not a machine
 # resource: they live in the build/ of the checkout the script runs from, so a worktree's run never writes
 # into the main checkout (2026-10-19: tutorial_rig wrote into a peer's build/rig4).
-RESULTS = VTCON / "build" / RIG_NAME
+# Not build/rig<N>: for the main checkout that IS RIG, and `rig.py stop` deletes it (RIG-FOLDER-GC).
+RESULTS = VTCON / "build" / "rig-reports" / RIG_NAME
 
 # Kept output (reports, screenshots, per-script verdicts) is NOT under RIG: `rig.py stop` deletes build/rig<N> for
 # N > 1 (8df99f0b, s50), so a script's evidence written there vanished with the rig. build/rig-reports/rig<N> survives
