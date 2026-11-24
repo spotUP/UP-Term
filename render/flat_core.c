@@ -398,13 +398,13 @@ int flat_string_frame(int fx, int fy, int fw, int fh, int gx, int gy, int gw, in
     return gw > 0 && gh > 0 && near_by(fx, gx, 6) && near_by(fy, gy, 4) && near_by(fx + fw, gx + gw, 6) && near_by(fy + fh, gy + gh, 4);
 }
 
-int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, int pen_back)
+int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, int pen_back, int themed)
 {
     if (!s || !s->enabled || s->held)
         return FLAT_DRAW_STOCK;
     if (method != 0x202UL && method != FLAT_IM_DRAWFRAME)
         return FLAT_DRAW_STOCK;
-    return pen_shine == pen_back ? FLAT_DRAW_SKIP : FLAT_DRAW_STOCK;
+    return pen_shine == pen_back || themed ? FLAT_DRAW_SKIP : FLAT_DRAW_STOCK;
 }
 
 int flat_dopus_status_line(int found, unsigned version, unsigned revision, int reason, int mask, int installed,

@@ -1310,8 +1310,12 @@ static int c8_skip(Object *obj, Msg msg)
         return 0;
     if (!d->imp_RPort || !d->imp_DrInfo)
         return 0;
-    if (flat_frame_decide(&r->st, msg->MethodID, d->imp_DrInfo->dri_Pens[SHINEPEN], d->imp_DrInfo->dri_Pens[BACKGROUNDPEN]) != FLAT_DRAW_SKIP)
-        return 0;
+    {   /* FONT-PREFS-NOT-FLAT: a window on the Workbench or a listed screen is themed even with the stock 3.1 pen map */
+        struct Window *w = d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
+        int themed = w && w->WScreen && st_scr(r, w->WScreen) != &g_draw.plain;
+        if (flat_frame_decide(&r->st, msg->MethodID, d->imp_DrInfo->dri_Pens[SHINEPEN], d->imp_DrInfo->dri_Pens[BACKGROUNDPEN], themed) != FLAT_DRAW_SKIP)
+            return 0;
+    }
     return c8_draw_on(obj, msg, C8_FRAME);
 }
 
