@@ -160,8 +160,8 @@ int icl_cache_has_room(const icl_pencache *c, int fgpen, int bgpen, int k)
     return 0;
 }
 
-int icl_cache_put(icl_pencache *c, int fgpen, int bgpen, int k, uint32_t fg_rgb, uint32_t bg_rgb, int pen, int obtained,
-                  int *old_pen)
+int icl_cache_put(icl_pencache *c, int fgpen, int bgpen, int k, uint32_t fg_rgb, uint32_t bg_rgb, int pen, uint32_t pen_rgb,
+                  int obtained, int *old_pen)
 {
     int i, slot = -1;
     *old_pen = -1;
@@ -184,6 +184,7 @@ int icl_cache_put(icl_pencache *c, int fgpen, int bgpen, int k, uint32_t fg_rgb,
     c->e[slot].pen = (int16_t)pen;
     c->e[slot].fg_rgb = fg_rgb;
     c->e[slot].bg_rgb = bg_rgb;
+    c->e[slot].pen_rgb = pen_rgb;
     c->e[slot].obtained = (uint8_t)(obtained ? 1 : 0);
     c->e[slot].used = 1;
     return 1;
@@ -225,6 +226,17 @@ int icl_cache_verify(icl_pencache *c, int (*is_free)(void *ctx, int pen), void *
     c->screen = screen;
     c->epoch = epoch;
     return 1;
+}
+
+int icl_cache_recoloured(icl_pencache *c, uint32_t (*rgb_of)(void *ctx, int pen), void *ctx, int *out)
+{
+    int i, n = 0;
+    for (i = 0; rgb_of && i < ICL_CACHE; i++)
+        if (c->e[i].used && c->e[i].obtained && rgb_of(ctx, c->e[i].pen) != c->e[i].pen_rgb) {
+            out[n++] = c->e[i].pen;
+            c->e[i].used = 0;
+        }
+    return n;
 }
 
 int icl_cache_release(icl_pencache *c, const void *screen, unsigned epoch, int *out)

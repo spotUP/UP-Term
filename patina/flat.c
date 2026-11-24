@@ -1706,6 +1706,12 @@ static int cm_pen_is_free(void *cm, int pen)
     return ipd_pen_is_free((struct ColorMap *)cm, pen);
 }
 
+/* S98-SHARED-PEN-RECOLOUR: the colour a pen shows on the map, for icl_cache_recoloured */
+static uint32_t cm_pen_rgb(void *cm, int pen)
+{
+    return icl_rgb((struct ColorMap *)cm, (ULONG)pen);
+}
+
 /* TE-10.6b: a slot is open when its screen is still in the public screen list the caller has locked and its epoch is still the
  * slot's (the screen did not close and come back at the same address). */
 static int scr_is_open(void *ctx, const void *scr, unsigned epoch)
@@ -1804,7 +1810,7 @@ static int icl_pen_for(void *u, int fgpen, int bgpen, int k)
                    : icl_pen_choice(k, n, -1, 0, 0, 0, fgpen, bgpen);
     if (got >= 0 && pen != got)
         ReleasePen(cm, (ULONG)got);
-    if (!icl_cache_put(pc, fgpen, bgpen, k, fr, br, pen, got >= 0 && pen == got, &old)) {
+    if (!icl_cache_put(pc, fgpen, bgpen, k, fr, br, pen, icl_rgb(cm, (ULONG)pen), got >= 0 && pen == got, &old)) {
         if (got >= 0 && pen == got)
             ReleasePen(cm, (ULONG)got);
     } else if (old >= 0)
@@ -1931,7 +1937,12 @@ static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG
             return 0;
         }
         /* S57-ICL-PINK-SHADE: same identity is not proof (a Workbench reopen at the same address keeps both): ask the ColorMap */
-        icl_cache_verify(icx.pc, cm_pen_is_free, icx.cm);
+        if (!icl_cache_verify(icx.pc, cm_pen_is_free, icx.cm)) {
+            /* S98-SHARED-PEN-RECOLOUR: a theme write recoloured a shared shade pen: release it here, on the verified live map */
+            int j, n = icl_cache_recoloured(icx.pc, cm_pen_rgb, icx.cm, icl_rel);
+            for (j = 0; j < n; j++)
+                ReleasePen(icx.cm, (ULONG)icl_rel[j]);
+        }
     }
     icl_run(r, rp, str, count, b, depth, &icx);
     ReleaseSemaphore(&icl_ss);

@@ -68,6 +68,7 @@ int icl_blend_pens(const uint8_t *cov, const uint32_t *after, int fgpen, int n, 
 typedef struct icl_pen_entry {
     int16_t fgpen, bgpen, k, pen;
     uint32_t fg_rgb, bg_rgb;
+    uint32_t pen_rgb;               /* S98-SHARED-PEN-RECOLOUR: the colour the pen showed when stored */
     uint8_t obtained, used;
 } icl_pen_entry;
 typedef struct icl_pencache {
@@ -84,8 +85,8 @@ int icl_cache_find(const icl_pencache *c, int fgpen, int bgpen, int k, uint32_t 
 int icl_cache_has_room(const icl_pencache *c, int fgpen, int bgpen, int k);
 /* Store a result. An entry of the same pens and step is replaced: *old_pen gets its pen when that one was obtained
  * (the caller releases it), else -1. Returns 0 when the cache is full (the caller releases pen itself). */
-int icl_cache_put(icl_pencache *c, int fgpen, int bgpen, int k, uint32_t fg_rgb, uint32_t bg_rgb, int pen, int obtained,
-                  int *old_pen);
+int icl_cache_put(icl_pencache *c, int fgpen, int bgpen, int k, uint32_t fg_rgb, uint32_t bg_rgb, int pen, uint32_t pen_rgb,
+                  int obtained, int *old_pen);
 
 /* S57-ICL-PEN-RECOLOUR: the shade pens stay obtained across Text calls, so no other client is handed (and recolours) a pen number
  * that glyph pixels already on screen use. Like flat_pens they belong to one screen identity (screen pointer + ipd_epoch).
@@ -97,6 +98,12 @@ int icl_cache_bind(icl_pencache *c, const void *screen, unsigned epoch);
  * cached numbers name pens of the OLD map: free on the new one, showing its default colours (pink). If any is free the cache is
  * forgotten WITHOUT ReleasePen (identity kept, so the next bind does not clear pens obtained afterwards). Returns 1 when forgotten. */
 int icl_cache_verify(icl_pencache *c, int (*is_free)(void *ctx, int pen), void *ctx);
+/* S98-SHARED-PEN-RECOLOUR: an obtained shade pen is SHARED (ObtainBestPen), and the theme's direct pen writes (ipd_role_write -2,
+ * ipd_icon_pens_direct: FLAT-PEN5-MAGENTA) SetRGB32 shared pens, so the pen can now show a theme colour (rig 96: #f7768e red in the
+ * grey antialias). Every obtained entry whose pen no longer shows pen_rgb (rgb_of, the live map) leaves the cache; its pen goes into
+ * out[ICL_CACHE] for the caller to release on the same live map (identity already verified), so the next label re-obtains a shade.
+ * Returns the count. */
+int icl_cache_recoloured(icl_pencache *c, uint32_t (*rgb_of)(void *ctx, int pen), void *ctx, int *out);
 /* Give the pens back (shutdown): write the obtained pens into out[ICL_CACHE] (each once) and empty the cache, but only when
  * `screen`/`epoch` is the identity they were obtained on (the caller releases them on that screen's map); on any other identity,
  * or no screen (0), they are forgotten and 0 is returned. */

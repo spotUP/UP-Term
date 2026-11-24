@@ -132,17 +132,17 @@ static void t_cache(void)
     int old, i;
     icl_cache_clear(&c);
     CHECK_INT(icl_cache_find(&c, 1, 0, 2, 0, 0xAAAAAA), -1);
-    CHECK(icl_cache_put(&c, 1, 0, 2, 0, 0xAAAAAA, 9, 1, &old));
+    CHECK(icl_cache_put(&c, 1, 0, 2, 0, 0xAAAAAA, 9, 0, 1, &old));
     CHECK_INT(old, -1);
     CHECK_INT(icl_cache_find(&c, 1, 0, 2, 0, 0xAAAAAA), 9);
     /* palette change: a miss, and replacing hands back the old obtained pen */
     CHECK_INT(icl_cache_find(&c, 1, 0, 2, 0, 0xBBBBBB), -1);
-    CHECK(icl_cache_put(&c, 1, 0, 2, 0, 0xBBBBBB, 12, 1, &old));
+    CHECK(icl_cache_put(&c, 1, 0, 2, 0, 0xBBBBBB, 12, 0, 1, &old));
     CHECK_INT(old, 9);
     CHECK_INT(icl_cache_find(&c, 1, 0, 2, 0, 0xBBBBBB), 12);
     for (i = 0; i < ICL_CACHE - 1; i++)
-        CHECK(icl_cache_put(&c, 2, i, 1, 0, 0, 20, 0, &old));
-    CHECK(!icl_cache_put(&c, 3, 3, 3, 0, 0, 21, 1, &old));
+        CHECK(icl_cache_put(&c, 2, i, 1, 0, 0, 20, 0, 0, &old));
+    CHECK(!icl_cache_put(&c, 3, 3, 3, 0, 0, 21, 0, 1, &old));
 }
 
 /* S57-ICL-PEN-RECOLOUR: a full cache must refuse a new key BEFORE any pen is obtained (an obtained pen that cannot be cached
@@ -155,7 +155,7 @@ static void t_cache_full_no_obtain(void)
     CHECK(icl_cache_has_room(&c, 9, 9, 1));
     for (i = 0; i < ICL_CACHE; i++) {
         CHECK(icl_cache_has_room(&c, 2, i, 1));
-        CHECK(icl_cache_put(&c, 2, i, 1, 0, 0, 20 + i, 1, &old));
+        CHECK(icl_cache_put(&c, 2, i, 1, 0, 0, 20 + i, 0, 1, &old));
     }
     CHECK(!icl_cache_has_room(&c, 3, 3, 3));
     CHECK(icl_cache_has_room(&c, 2, 5, 1));
@@ -173,7 +173,7 @@ static int sim_pen_for(void *u, int fgpen, int bgpen, int k)
         return pen;
     pen = 100 + obt_n;
     obt_n++;
-    icl_cache_put(c, fgpen, bgpen, k, 1, 2, pen, 1, &old);
+    icl_cache_put(c, fgpen, bgpen, k, 1, 2, pen, 0, 1, &old);
     return pen;
 }
 
@@ -265,6 +265,35 @@ static void t_pens_verify_same_address_reopen(void)
     CHECK_INT(obt_n, 2 * first);                                  /* obtained again */
     CHECK_INT(used_n(&c), first);
     CHECK_INT(icl_cache_verify(&c, 0, 0), 0);                     /* no probe: trusted as before */
+}
+
+/* S98-SHARED-PEN-RECOLOUR: a theme apply SetRGB32s a shared shade pen (rig 96: theme red #f7768e in the grey antialias). The cache
+ * must drop that entry and hand the pen back for release, so the next label re-obtains a grey shade instead of drawing red. */
+static uint32_t fake_rgb[256];
+static uint32_t fake_rgb_of(void *ctx, int pen)
+{
+    (void)ctx;
+    return fake_rgb[pen & 255];
+}
+
+static void t_recoloured_shade_pen_dropped(void)
+{
+    icl_pencache c;
+    int old, out[ICL_CACHE];
+    icl_cache_clear(&c);
+    fake_rgb[9] = 0x545a77;                                       /* grey shade as obtained */
+    fake_rgb[1] = 0xa9b1d6;
+    CHECK(icl_cache_put(&c, 1, 0, 2, 0xa9b1d6, 0, 9, 0x545a77, 1, &old));
+    CHECK(icl_cache_put(&c, 1, 0, 3, 0xa9b1d6, 0, 1, 0xa9b1d6, 0, &old));   /* names fg: not ours, never released */
+    CHECK_INT(icl_cache_recoloured(&c, fake_rgb_of, 0, out), 0);  /* unchanged palette: kept */
+    CHECK_INT(icl_cache_find(&c, 1, 0, 2, 0xa9b1d6, 0), 9);
+    fake_rgb[9] = 0xf7768e;                                       /* theme write on the shared pen */
+    fake_rgb[1] = 0xf7768e;                                       /* also the named fg pen: ignored (fg_rgb key covers it) */
+    CHECK_INT(icl_cache_recoloured(&c, fake_rgb_of, 0, out), 1);
+    CHECK_INT(out[0], 9);
+    CHECK_INT(icl_cache_find(&c, 1, 0, 2, 0xa9b1d6, 0), -1);     /* the next label re-obtains */
+    CHECK_INT(icl_cache_find(&c, 1, 0, 3, 0xa9b1d6, 0), 1);
+    CHECK_INT(icl_cache_recoloured(&c, 0, 0, out), 0);            /* no probe: nothing */
 }
 
 static void t_pens_release_once_on_live(void)
@@ -403,6 +432,7 @@ void suite_iclabel(void)
     t_pens_persist();
     t_pens_forget_on_new_identity();
     t_pens_release_once_on_live();
+    t_recoloured_shade_pen_dropped();
     t_pens_verify_same_address_reopen();
     t_tab_pens_never_cross_screens();
     t_tab_switch_releases_nothing();
