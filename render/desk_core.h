@@ -131,6 +131,12 @@ uc_u32 desk_pen_colour(const gtheme *t, int pen, int flat_backdrop);
  * apply time; the Workbench reopen that follows makes a fresh screen with graphics-default pens 4-7, so the screen follow path
  * (patina iconpen_dos pens_sync, IP_SYNC_OBTAIN) sets them again on every new screen. */
 int desk_live_follow(const gtheme *t, int flat, unsigned mask, int depth, int pens[4], uc_u32 rgb[4]);
+/* PREFS-RESET-THEME: the other half of what a NEW Workbench screen needs: the role pens a palette.prefs entry DOES reach at depth
+ * (0-3; 4-7 too at 3 planes) with their theme colours (desk_pen_colour, as desk_palette_theme writes them), under desk_live_follow's
+ * gate; 0 when the theme is not in the palette. Palette prefs Reset To Defaults + Use (or any IPrefs reset from a stock file) reopens
+ * the screen with the file's colours; the screen follow path (ip_sync IP_SYNC_OBTAIN) sets these again. They are the screen's shared
+ * DrawInfo pens: written, never obtained (dk_live_palette writes them the same way at boot). */
+int desk_live_file_pens(const gtheme *t, int flat, unsigned mask, int depth, int pens[8], uc_u32 rgb[8]);
 /* FLAT-PEN5-MAGENTA: cur (a palette.prefs, pens already set) with every entry that reaches a role pen at depth recoloured to
  * desk_pen_colour; the entries that reach other pens (252-255 on a deep screen) keep the user's colours. 0 on a bad file. */
 long desk_palette_theme(const unsigned char *cur, long curlen, const gtheme *t, int depth, int flat_backdrop, unsigned char *out, long cap);

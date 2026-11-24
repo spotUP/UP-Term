@@ -421,6 +421,50 @@ static void check_theme_pens47(const rcm *c)
     CHECK(c->rgb[5] != 0xff00ffUL);
 }
 
+/* PREFS-RESET-THEME (rig 12, 3.1, s102): Palette prefs Reset To Defaults + Use reopened the Workbench in the stock file's colours
+ * (pens 0-3 grey aaaaaa); the follow path re-set only 4-7, so the desktop stayed stock grey. Every new screen gets 0-3 back too
+ * (all eight at 3 planes, where the file reaches 4-7), and a screen with no theme in the palette keeps the file's colours. */
+static int rcm_flat_off;
+static void rcm_theme_gate(void *ctx, gtheme *t, int *flat, unsigned *mask)
+{
+    rcm_theme(ctx, t, flat, mask);
+    if (rcm_flat_off)
+        *flat = 0;
+}
+static void test_palette_reset_reopen_keeps_theme_pens03(void)
+{
+    static rcm c;
+    ip_holder h;
+    ip_ops o;
+    gtheme t;
+    int scr_a, scr_b, i, depth;
+    memset(&o, 0, sizeof o);
+    o.obtain = rcm_obtain; o.release = rcm_release; o.is_free = rcm_is_free; o.theme = rcm_theme_gate; o.set_rgb = rcm_set;
+    o.ctx = &c;
+    theme(&t);
+    for (depth = 3; depth <= 8; depth += 5) {
+        memset(&c, 0, sizeof c);
+        ip_holder_init(&h);
+        rcm_open(&c);
+        CHECK_INT(ip_sync(&h, &o, 1, &scr_a, depth, depth), IP_SYNC_OBTAIN);
+        rcm_open(&c);                           /* the reset: a new screen in the stock file's colours */
+        for (i = 0; i < 4; i++)
+            c.rgb[i] = 0xaaaaaaUL;
+        CHECK_INT(ip_sync(&h, &o, 1, &scr_b, depth, depth), IP_SYNC_OBTAIN);
+        for (i = 0; i < (depth == 3 ? 8 : 4); i++)
+            CHECK_INT((long)c.rgb[i], (long)desk_pen_colour(&t, i, 1));
+        CHECK(c.rgb[0] != 0xaaaaaaUL);
+    }
+    rcm_flat_off = 1;                           /* flat off, no palette part: the screen keeps what IPrefs gave it */
+    memset(&c, 0, sizeof c);
+    ip_holder_init(&h);
+    rcm_open(&c);
+    c.rgb[0] = 0xaaaaaaUL;
+    CHECK_INT(ip_sync(&h, &o, 1, &scr_a, 8, 8), IP_SYNC_OBTAIN);
+    CHECK_INT((long)c.rgb[0], 0xaaaaaaL);
+    rcm_flat_off = 0;
+}
+
 static void test_reopen_same_address(void)
 {
     static rcm c;
@@ -523,7 +567,7 @@ static int po_unowned_writes;
 static void po_set(void *ctx, int pen, uc_u32 rgb)
 {
     rcm *c = (rcm *)ctx;
-    if (!c->alloc[pen])
+    if (!c->alloc[pen] && desk_palette_entry_of(pen, 8) < 0)   /* 0-3: the screen's shared palette.prefs pens (PREFS-RESET-THEME) */
         po_unowned_writes++;
     rcm_set(ctx, pen, rgb);
 }
@@ -1748,6 +1792,7 @@ void suite_iconpen(void)
     test_shared_not_retried();
     test_plan_busy_pen_not_asked();
     test_pens47_owned();
+    test_palette_reset_reopen_keeps_theme_pens03();
     test_holder_owns_roles();
     test_plan_pens_held_by_the_screen_holder();
     test_theme_switch_recolour();

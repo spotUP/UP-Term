@@ -351,9 +351,9 @@ int ip_sync(ip_holder *h, const ip_ops *o, int hold, const void *screen, int dep
     } else if (act == IP_SYNC_OBTAIN) {
         gtheme th;
         uint8_t rgb[IP_PENS][3];
-        int flat = 0, lp[4], k, n;
+        int flat = 0, lp[4], fp[8], k, n;
         unsigned mask = 0;
-        uc_u32 lc[4];
+        uc_u32 lc[4], fc[8];
         memset(&th, 0, sizeof th);
         o->theme(o->ctx, &th, &flat, &mask);
         ip_colours(&th, ip_ground(&th, flat, mask), rgb);
@@ -368,6 +368,9 @@ int ip_sync(ip_holder *h, const ip_ops *o, int hold, const void *screen, int dep
                 o->set_rgb(o->ctx, lp[k], lc[k]);
             h->rrefused[k] = (uint8_t)(!h->rhave[k] && o->is_shared && o->is_shared(o->ctx, lp[k]));
         }
+        n = desk_live_file_pens(&th, flat, mask, planes, fp, fc);   /* PREFS-RESET-THEME: 0-3 came back in the file's (stock) colours */
+        for (k = 0; k < n && o->set_rgb; k++)
+            o->set_rgb(o->ctx, fp[k], fc[k]);
     }
     h->new_identity = ip_sync_new_identity(old, screen, act, lost);
     return act;
