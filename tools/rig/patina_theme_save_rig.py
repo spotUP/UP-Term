@@ -73,8 +73,14 @@ def step(key, what):
     """One key, then wait for the level to change and settle."""
     before = menu_state()
     ami.key(key)
-    st, dt = wait_stable(STEP_SECS, differ_from=before, what=what)
-    return st, dt
+    try:
+        return wait_stable(STEP_SECS, differ_from=before, what=what)
+    except TimeoutError:
+        if menu_state()[0] is not None:
+            raise
+        # the menu vanished: a DOpus reopen hides it (measured rig 45). One bounded wait for it to come back, else fail loudly
+        print('[INFO] %s: menu gone, waiting up to %d s for it to return' % (what, OPEN_SECS))
+        return wait_stable(OPEN_SECS, what=what + ' (after menu vanished)')
 
 
 def wait_apply_done(secs=None):

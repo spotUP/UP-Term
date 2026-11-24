@@ -204,7 +204,7 @@ def pick(up=None, keep=True):
     """Style > Patina theme > a row next to the cursor that is not the current theme > Return. The menu stays open on the pick: close it.
     Returns once Patina finished the apply (t.wait_apply_done), so the Workbench pens read next are the ones the pick set;
     the menu is closed only after that (the apply hides and reopens it: THEME-PICK-MENU-STABLE)."""
-    c.run('Delete >NIL: ENV:%s QUIET' % t.APPLY_DONE)
+    c.run('Delete >NIL: ENV:%s ENV:PATINA_ROWS ENV:PATINA_SEL QUIET' % t.APPLY_DONE)   # stale rows from an earlier run make style_downs() guess
     t.open_menu()
     time.sleep(4)
     if t.menu_state()[0] is None:   # the first hotkey after a Patina start is lost (measured rig 89: the second one opens it)

@@ -3,9 +3,10 @@
  *   DEPTH <n>                           depth of the Workbench screen
  *   HOLDER owners=<bits> held=<n> refs=<n> slot0=<n> first=<n> count=<n> screen=<hex>   or  HOLDER none (record freed)
  *   HAVE <16 digits>                    have[i] of the record
- *   PEN <n> <rrggbb>                    GetRGB32 of pens 32..47 (the stored icon pens; depth >= 6)
+ *   PEN <n> <rrggbb>                    GetRGB32 of pens 32..47, or of `iconpens <lo> <hi>` (inclusive) (the stored icon pens; depth >= 6)
  * The record layout is ipd_rec of patina/iconpen_dos.h (the real struct): semaphore, 20 name bytes, the per-screen table (slot 0 = Workbench). */
 #include <stdio.h>
+#include <stdlib.h>
 #include <exec/semaphores.h>
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
@@ -20,17 +21,18 @@ const char iconpens_stack_cookie[] = "$STACK: 8192";
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 
-int main(void)
+int main(int argc, char **argv)
 {
     struct Screen *sc;
     ip_shared s;
     ipd_rec *r;
-    int have = 0, i, depth;
+    int have = 0, i, depth, lo = 32, hi = 48;
     ULONG rgb[3];
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
     if (!IntuitionBase || !GfxBase)
         return 20;
+    if (argc >= 3) { lo = atoi(argv[1]); hi = atoi(argv[2]) + 1; } /* optional pen range lo hi (inclusive), for pens above the icon range */
     Forbid();
     r = (ipd_rec *)FindSemaphore((STRPTR)IPD_SEM_NAME);
     if (r) { s = r->t.slot[0].sh; have = 1; }
@@ -48,7 +50,7 @@ int main(void)
         printf("\n");
     } else
         printf("HOLDER none\n");
-    for (i = 32; i < 48 && depth >= 6; i++) {
+    for (i = lo; i < hi && depth >= 6 && i < (1 << depth); i++) {
         GetRGB32(sc->ViewPort.ColorMap, (ULONG)i, 1, rgb);
         printf("PEN %d %02lx%02lx%02lx\n", i, rgb[0] >> 24, rgb[1] >> 24, rgb[2] >> 24);
     }
