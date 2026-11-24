@@ -40,7 +40,7 @@ static void test_amconf_parse_defaults(void)
     CHECK_INT(amconf_icons(&p), UC_ICONS_GENERIC);
     CHECK_INT(amconf_style(&p), UC_MENU_GRAPHICAL);
     /* the table lists twenty-five keys, each named once */
-    CHECK_INT(AM_NKEYS, 30);
+    CHECK_INT(AM_NKEYS, 31);
     CHECK_STR(am_keys[AM_SCREENTHEMES].name, "screen-themes");   /* hidden: no Prefs gadget, default on */
     CHECK_STR(am_keys[AM_SCREENTHEMES].def, "on");
     CHECK_STR(am_keys[AM_WELCOME].name, "welcome-shown");   /* hidden: no Prefs gadget, default off */
@@ -658,6 +658,27 @@ static void test_amconf_uiaa_key(void)
     amconf_from_fields(&p, &f);
     CHECK(amconf_serialize(&p, txt, UC_MAX_FILE) > 0);
     CHECK(strstr(txt, "ui-antialias = off") != 0);
+}
+
+/* PALETTE-BUTTONS-BEVELED: flat-private-screens is on by default; off parses and round-trips; its Flat Look check row exists. */
+static void test_amconf_flatpriv_key(void)
+{
+    am_prefs p, q;
+    prefs_fields f;
+    static char txt[UC_MAX_FILE + 1];
+    static const char off[] = "[profile default]\nflat-private-screens = off\n";
+    CHECK_STR(am_keys[AM_FLATPRIV].name, "flat-private-screens");
+    CHECK(sd_find_gadget(PG_AM_FLATPRIV) != 0 && pg_find(PG_AM_FLATPRIV) != 0);
+    amconf_defaults(&p);
+    CHECK_INT(amconf_flat_index(&p, AM_FLATPRIV), 1);
+    amconf_parse(off, (long)strlen(off), &q);
+    CHECK_INT(amconf_flat_index(&q, AM_FLATPRIV), 0);
+    memset(&f, 0, sizeof f);
+    amconf_to_fields(&q, &f);
+    CHECK_INT(f.am_flatpriv, 0);
+    amconf_from_fields(&p, &f);
+    CHECK(amconf_serialize(&p, txt, UC_MAX_FILE) > 0);
+    CHECK(strstr(txt, "flat-private-screens = off") != 0);
 }
 
 /* INSTALLER-FLAT-OFF: the installer writes ENVARC:Patina/prefs with the header only, so the key defaults are the
@@ -1322,6 +1343,7 @@ void suite_amconf(void)
     test_amconf_header_only_prefs_is_flat_on();
     test_amconf_borderblank_row();
     test_amconf_uiaa_key();
+    test_amconf_flatpriv_key();
     test_amconf_old_flat_glyph_style_ignored();
     test_lf_setting_check_toggle();
     test_lf_setting_cycle_next_and_choices();

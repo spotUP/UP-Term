@@ -109,6 +109,7 @@ void ipd_screen_theme_name(struct Screen *scr, char *out, int cap);
 extern unsigned long ipd_screen_theme_asks;
 /* TE-10.4: the rules (or the main theme) changed: the next sync rereads them. Does nothing without a record. */
 void ipd_rules_changed(void);
+int ipd_exclude_pats(char (*out)[GT_SCR_PAT], int max); /* screen-themes exclude patterns; 0 when rules off */
 /* Re-sync without changing owners (screen reopened, theme changed). */
 void ipd_resync(void);
 /* A theme switch: rewrite the held pens 32..47 with SetRGB32 from the new theme (ip_recolour). Does nothing when no record exists. */

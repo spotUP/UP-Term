@@ -347,6 +347,9 @@ static void c2_ring_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
  * (only the main task writes it): the epoch of that screen is ipd_epoch(), of any other ipd_epoch_of_screen(). */
 static flat_pens_tab g_pens;
 static const void *g_wb_scr;
+/* PALETTE-BUTTONS-BEVELED: the screen-themes exclude patterns that keep a screen stock (copied in draw_sync from the shared rules; read by c8_skip) */
+static char g_excl[GT_SCR_MAX][GT_SCR_PAT];
+static int g_nexcl;
 
 static unsigned scr_epoch(const void *scr)
 {
@@ -1312,7 +1315,15 @@ static int c8_skip(Object *obj, Msg msg)
         return 0;
     {   /* FONT-PREFS-NOT-FLAT: a window on the Workbench or a listed screen is themed even with the stock 3.1 pen map */
         struct Window *w = d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
-        int themed = w && w->WScreen && st_scr(r, w->WScreen) != &g_draw.plain;
+        const struct Screen *ws = w ? w->WScreen : NULL;
+        int excluded = 0, themed;
+        if (ws && g_nexcl && ws != (const struct Screen *)g_wb_scr) {   /* PALETTE-BUTTONS-BEVELED: exclude rule by title */
+            const char *t = (const char *)(ws->DefaultTitle ? ws->DefaultTitle : ws->Title);
+            int i;
+            for (i = 0; t && i < g_nexcl && !excluded; i++)
+                excluded = gt_screen_match(g_excl[i], t);
+        }
+        themed = ws && flat_screen_themed(st_scr(r, ws) != &g_draw.plain, r->flatpriv, excluded);
         if (flat_frame_decide(&r->st, msg->MethodID, d->imp_DrInfo->dri_Pens[SHINEPEN], d->imp_DrInfo->dri_Pens[BACKGROUNDPEN], themed) != FLAT_DRAW_SKIP)
             return 0;
     }
@@ -4020,6 +4031,7 @@ static void draw_sync(flatshared *r)
     UnlockPubScreenList();
     Forbid();
     flat_draw_sync(&g_draw, &r->st, &g_pens, g_draw_list, n, g_wb_scr, wbep);
+    g_nexcl = ipd_exclude_pats(g_excl, GT_SCR_MAX);     /* nests the Forbid: the hook never sees half a list */
     Permit();
 }
 
@@ -4115,6 +4127,7 @@ int main(void)
     int frames_due = 0;     /* FLAT-BOOT-FRAMES: hooks just installed, the frames on screen still pre-hook */
     int marker_live = 0;
     flat_state st0;                                     /* the prefs' state, read before the instance guard */
+    int boot_priv;                                      /* PALETTE-BUTTONS-BEVELED: key flat-private-screens, read with st0 */
     (void)ver;
     stk_probe_init("AMFLT");
     InitSemaphore(&cl_ss);
@@ -4166,6 +4179,7 @@ int main(void)
         gt_dos_load_current(&boot_theme);           /* the saved theme (prefs AM_GTHEME, else the default); an unreadable file gives gt_load's built-in default */
         bp = amconf_borrow();
         desk_flat_full(amconf_flat_index(bp, AM_FLAT), amconf_flat_index(bp, AM_FLATGAD), amconf_flat_index(bp, AM_UIAA), &boot_theme, &st0);
+        boot_priv = amconf_flat_index(bp, AM_FLATPRIV);
         amconf_return(bp);
     }
     Forbid();
@@ -4193,6 +4207,7 @@ int main(void)
             r->name[i] = FLAT_SEM_NAME[i];
         r->ss.ss_Link.ln_Name = r->name;
         r->st = st0;
+        r->flatpriv = boot_priv;
         r->task = me;
         if (me->tc_Node.ln_Name) {
             for (i = 0; me->tc_Node.ln_Name[i] && i < (int)sizeof r->tname - 1; i++)

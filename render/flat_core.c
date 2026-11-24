@@ -418,6 +418,11 @@ int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, 
     return pen_shine == pen_back || themed ? FLAT_DRAW_SKIP : FLAT_DRAW_STOCK;
 }
 
+int flat_screen_themed(int listed, int private_on, int excluded)
+{
+    return !excluded && (listed || private_on);
+}
+
 int flat_dopus_status_line(int found, unsigned version, unsigned revision, int reason, int mask, int installed,
                            unsigned long calls, unsigned long flat, const uint32_t sums[FLAT_EL_COUNT], char *out, size_t cap)
 {

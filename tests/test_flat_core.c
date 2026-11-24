@@ -1644,6 +1644,12 @@ static void test_which_from_gtype(void)
         CHECK_INT(flat_frame_decide(&fs, 0x203UL, 0, 0, 0), FLAT_DRAW_STOCK);        /* IM_ERASE */
         CHECK_INT(flat_frame_decide(&fs, 0x204UL, 0, 0, 0), FLAT_DRAW_STOCK);        /* IM_HITTEST: never skipped */
         CHECK_INT(flat_frame_decide(&fs, 0x0UL, 0, 0, 0), FLAT_DRAW_STOCK);
+        /* PALETTE-BUTTONS-BEVELED: a private screen is themed while flat-private-screens is on; an exclude rule wins */
+        CHECK_INT(flat_screen_themed(1, 0, 0), 1);
+        CHECK_INT(flat_screen_themed(0, 1, 0), 1);
+        CHECK_INT(flat_screen_themed(0, 0, 0), 0);
+        CHECK_INT(flat_screen_themed(1, 1, 1), 0);
+        CHECK_INT(flat_screen_themed(0, 1, 1), 0);
         fs.held = 1;
         CHECK_INT(flat_frame_decide(&fs, 0x202UL, 0, 0, 0), FLAT_DRAW_STOCK);
         CHECK_INT(flat_frame_decide(&fs, 0x202UL, 2, 0, 1), FLAT_DRAW_STOCK);
