@@ -23,7 +23,7 @@ extern Object *mui_makeobj(__reg("a6") struct Library *, __reg("d0") LONG, __reg
 extern void mui_disp(__reg("a6") struct Library *, __reg("a0") Object *) = "\tjsr\t-36(a6)";
 void MUI_DisposeObject(Object *o) { mui_disp(MUIMasterBase, o); }
 Object *MUI_NewObject(char *cls, ULONG tag1, ...) { return mui_newobj(MUIMasterBase, cls, &tag1); }
-Object *MUI_MakeObject(LONG type, ...) { return mui_makeobj(MUIMasterBase, type, (ULONG *)(&type + 1)); }
+Object *MUI_MakeObject(LONG type, ULONG p1, ...) { return mui_makeobj(MUIMasterBase, type, &p1); }
 
 static char *ents[] = {"First", "Second", "Third", NULL};
 static ULONG seen[2];
