@@ -13,21 +13,11 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <proto/dos.h>
+#include <sys/stat.h>
 
 static int fails;
 
-static void raw(const char *from, const char *to)
-{
-    BPTR l = Lock((STRPTR) from, ACCESS_READ);
-    LONG ok, ioerr;
-    if (!l) { printf("  raw MakeLink: Lock(%s) failed IoErr %ld\n", from, (long) IoErr()); return; }
-    ok = MakeLink((STRPTR) to, (LONG) l, LINK_HARD);
-    ioerr = IoErr();
-    UnLock(l);
-    printf("  raw MakeLink(%s) %s IoErr %ld\n", to, ok ? "ok" : "failed", (long) ioerr);
-    if (ok) DeleteFile((STRPTR) to);
-}
+void ixlink_raw(const char *from, const char *to); /* ixlink_dos.c */
 
 static void one(const char *what, const char *from, const char *to)
 {
@@ -57,7 +47,7 @@ int main(int argc, char **argv)
         snprintf(abs, sizeof abs, "%s/ixl-abs", cwd);
         one("absolute", ".ixl/a", abs);
         one("relative", ".ixl/a", "ixl-rel");
-        raw(".ixl/a", "ixl-raw");
+        ixlink_raw(".ixl/a", "ixl-raw");
         unlink(".ixl/a");
         rmdir(".ixl");
     }

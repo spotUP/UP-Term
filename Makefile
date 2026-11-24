@@ -1413,9 +1413,9 @@ $(BUILD)/amiga/ixnamelen: tests/amiga/ixnamelen.c
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixnamelen.c
 
 # link() errno where the handler makes no hard link (EXDEV/EOPNOTSUPP, never EIO; ixemul)
-$(BUILD)/amiga/ixlink: tests/amiga/ixlink.c
+$(BUILD)/amiga/ixlink: tests/amiga/ixlink.c tests/amiga/ixlink_dos.c
 	@mkdir -p $(BUILD)/amiga
-	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixlink.c
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixlink.c tests/amiga/ixlink_dos.c
 
 # FPU Inf and NaN under the emulator: fmove.x Inf bytes, fcmp Inf,Inf sets Z, NaN is unordered
 $(BUILD)/amiga/fpuinf: tests/amiga/fpuinf.c
