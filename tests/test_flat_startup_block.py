@@ -4,7 +4,8 @@ name (and a plain strip of the sequence removes it), the base Uninstall runs the
 import pathlib, re, subprocess, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-DOS = (ROOT / "dist/install.dos").read_text()
+ADDON = ROOT / "dist/addons/patina"
+DOS = (ADDON / "install.dos").read_text()
 BLOCK = [";BEGIN UP-Term Patina-Flat", "If EXISTS Work:UP-Term/bin/patina-flat",
          "  Run >NIL: Work:UP-Term/bin/patina-flat BOOT", "EndIf", ";END UP-Term Patina-Flat"]
 
@@ -26,18 +27,19 @@ class FlatStartupBlock(unittest.TestCase):
         self.assertIn("ENVARC:up-term/Dir", DOS)
 
     def test_install_still_strips_the_old_user_startup_block(self):
-        self.assertIn('vsh unstartup.sh "Patina-Flat"', DOS)
+        # the base install keeps stripping it (an old kit's copy), whether or not the add-on is installed
+        self.assertIn('vsh unstartup.sh "Patina-Flat"', (ROOT / "dist/install.dos").read_text())
 
     def test_kit_ships_the_binary(self):
-        self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^tools\s+Files/patina-flat$")
+        self.assertRegex((ADDON / "parts.txt").read_text(), r"(?m)^patina\s+Files/patina-flat$")
         mk = (ROOT / "Makefile").read_text()
         self.assertIn("$(BUILD)/amiga/patina-flat $(BUILD)/amiga/amnotify", mk)
-        self.assertRegex(DOS, r"(?m)^Copy Patina .*\bpatina-flat\b.* UP-Term:bin CLONE")
+        self.assertRegex(DOS, r"(?m)^Copy Patina .*\bpatina-flat\b.* UPTREAL:bin CLONE")
 
     def test_uninstall_strips_the_block_from_both_files(self):
-        u = (ROOT / "dist/Uninstall").read_text()
-        self.assertIn('$unvsh "$unst" Patina-Flat', u)  # an old kit's User-Startup copy
-        self.assertIn("S:Startup-Sequence", u)
+        u = (ADDON / "uninstall-body.dos").read_text()
+        self.assertIn("unstartup.sh Patina-Flat S:Startup-Sequence", u)
+        self.assertIn("S:User-Startup", u)  # an old kit's User-Startup copy
 
     def test_unstartup_strips_the_block_from_the_sequence_by_name_and_plainly(self):
         keep = "; stock\nEcho keep\n"
