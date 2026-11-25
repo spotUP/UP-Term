@@ -946,6 +946,22 @@ int flat_mx_image(unsigned long which)
     return which == FLAT_W_MXIMAGE;
 }
 
+int flat_check_look(const flat_state *s, int depth, int themed, int *fill, int *edge)
+{
+    int p = flat_input_pen(s, depth);
+    if (p >= 0) {
+        *fill = p;
+        *edge = -1;
+        return FLAT_CHECK_GROUND;
+    }
+    if (!s || !themed || depth < 1 || depth > 8 || !s->pen_outline || s->pen_outline == s->pen_back || s->pen_outline >= (1 << depth)
+        || s->pen_back >= (1 << depth))
+        return FLAT_CHECK_STOCK;
+    *fill = s->pen_back;
+    *edge = s->pen_outline;
+    return FLAT_CHECK_OUTLINE;
+}
+
 int flat_check_width(int w, int h, int side)
 {
     int sq = h * (side < 1 ? 1 : side);

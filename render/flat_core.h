@@ -583,6 +583,14 @@ int flat_display_gadget(unsigned flags, unsigned activation);
 int flat_mx_image(unsigned long which);
 int flat_check_image(unsigned long which);
 int flat_check_ticked(unsigned long ids);
+/* PALETTE-LEFTOVERS2 (radio / check box still beveled): how a CHECKIMAGE / MXIMAGE draws on the screen with state s. GROUND: the screen
+ * holds the input pen, *fill = that pen, *edge = -1 (S74 look, mark in the image's text pen). OUTLINE: no input pen (a private screen
+ * themed by flat-private-screens, or under 8 colours) but themed: *fill = pen_back, *edge = pen_outline, a 1 px outline and the mark
+ * in *edge (a pen_back box alone would be invisible). STOCK: not themed or no distinct outline pen; fill / edge untouched. */
+#define FLAT_CHECK_STOCK   0
+#define FLAT_CHECK_GROUND  1
+#define FLAT_CHECK_OUTLINE 2
+int flat_check_look(const flat_state *s, int depth, int themed, int *fill, int *edge);
 /* S74-CHECKBOX-SQUARE (owner 2026-11-11): the stock image is 26x11; the flat box is visually square: h rows by h * side columns
  * (side = flat_side_px of the screen), never wider than the image, at the image's left edge. */
 int flat_check_width(int w, int h, int side);

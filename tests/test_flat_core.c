@@ -4158,6 +4158,27 @@ static void test_no_outlines(void)
         CHECK_INT(flat_check_width(26, 11, 0), 11);
         CHECK_INT(flat_check_width(26, 11, 4), 26);     /* never wider than the image */
         CHECK_INT(flat_check_image(FLAT_W_MENUCHECK), 0);
+        {   /* PALETTE-LEFTOVERS2: no input pen on a themed private screen = outlined box, never the stock bevel */
+            flat_state cs;
+            int fill = -9, edge = -9;
+            memset(&cs, 0, sizeof cs);
+            cs.pen_back = 0; cs.pen_outline = 3; cs.pen_sel = 12;
+            CHECK_INT(flat_check_look(&cs, 8, 1, &fill, &edge), FLAT_CHECK_GROUND);
+            CHECK_INT(fill == 12 && edge == -1, 1);
+            CHECK_INT(flat_check_look(&cs, 8, 0, &fill, &edge), FLAT_CHECK_GROUND);     /* a held pen needs no themed flag */
+            cs.pen_sel = 0;                                                             /* the Palette private screen: own pens 0 */
+            CHECK_INT(flat_check_look(&cs, 8, 1, &fill, &edge), FLAT_CHECK_OUTLINE);
+            CHECK_INT(fill == 0 && edge == 3, 1);
+            fill = edge = -9;
+            CHECK_INT(flat_check_look(&cs, 8, 0, &fill, &edge), FLAT_CHECK_STOCK);      /* flat-private-screens off / excluded */
+            CHECK_INT(fill == -9 && edge == -9, 1);
+            cs.pen_sel = 12;
+            CHECK_INT(flat_check_look(&cs, 2, 1, &fill, &edge), FLAT_CHECK_OUTLINE);    /* 4 colours: pen 12 is no pen there */
+            CHECK_INT(flat_check_look(&cs, 1, 1, &fill, &edge), FLAT_CHECK_STOCK);      /* outline pen 3 outside 2 colours */
+            cs.pen_outline = 0;
+            CHECK_INT(flat_check_look(&cs, 2, 1, &fill, &edge), FLAT_CHECK_STOCK);      /* outline == ground: invisible */
+            CHECK_INT(flat_check_look(NULL, 8, 1, &fill, &edge), FLAT_CHECK_STOCK);
+        }
         CHECK_INT(flat_check_ticked(0), 0);
         CHECK_INT(flat_check_ticked(5), 0);
         CHECK_INT(flat_check_ticked(1) && flat_check_ticked(6) && flat_check_ticked(8), 1);

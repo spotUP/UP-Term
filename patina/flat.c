@@ -1301,25 +1301,39 @@ static LONG c8_on_private(void *a);
  * the box in SHINE / SHADOW, which flat sets to the surface pen, so an unticked box was invisible. Drawn instead as the string
  * input's look (ground_box in flat_input_pen: rounded ground, no outline) plus, when ticked, the menu check mark in the text pen
  * (flat_glyph_tick). Runs on the private stack (c8_draw_on). 0 = no input pen on this screen: the stock draw. */
+static int scr_themed(flatshared *r, const struct Screen *ws);
 static int check_draw(Object *obj, Msg msg, int tick_pen)
 {
-    int mx = tick_pen >= C8_MX;
+    int mx = tick_pen >= C8_MX - 1;     /* PALETTE-LEFTOVERS2: pens.text is -1 on an unlisted screen, so an MX arrives as C8_MX - 1 */
     flatshared *r = g_r;
     struct impDraw *d = (struct impDraw *)msg;
     struct Image *im = (struct Image *)obj;
     struct RastPort *rp = d->imp_RPort;
     struct Window *w = rp->Layer ? (struct Window *)rp->Layer->Window : NULL;
     int x0 = im->LeftEdge + d->imp_Offset.X, y0 = im->TopEdge + d->imp_Offset.Y;
-    int pen = w ? flat_input_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0) : -1;
-    int bw;
-    if (pen < 0)
+    int pen = -1, edge = -1, bw, side;
+    int look = w ? flat_check_look(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0, scr_themed(r, w->WScreen), &pen, &edge)
+                 : FLAT_CHECK_STOCK;
+    if (look == FLAT_CHECK_STOCK) {
+        r->cknopen++;
         return 0;
+    }
     if (mx)
         tick_pen -= C8_MX;
     if (tick_pen < 0)
         tick_pen = d->imp_DrInfo ? d->imp_DrInfo->dri_Pens[TEXTPEN] : 1;
-    bw = flat_check_width(im->Width, im->Height, side_px(r, w->WScreen));   /* S74-CHECKBOX-SQUARE */
-    ground_box(r, rp, x0, y0, x0 + bw - 1, y0 + im->Height - 1, pen);
+    side = side_px(r, w->WScreen);
+    bw = flat_check_width(im->Width, im->Height, side);   /* S74-CHECKBOX-SQUARE */
+    if (look == FLAT_CHECK_OUTLINE) {     /* PALETTE-LEFTOVERS2: no input pen on this screen: outline + ground, mark in the outline pen */
+        UBYTE fg = rp->FgPen;
+        c2_fill(rp, x0, y0, x0 + bw - 1, y0 + im->Height - 1, edge);
+        if (bw > 2 * side && im->Height > 2)
+            c2_fill(rp, x0 + side, y0 + 1, x0 + bw - 1 - side, y0 + im->Height - 2, pen);
+        SetAPen(rp, fg);
+        tick_pen = edge;
+        r->ckline++;
+    } else
+        ground_box(r, rp, x0, y0, x0 + bw - 1, y0 + im->Height - 1, pen);
     if (flat_check_ticked(d->imp_State))
         (mx ? flat_glyph_dot : flat_glyph_tick)(x0, y0, bw, im->Height, tick_pen, c2_fill, rp);
     return 1;
@@ -3673,7 +3687,7 @@ static void print_status(void)
     WORD traw[2][5];
     unsigned long scmin = 0, schw = 0, scstk = 0, scno = 0, scb256 = 0, scb8a = 0, scb8b = 0, schdr = 0, scguard = 0, scdeep = 0;
     char sctask[16] = "";
-    unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0, nwc = 0, nws = 0, nwz = 0;
+    unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0, nwc = 0, nws = 0, nwz = 0, ckn = 0, ckl = 0;
     ULONG zcc[2][7];
     static UBYTE grid[32 * 32];   /* S93: copy of cf_lgrid (static: print_status runs on the CLI's stack) */
     int zi;
@@ -3704,7 +3718,7 @@ static void print_status(void)
         cdraws = r->cdraws; cfall = r->cfall;
         cfb = r->cf_busy; cfd = r->cf_nodri; cfm = r->cf_nobm; cfe = r->cf_empty; cfk = r->cf_mask;
         cfi = r->cf_ids; clw = r->cf_lwhich; cls = r->cf_lsize; cln = r->cf_lnz; clm = r->cf_lmarks; CopyMem(r->cf_lgrid, grid, sizeof grid);
-        nwc = r->nw_count; nws = r->nw_state; nwz = r->nw_size; memcpy(zcc, r->zc, sizeof zcc);
+        ckn = r->cknopen; ckl = r->ckline; nwc = r->nw_count; nws = r->nw_state; nwz = r->nw_size; memcpy(zcc, r->zc, sizeof zcc);
         apx = r->aspect_px; alooks = r->aspect_looks;
         memcpy(sring, r->sring, sizeof sring); sn = (int)(r->sring_n > 16 ? 16 : r->sring_n);
         lbeat = r->beat; lstage = r->stage; lref = r->refuse; lnref = r->nrefuse;
@@ -3901,6 +3915,8 @@ static void print_status(void)
         put_word(line, &n, " last state=");         put_num(line, &n, nws);
         put_word(line, &n, " w=");                  put_num(line, &n, nwz >> 8);
         put_word(line, &n, " h=");                  put_num(line, &n, nwz & 255);
+        put_word(line, &n, " ckstock=");            put_num(line, &n, ckn);
+        put_word(line, &n, " ckline=");             put_num(line, &n, ckl);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
