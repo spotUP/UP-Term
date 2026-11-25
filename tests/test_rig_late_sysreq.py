@@ -12,14 +12,14 @@ SYSREQ = "\n".join(['S 0 800x600 depth=24 "Directory Opus"', 'W 0 150 250 496x82
                     'G 1 158 312 74x16 custom - "Retry"', 'G 0 554 312 84x16 custom - "Cancel"'])
 
 
-def run(tree_at):
-    """retry_wb_reset on an RTG screen with a fake clock (+5 s a call); tree_at(t) is the UITREE text at time t."""
+def run(tree_at, screen=lambda t: RTG):
+    """retry_wb_reset on screen(t) (default RTG) with a fake clock (+5 s a call); tree_at(t) is the UITREE text at time t."""
     now = [0.0]
 
     def clock():
         now[0] += 5
         return now[0]
-    fake = types.SimpleNamespace(req=lambda op: RTG if op == 0x0A else tree_at(now[0]).encode(),
+    fake = types.SimpleNamespace(req=lambda op: screen(now[0]) if op == 0x0A else tree_at(now[0]).encode(),
                                  pointer_scale=lambda: (1, 1), script=lambda *a: (_ for _ in ()).throw(AssertionError("clicked")))
     saved = (sys.modules.get("ami"), rig.RIG, rig.paths.REPORTS, rig.time.sleep, rig.time.time)
     sys.modules["ami"] = fake
@@ -49,6 +49,23 @@ class LateSysReq(unittest.TestCase):
         self.assertGreater(end, rig.LATE_REQ_WATCH)
         self.assertIn("RTG 800x600", (rigdir / "retry.log").read_text())
         self.assertFalse((reports / "late-sysreq.log").exists())
+
+
+NOSCREEN = bytes([0])   # ami.py _screens with no screen open: 0 rows, read as 0x0
+
+
+class NoScreen(unittest.TestCase):
+    def test_no_screen_is_not_rtg_and_fails_after_the_wait(self):
+        err, rigdir, _, end = run(lambda t: "", screen=lambda t: NOSCREEN)
+        self.assertIn("no screen open after %d s" % rig.WB_SCREEN_WAIT, err or "")
+        self.assertGreaterEqual(end, rig.WB_SCREEN_WAIT)
+        self.assertNotIn("RTG", (rigdir / "retry.log").read_text())
+
+    def test_screen_opening_late_inside_the_wait_is_waited_for(self):
+        err, rigdir, _, end = run(lambda t: "", screen=lambda t: RTG if t > 90 else NOSCREEN)
+        self.assertIsNone(err)
+        self.assertGreater(end, 90 + rig.LATE_REQ_WATCH)
+        self.assertIn("RTG 800x600", (rigdir / "retry.log").read_text())
 
 
 if __name__ == "__main__":
