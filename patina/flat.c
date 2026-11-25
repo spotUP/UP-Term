@@ -2774,6 +2774,22 @@ static int rf_edge(flatshared *r, struct RastPort *rp, struct Window *w, const L
     return 1;
 }
 
+/* FLAT-INNER-BEVEL: Intuition 3.1 bevels a 1 px inner box inside the border (ROM 0xfe5a26 via 0xfe0cec); a flat window has none */
+static int rf_inner(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b)
+{
+    int p = flat_inner_edge_fill(st_scr(r, w->WScreen), w->Width, w->Height, w->BorderLeft, w->BorderTop, w->BorderRight, w->BorderBottom,
+                                 (int)b[0], (int)b[1], (int)b[2], (int)b[3]);
+    UBYTE fg;
+    if (p < 0)
+        return 0;
+    fg = rp->FgPen;
+    r->rhits++;
+    SetAPen(rp, (UBYTE)p);
+    ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+    SetAPen(rp, fg);
+    return 1;
+}
+
 /* S57-LOCALE-LIST-NO-SELECT: FILLPEN is the accent; the sides stay dark */
 static int rf_side(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b)
 {
@@ -2968,7 +2984,7 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
         return;
     if (on && w && rom && (rf_disabled(r, rp, w, b) || rf_scroller(r, rp, w, b)))
         return;
-    if (on && r->st.pen_outline && w && !(w->Flags & WFLG_BORDERLESS) && rom && (rf_edge(r, rp, w, b) || rf_side(r, rp, w, b)))
+    if (on && r->st.pen_outline && w && !(w->Flags & WFLG_BORDERLESS) && rom && (rf_edge(r, rp, w, b) || rf_side(r, rp, w, b) || rf_inner(r, rp, w, b)))
         return;
     ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
 }

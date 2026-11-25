@@ -493,6 +493,9 @@ int flat_edge_pen(const flat_state *s, int depth, int active);
  * rows of it below the title bar (a full-height strip keeps its title rows in the accent); else -1 (draw as asked). */
 int flat_side_fill_pen(const flat_state *s, int fg, int ww, int wh, int bl, int bt, int br, int bb, int x0, int y0, int x1, int y1,
                        int out[4]);
+/* flat_inner_edge_fill: FLAT-INNER-BEVEL. Pen for a RectFill on the 1 px inner box Intuition 3.1 bevels inside a bordered window
+ * (top row bt-1, left col bl-1, right col ww-br, bottom row wh-bb, longer than half the side): pen_back; -1 for any other fill. */
+int flat_inner_edge_fill(const flat_state *s, int ww, int wh, int bl, int bt, int br, int bb, int x0, int y0, int x1, int y1);
 /* FLAT-GADGETS-RIG8: the band spans only the title area between the system gadgets (bx0..bx1, from flat_title_span), so it never
  * wipes the close / depth / zoom gadgets Intuition draws once and does not redraw. */
 typedef struct flat_gadrect { int x, y, w, h, relright, relwidth, drag; } flat_gadrect;

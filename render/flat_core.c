@@ -1334,6 +1334,21 @@ int flat_side_fill_pen(const flat_state *s, int fg, int ww, int wh, int bl, int 
     return s->pen_back;
 }
 
+/* The inner box Intuition 3.1 bevels inside a bordered window (ROM 0xfe5a26 calls the embossed box 0xfe0cec at x bl-1, y bt-1,
+ * size ww-(bl+br-2) x wh-(bt+bb-2)): four 1 px RectFills, top row bt-1, left col bl-1, right col ww-br, bottom row wh-bb.
+ * A line on that box longer than half its side is the bevel, not a border gadget edge; it becomes the ground. */
+int flat_inner_edge_fill(const flat_state *s, int ww, int wh, int bl, int bt, int br, int bb, int x0, int y0, int x1, int y1)
+{
+    int l = bl - 1, t = bt - 1, r = ww - br, b = wh - bb;
+    if (!s->enabled || s->held || l < 0 || t < 0 || r <= l || b <= t)
+        return -1;
+    if (x0 == x1 && (x0 == l || x0 == r) && y0 >= t && y1 <= b && 2 * (y1 - y0 + 1) > b - t + 1)
+        return s->pen_back;
+    if (y0 == y1 && (y0 == t || y0 == b) && x0 >= l && x1 <= r && 2 * (x1 - x0 + 1) > r - l + 1)
+        return s->pen_back;
+    return -1;
+}
+
 int flat_frame_pen(const flat_state *s, int depth, int active)
 {
     if (s->enabled && !s->held)
@@ -1949,8 +1964,9 @@ static const unsigned long pal_groove[] = { 0x34ec, 0x353e,     /* PALETTE-GROOV
 static const unsigned long pal_knob[] = { 0x5c88, 0x5e68 };    /* PALETTE-SAMPLE-SCROLLER: Active (FILLPEN), Inactive (BACKGROUNDPEN) knob fills */
 
 /* bevel calls at 0x5fae, 0x6102, 0x613e (sample push buttons); PALETTE-PREVIEW-FRAMES: 0x5a84, 0x5d0e = the inner bevel of the
- * Active and Inactive sample window (the outer bevel at 0x5a52 / 0x5cda keeps its 1 px accent outline, like a Patina window) */
-static const unsigned long pal_button[] = { 0x5fb2, 0x6106, 0x6142, 0x5a88, 0x5d12 };
+ * Active and Inactive sample window (the outer bevel at 0x5a52 / 0x5cda keeps its 1 px accent outline, like a Patina window);
+ * PALETTE-SCROLLER-BEVEL: 0x5c40, 0x5e32 = the Active and Inactive sample scroller container (a flat scroller has no frame) */
+static const unsigned long pal_button[] = { 0x5fb2, 0x6106, 0x6142, 0x5a88, 0x5d12, 0x5c44, 0x5e36 };
 
 int flat_palette_button(unsigned long off)
 {
