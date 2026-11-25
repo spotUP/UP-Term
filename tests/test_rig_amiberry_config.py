@@ -118,6 +118,18 @@ class MachineFromFlags(unittest.TestCase):
         m = self.machine("--a500", "--emu", "amiberry")
         self.assertEqual((m["model"], m["cpu"], m["cycle_exact"]), ("A500", "68000", True))
 
+    def test_stock_and_a500_config(self):
+        """AMIBERRY-A500-STOCK: --stock (creep's A1200: 68020, no fast RAM, real speed) and --a500 (68000, OCS, 512 KB
+        chip, 8 MB fast, cycle-exact, A500 ROM) reach Amiberry keys; the default emulator stays FS-UAE."""
+        for flags, want in ((("--stock",), ("A1200", "68020", "false", "0")), (("--a500",), ("A500", "68000", "true", "1"))):
+            m = self.machine(*flags, "--emu", "amiberry")
+            c = dict(l.split("=", 1) for l in amiberry.config_lines(dict(m, window=tuple(m["window"]))))
+            self.assertEqual((m["model"], c["cpu_model"], c["cpu_cycle_exact"]), want[:3], flags)
+            self.assertEqual(c["chipmem_size"], "4" if flags == ("--stock",) else "1")
+            self.assertEqual("fastmem_size" in c, flags == ("--a500",))
+            self.assertNotIn("gfxcard_type", c)
+        self.assertEqual(subprocess.run([sys.executable, "-I", "-c", "import sys; sys.path.insert(0, %r); sys.argv=['rig.py','status']; import paths; print(paths.EMU)" % str(ROOT / "tools/rig")], capture_output=True, text=True, env=dict(os.environ, UPTERM_RIG="29")).stdout.split()[-1], "fsuae")
+
     def test_serial_is_a_tcp_port_never_a_file(self):
         """AMIBERRY-SERIAL: Amiberry rejects a file as serial_port ("Error finding serial port"); the rig config names
         a TCP listener on 12000 + rig number, which rig.py serialwatch reads into serial.log."""
