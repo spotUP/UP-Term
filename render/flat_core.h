@@ -678,6 +678,9 @@ int flat_button_gadget(const void *gadget_render, const void *select_render, con
  * render == select image, so flat_button_gadget misses it and the frame drew edges only: no ground, square ring). 1 when the
  * unanswered frame box is exactly the box of a GTYP_BOOLGADGET without GACT_IMMEDIATE (not a scroller arrow): fill it, role PLAIN. */
 int flat_cycle_frame(unsigned gadget_type, unsigned activation, int gx, int gy, int gw, int gh, int fx, int fy, int fw, int fh);
+/* C8-RING: is an unanswered frame a 3.1 cycle's? box_match = flat_cycle_frame on some window gadget. On 3.1 the cycle's frame is
+ * its gadget's render == select image (button_image), as a push button's; push (flat_push_button) keeps the push button out. */
+int flat_cycle_of(int button_image, int push, int box_match);
 /* PALETTE-CYCLE-PAPER (owner 2026-11-25): a 3.1 cycle gadget looks like a Patina window: the rounded face is drawn in the accent
  * (st->pen_button = st->pen_line), then in[] (the box inside the side-wide outline) is filled with the returned surface pen st->pen_back */
 int flat_cycle_paper(flat_state *st, int ox, int oy, int w, int h, int in[4]);

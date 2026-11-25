@@ -1281,10 +1281,14 @@ static int c8_draw(Object *obj, Msg msg)
         flat_frame_size(msg->MethodID == FLAT_IM_DRAWFRAME, d->imp_Dimensions.Width, d->imp_Dimensions.Height, im->Width, im->Height, &w, &h);
         if (GetAttr(IA_EdgesOnly, obj, &eo) != 0)
             fill = flat_frame_fill(1, (int)eo, push_gadget_of(d->imp_RPort, obj));
-        else if (button_gadget_of(d->imp_RPort, obj))     /* 3.1 frameiclass V40 does not answer OM_GET: a button renders this image as render and select */
-            fill = 1;
-        else if ((fill = cyc = cycle_gadget_at(d->imp_RPort, ox, oy, w, h)) != 0)
-            role = FLAT_ROLE_PLAIN;                       /* PALETTE-CYCLE-FLAT: the 3.1 cycle's own image draws this frame */
+        else {   /* 3.1 frameiclass V40 does not answer OM_GET: a button renders this image as render and select */
+            int btn = button_gadget_of(d->imp_RPort, obj);
+            /* C8-RING: a 3.1 cycle is such a button too; testing the button first hid it from PALETTE-CYCLE-PAPER */
+            cyc = flat_cycle_of(btn, btn && push_gadget_of(d->imp_RPort, obj), cycle_gadget_at(d->imp_RPort, ox, oy, w, h));
+            fill = btn || cyc;
+            if (cyc)
+                role = FLAT_ROLE_PLAIN;                   /* PALETTE-CYCLE-FLAT: the 3.1 cycle's own image draws this frame */
+        }
         if (border_button_at(d->imp_RPort, ox, oy, ox + w - 1, oy + h - 1, NULL)) {
             /* INSTALLER-BORDER-BUTTON: the rounded fill was painted at the erase (flat_rf_c) and the label is drawn; no ring */
             flat_tx_frame(&r->tx, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL), 0, 0, ox, oy, ox + w - 1, oy + h - 1);

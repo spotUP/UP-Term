@@ -2003,6 +2003,12 @@ static void test_which_from_gtype(void)
                 CHECK_INT(sw >= 1, 1);
             }
             CHECK_INT(flat_cycle_frame(0x0005, 0x0001, 15, 20, 285, 20, 15, 20, 285, 20), 0);     /* custom (Palette's colour wheel) */
+            /* C8-RING: the 3.1 cycle's frame is its render == select image: still a cycle; a push button with the same box is not */
+            CHECK_INT(flat_cycle_of(1, 0, 1), 1);
+            CHECK_INT(flat_cycle_of(0, 0, 1), 1);
+            CHECK_INT(flat_cycle_of(1, 1, 1), 0);
+            CHECK_INT(flat_cycle_of(1, 0, 0), 0);
+            CHECK_INT(flat_cycle_of(0, 0, 0), 0);
             CHECK_INT(flat_cycle_frame(0x8001, 0x0001, 0, 0, 18, 11, 0, 0, 18, 11), 0);           /* system gadget */
             CHECK_INT(flat_cycle_frame(0x0001, 0x0001, 0, 0, 0, 0, 0, 0, 0, 0), 0);
             /* a slider holder also matches, but noline_frame classes its frame TRACK first and draws nothing when filled */

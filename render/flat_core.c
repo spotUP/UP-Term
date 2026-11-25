@@ -1126,6 +1126,11 @@ int flat_cycle_frame(unsigned gadget_type, unsigned activation, int gx, int gy, 
     return fw > 0 && fh > 0 && gx == fx && gy == fy && gw == fw && gh == fh;
 }
 
+int flat_cycle_of(int button_image, int push, int box_match)
+{
+    return box_match && !(button_image && push);
+}
+
 int flat_cycle_paper(flat_state *st, int ox, int oy, int w, int h, int in[4])
 {
     int sw = flat_button_side(st->side, w);
