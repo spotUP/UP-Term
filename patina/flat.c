@@ -2970,6 +2970,13 @@ static int rf_ghost_custom(flatshared *r, struct RastPort *rp, struct Window *w,
     return 1;
 }
 
+/* The ROM ghost fills over a window's gadgets, one call from flat_rf_c so its frame stays in budget (S62-FLAT-RF-TX-BUDGET);
+ * rf_scroller (the deep chain) stays a direct call so this frame is not on its path */
+static int rf_ghost(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b)
+{
+    return rf_disabled(r, rp, w, b) || rf_ghost_custom(r, rp, w, b);
+}
+
 void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG ret)
 {
     flatshared *r = g_r;
@@ -3011,7 +3018,7 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
         rf_strfill(r, rp, b);
     if (on && rf_gbox(r, rp, b))
         return;
-    if (on && w && rom && (rf_disabled(r, rp, w, b) || rf_ghost_custom(r, rp, w, b) || rf_scroller(r, rp, w, b)))
+    if (on && w && rom && (rf_ghost(r, rp, w, b) || rf_scroller(r, rp, w, b)))
         return;
     if (on && r->st.pen_outline && w && !(w->Flags & WFLG_BORDERLESS) && rom && (rf_edge(r, rp, w, b) || rf_side(r, rp, w, b) || rf_inner(r, rp, w, b)))
         return;
