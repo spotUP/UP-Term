@@ -316,6 +316,11 @@ int flat_dopus_image_which(int type);
  * IM_HITFRAME, ...) is STOCK. A missing state is STOCK. */
 #define FLAT_IM_DRAWFRAME 0x206UL
 int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, int pen_back, int themed);
+/* PALETTE-BUTTONS-BEVELED: the themed argument of flat_frame_decide for a window's screen. listed = the Workbench or a public screen
+ * with a slot; private_on = flat-private-screens (every other screen, a private one such as 3.2 Palette Prefs on a 24-bit Workbench,
+ * or a new public screen before its first sync, counts too); excluded = a screen-themes exclude rule matches the screen title, which
+ * wins over both. 1 = themed. */
+int flat_screen_themed(int listed, int private_on, int excluded);
 /* STATUS line of the frameiclass hook: "frame=absent" or "frame=hooked calls=N flat=N busy=N nostk=N" (flat = draws skipped; busy / nostk =
  * stock-draw fallbacks of c8_draw_on: semaphore busy / no private stack). */
 int flat_frame_status_line(int installed, unsigned long calls, unsigned long flat, unsigned long busy, unsigned long nostk,

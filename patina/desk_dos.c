@@ -913,19 +913,21 @@ static void dk_flat_sync_theme(const gtheme *thp, int changed_only)
     am_prefs *ap;
     flatshared *r;
     const gtheme *th = thp;
-    int flat, gad, aa, wrote = 0;
+    int flat, gad, aa, priv, wrote = 0;
     ap = amconf_borrow();
     flat = amconf_flat_index(ap, AM_FLAT);
     gad = amconf_flat_index(ap, AM_FLATGAD);
     aa = amconf_flat_index(ap, AM_UIAA);
+    priv = amconf_flat_index(ap, AM_FLATPRIV);
     dk_icons_sync(flat || gad, amconf_icon_outline(ap));
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
     if (r && flat_check(&r->st, sizeof r->st) == FLAT_OK) {
         flat_state next = r->st;
         desk_flat_full(flat, gad, aa, th, &next);   /* FLAT-BOOT-THEME-FIELDS: the one mapping, also run by patina-flat at its start */
-        if (!changed_only || memcmp(&next, &r->st, sizeof next) != 0) {
+        if (!changed_only || memcmp(&next, &r->st, sizeof next) != 0 || r->flatpriv != priv) {
             desk_flat_full(flat, gad, aa, th, &r->st);
+            r->flatpriv = priv;                     /* PALETTE-BUTTONS-BEVELED: c8_skip reads it on its next frame */
             if (r->task)
                 Signal(r->task, SIGBREAKF_CTRL_D);  /* LUCIDE L7: patina-flat takes or drops the icon pens */
             wrote = 1;

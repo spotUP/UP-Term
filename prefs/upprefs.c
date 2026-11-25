@@ -310,6 +310,7 @@ static int *int_of(struct app *a, int id)
     case PG_AM_ICONTEXT: return &a->f.am_icontext;
     case PG_AM_BORDERBLANK: return &a->f.am_borderblank;
     case PG_AM_UIAA: return &a->f.am_uiaa;
+    case PG_AM_FLATPRIV: return &a->f.am_flatpriv;
     case PG_BELL: return &a->f.bell;
     case PG_BOLD: return &a->f.bold;
     case PG_WHEEL: return &a->f.wheel;

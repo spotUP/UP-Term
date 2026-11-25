@@ -533,6 +533,22 @@ void ipd_rules_changed(void)
         r->rules_dirty = 1;
 }
 
+/* PALETTE-BUTTONS-BEVELED: the exclude patterns of the screen-themes rules, for patina-flat's hook (no DOS there).
+ * Copied under Forbid from the shared record; 0 when the rules are off or no record exists yet. */
+int ipd_exclude_pats(char (*out)[GT_SCR_PAT], int max)
+{
+    int i, n = 0;
+    ipd_rec *r;
+    Forbid();
+    r = find_rec(0);
+    if (r && r->rules.enabled)
+        for (i = 0; i < r->rules.n && n < max; i++)
+            if (r->rules.rule[i].exclude && r->rules.rule[i].pat[0])
+                memcpy(out[n++], r->rules.rule[i].pat, GT_SCR_PAT);
+    Permit();
+    return n;
+}
+
 void ipd_resync(void)
 {
     ipd_rec *r = find_rec(0);

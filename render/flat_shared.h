@@ -118,6 +118,7 @@ typedef struct flatshared {
     char cgname[8];             /* scratch for the calling CLI command name, used only under Forbid (flat.c cg_feed) */
     WORD trow_raw[2][5];        /* rig evidence: the last INTEGER [0] / CYCLE [1] NewGadget of a program named Time, as given: left top width height id */
     char scrname[MAXPUBSCREENNAME + 1]; /* the default public screen's name for cg_feed, used only under ss (no 140-byte name in that frame: the flat budget) */
+    int flatpriv;               /* PALETTE-BUTTONS-BEVELED: key flat-private-screens; written under Forbid (boot, desk apply), read by c8_skip */
     /* the icon pens are no longer here: the shared holder record IPD_SEM_NAME owns them (iconpen_dos.h, F14) */
 } flatshared;
 
