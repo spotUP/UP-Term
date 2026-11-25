@@ -906,6 +906,19 @@ static int button_gadget_of(struct RastPort *rp, Object *obj)
     return gadget_of_image(rp, obj) != NULL;
 }
 
+/* PALETTE-CYCLE-FLAT: 1 when the frame box ox,oy w x h is exactly a bool gadget's box (flat_cycle_frame: a 3.1 cycle gadget) */
+static int cycle_gadget_at(struct RastPort *rp, int ox, int oy, int w, int h)
+{
+    struct Layer *lay = rp->Layer;
+    struct Window *win = lay ? (struct Window *)lay->Window : NULL;
+    struct Gadget *g;
+    int n;
+    for (g = win ? win->FirstGadget : NULL, n = 0; g && n < 64; g = g->NextGadget, n++)
+        if (flat_cycle_frame(g->GadgetType, g->Activation, g->LeftEdge, g->TopEdge, g->Width, g->Height, ox, oy, w, h))
+            return 1;
+    return 0;
+}
+
 /* 1 when obj is the image of a push button gadget (flat_push_button), as role_of tells a push button from a cycle */
 static int push_gadget_of(struct RastPort *rp, Object *obj)
 {
@@ -1210,11 +1223,7 @@ static int c8_draw(Object *obj, Msg msg)
         struct Image *im = (struct Image *)obj;
         ULONG eo = 1;
         /* Fill only when the frame says it is not edges-only (an unanswered OM_GET counts as edges-only: never erase content). */
-        int fill;
-        if (GetAttr(IA_EdgesOnly, obj, &eo) != 0)
-            fill = flat_frame_fill(1, (int)eo, push_gadget_of(d->imp_RPort, obj));
-        else      /* 3.1 frameiclass V40 does not answer OM_GET: a button or cycle gadget renders this image as render and select */
-            fill = flat_frame_fill(0, 0, button_gadget_of(d->imp_RPort, obj));
+        int fill, role = -1;
         flat_state st;
         {   /* S57-BUTTON-ASPECT-BORDERS: the outline columns of this window's screen (slot table read, no Intuition call) */
             struct Layer *sl = d->imp_RPort->Layer;
@@ -1225,6 +1234,12 @@ static int c8_draw(Object *obj, Msg msg)
         int ox = im->LeftEdge + d->imp_Offset.X, oy = im->TopEdge + d->imp_Offset.Y;
         int w, h;
         flat_frame_size(msg->MethodID == FLAT_IM_DRAWFRAME, d->imp_Dimensions.Width, d->imp_Dimensions.Height, im->Width, im->Height, &w, &h);
+        if (GetAttr(IA_EdgesOnly, obj, &eo) != 0)
+            fill = flat_frame_fill(1, (int)eo, push_gadget_of(d->imp_RPort, obj));
+        else if (button_gadget_of(d->imp_RPort, obj))     /* 3.1 frameiclass V40 does not answer OM_GET: a button renders this image as render and select */
+            fill = 1;
+        else if ((fill = cycle_gadget_at(d->imp_RPort, ox, oy, w, h)) != 0)
+            role = FLAT_ROLE_PLAIN;                       /* PALETTE-CYCLE-FLAT: the 3.1 cycle's own image draws this frame */
         if (border_button_at(d->imp_RPort, ox, oy, ox + w - 1, oy + h - 1, NULL)) {
             /* INSTALLER-BORDER-BUTTON: the rounded fill was painted at the erase (flat_rf_c) and the label is drawn; no ring */
             flat_tx_frame(&r->tx, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL), 0, 0, ox, oy, ox + w - 1, oy + h - 1);
@@ -1248,14 +1263,16 @@ static int c8_draw(Object *obj, Msg msg)
         }
         if (d->imp_State == 0 && noline_frame(r, d->imp_RPort, ox, oy, w, h, fill))
             return 1;
-        if (!raa_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role_of(d->imp_RPort, obj), c2_fill, c2_read, c2_rgb,
+        if (role < 0)
+            role = role_of(d->imp_RPort, obj);
+        if (!raa_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role, c2_fill, c2_read, c2_rgb,
                             fill ? raa_load(d->imp_RPort) : 0, d->imp_RPort, NULL))
             return 0;
         flat_gh_frame(&r->gh, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL), d->imp_State == 1, fill,
                       ox, oy, ox + w - 1, oy + h - 1);
         /* a pressed filled frame arms the Text patch for its label; any other frame draw on this rastport disarms */
         flat_tx_frame(&r->tx, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL),
-                      flat_tx_arm(d->imp_State == 1, fill, role_of(d->imp_RPort, obj)), fill, ox, oy, ox + w - 1, oy + h - 1);
+                      flat_tx_arm(d->imp_State == 1, fill, role), fill, ox, oy, ox + w - 1, oy + h - 1);
     }
     r->fflat++;
     return 1;

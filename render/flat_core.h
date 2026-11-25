@@ -650,6 +650,10 @@ void flat_frame_size(int draw_frame, int dim_w, int dim_h, int img_w, int img_h,
 /* FLAT-BUTTON-FILL, 3.1 (frameiclass does not answer OM_GET): is this window gadget a button or cycle drawn by image? GadTools
  * BUTTON and CYCLE have GadgetRender == SelectRender == the frame; STRING, LISTVIEW, SLIDER have no select image. */
 int flat_button_gadget(const void *gadget_render, const void *select_render, const void *image);
+/* PALETTE-CYCLE-FLAT: 3.1 GadTools CYCLE_KIND draws its frameiclass bevel from inside its own image (the frame is not the gadget's
+ * render == select image, so flat_button_gadget misses it and the frame drew edges only: no ground, square ring). 1 when the
+ * unanswered frame box is exactly the box of a GTYP_BOOLGADGET without GACT_IMMEDIATE (not a scroller arrow): fill it, role PLAIN. */
+int flat_cycle_frame(unsigned gadget_type, unsigned activation, int gx, int gy, int gw, int gh, int fx, int fy, int fw, int fh);
 
 /* The PRIMARY button fill pen for a screen of the given depth: under 8 colours (depth < 3) the accent pen_line; from 8 colours the
  * theme lighter background pen_button, or pen_back when it is 0 or not a pen of that depth. */
