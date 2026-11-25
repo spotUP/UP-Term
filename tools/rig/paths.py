@@ -551,15 +551,23 @@ def reboot_args(given, start_file=None):
 
 
 def stale_targets(targets, run=subprocess.run, cwd=None, on_error=None):
-    """The make targets of `targets` that make's own graph says are older than their sources: one `make -q <target>`
-    each (runs no recipe). rc 0 = current, rc 1 = stale, anything else (rc 2: no rule or make error) is not stale;
-    on_error(target, result), when given, is called for it (a caller that must not go on raises there)."""
-    stale = []
-    for t in targets:
-        r = run(["make", "-q", t], cwd=str(cwd or VTCON), capture_output=True, text=True,
-                env={**os.environ, "UPTERM_ROOT": str(UPTERM_ROOT)})
+    """The make targets of `targets` that make's own graph says are older than their sources (`make -q` runs no recipe).
+    rc 0 = current, rc 1 = stale, anything else (rc 2: no rule or make error) is not stale; on_error(target, result),
+    when given, is called for it (a caller that must not go on raises there). One `make -q` over a group answers for
+    all of it; a non-zero group is halved until single targets are left, so s stale of n cost about 2*s*log2(n) runs:
+    one make parse takes 10-17 s on a loaded host, and one run per target made a rig start take 28-47 min."""
+    def q(ts):
+        return run(["make", "-q", *ts], cwd=str(cwd or VTCON), capture_output=True, text=True,
+                   env={**os.environ, "UPTERM_ROOT": str(UPTERM_ROOT)})
+    def walk(ts):
+        r = q(ts)
+        if r.returncode == 0:
+            return []
+        if len(ts) > 1:
+            return walk(ts[:len(ts) // 2]) + walk(ts[len(ts) // 2:])
         if r.returncode == 1:
-            stale.append(t)
-        elif r.returncode and on_error:
-            on_error(t, r)
-    return stale
+            return list(ts)
+        if on_error:
+            on_error(ts[0], r)
+        return []
+    return walk(list(targets)) if targets else []

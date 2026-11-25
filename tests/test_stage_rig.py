@@ -93,7 +93,8 @@ class ClashRig(unittest.TestCase):
 class RequireFresh(unittest.TestCase):
     def run_q(self, codes):
         def run(cmd, **kw):
-            return mock.Mock(returncode=codes[cmd[-1]], stdout="", stderr="")
+            rcs = [codes[t] for t in cmd[2:]]   # make -q over a group: 2 on any error, else 1 on any stale
+            return mock.Mock(returncode=2 if 2 in rcs else max(rcs), stdout="", stderr="")
         return run
 
     def test_stale_target_is_named(self):

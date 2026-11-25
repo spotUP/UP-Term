@@ -1957,11 +1957,7 @@ def ensure_built(files, run=None):
     if not names:
         return []
     env = {**os.environ, "UPTERM_ROOT": str(paths.UPTERM_ROOT)}
-    def make(*args):
-        return run(["make", *args], cwd=ROOT, capture_output=True, text=True, env=env)
     targets = ["build/amiga/" + n for n in names]
-    if make("-q", *targets).returncode == 0:
-        return []
     stale = paths.stale_targets(targets, run, ROOT, on_error=lambda t, r: print(
         "[WARN] make -q failed (rc %d) for %s, it may be stale: %s" % (r.returncode, t, r.stderr.strip()[-300:])))
     if not stale:
@@ -2781,6 +2777,7 @@ def wb_reset_retry_gadgets(tree):
     return gads, " ; ".join(other)
 
 
+WB_SCREEN_WAIT = 120  # s after wasabid answers for a screen to open and turn RTG; raise it on a loaded host
 LATE_REQ_WATCH = 65   # s after the RTG switch a late System Request may still come (IPrefs on the RTG DOpus screen, ~boot+65 s)
 
 
@@ -2809,7 +2806,7 @@ def retry_wb_reset():
     to reset the Workbench screen ... close all windows" requester (IPrefs'
     switch to the saved RTG mode raced a window; ledger W43). Retry then
     succeeds (the owner, 2026-10-05). The requester shows a while after
-    wasabid answers, so wait for it (up to two minutes) and click the
+    wasabid answers, so wait for it (up to WB_SCREEN_WAIT s) and click the
     gadget labelled Retry.
     A saved native (chipset) ScreenMode has no RTG switch to wait for: it returns at once.
     Once RTG it keeps looking for a late System Request for LATE_REQ_WATCH s (late_sysreq).
@@ -2826,9 +2823,15 @@ def retry_wb_reset():
     clicks = 0
     rtg0 = None   # when the Workbench last turned RTG
     noted = False
-    while rtg0 is not None or time.time() - t0 < 120:
+    blank = False   # the last poll saw no screen open at all
+    while rtg0 is not None or time.time() - t0 < WB_SCREEN_WAIT:
         b = ami.req(0x0A)
         width, height = int.from_bytes(b[2:4], "big"), int.from_bytes(b[4:6], "big")
+        blank = (width, height) == (0, 0)
+        if blank:   # no screen (IPrefs closed the Workbench for its RTG switch, not reopened yet): a black display, not RTG
+            rtg0 = None
+            time.sleep(2)
+            continue
         if (width, height) not in NATIVE_WB:   # the 640x360 RTG mode is 640 wide too
             now = time.time()
             if rtg0 is None:
@@ -2871,6 +2874,11 @@ def retry_wb_reset():
             time.sleep(6)
         else:
             time.sleep(2)
+    if blank:
+        log.write("%.0fs no screen open\n" % (time.time() - t0))
+        log.flush()
+        sys.exit("rig: no screen open after %d s (black display; IPrefs' RTG switch closed the Workbench and never "
+                 "reopened it). Raise WB_SCREEN_WAIT in tools/rig/rig.py on a loaded host" % WB_SCREEN_WAIT)
     print("[WARN] the Workbench stayed PAL (W43)")
 
 def stop(emu=None):

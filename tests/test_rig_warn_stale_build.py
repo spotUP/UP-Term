@@ -42,6 +42,26 @@ class Stale(unittest.TestCase):
             self.assertEqual(rig.ensure_built([self.bin], self.fake(2)), [])
         self.assertTrue(pr.call_args[0][0].startswith("[WARN] make -q failed"), pr.call_args)
 
+    def test_current_costs_one_make_q(self):
+        bins = [self.bin] + [self.t / ("build/amiga/p%03d" % i) for i in range(166)]
+        for b in bins[1:]:
+            b.write_bytes(b"x")
+        rig.ensure_built(bins, self.fake(0))
+        self.assertEqual(len(self.calls), 1)
+
+    def test_bisection_finds_the_exact_stale_set_in_few_runs(self):
+        import paths
+        targets = ["t%03d" % i for i in range(167)]
+        stale, broken, seen, calls = {"t005", "t120"}, {"t077"}, [], []
+        def run(cmd, **kw):
+            calls.append(cmd)
+            ts = set(cmd[2:])
+            return subprocess.CompletedProcess(cmd, 2 if ts & broken else 1 if ts & stale else 0, "", "")
+        self.assertEqual(paths.stale_targets(targets, run, on_error=lambda t, r: seen.append(t)), ["t005", "t120"])
+        self.assertEqual(seen, ["t077"])
+        self.assertTrue(all(c[:2] == ["make", "-q"] for c in calls))
+        self.assertLessEqual(len(calls), 2 * 3 * 8 + 1)   # ~2*s*log2(n) for s=3 of n=167, not 167
+
     def test_setup_builds_instead_of_warning(self):
         self.assertFalse(hasattr(rig, "warn_stale_build"))
         self.assertIn("ensure_built([src for src, dst in program_pairs(RIG", pathlib.Path(rig.__file__).read_text())
