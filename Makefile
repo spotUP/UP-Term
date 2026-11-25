@@ -5,8 +5,8 @@ HOSTCFLAGS := -std=c89 -pedantic -Wno-long-long -Wall -Wextra -Werror -O1 -g -fs
 BUILD   := build
 LHA     := $(CURDIR)/$(BUILD)/host/lha
 export LHA
-# the generated version header; named here because the host rules above its own rule list it as a prerequisite
-UPTERM_VERSION_H := $(BUILD)/amiga/upterm_version.h
+# the toolchain, sibling paths, generated headers and the vtcon files Patina links: shared with Patina's build
+include vtcon.mk
 # the generated menu icon page and the font it is drawn from, named here for the same reason: vttest_host
 # lists the page, whose rule lists the font, both above their own rules (a prerequisite expands when read)
 MENU_ICONS_INC := $(BUILD)/amiga/menu_icons.inc
@@ -15,21 +15,11 @@ SYMBOLS_TTF := $(BUILD)/symbolsnerd/SymbolsNerdFontMono-Regular.ttf
 # a recipe that fails must not leave its target behind: a 0-byte build/amiga/wbrun once counted as up to date (M2)
 .DELETE_ON_ERROR:
 
-# The workspace directory that holds vtcon and the other UP-Term repos side by
-# side (see the upterm meta-repo); every sibling default below hangs off it.
-# tools/rig/paths.py reads the same variable, with the same default.
-# A git worktree sits inside the main checkout (.claude/worktrees/x), so the workspace is the main checkout's parent,
-# and vendor/ (gitignored) is the main checkout's when the worktree has none: both asked of tools/rig/paths.py.
-VENDOR := $(shell python3 -I $(CURDIR)/tools/rig/paths.py vendor)
 # AmiNetXDuo 1.0.0-rc2's release drawer as the kit and the bootstrap kit ship it: every entry but Developer and
 # Developer.info (headers, not installed). $(call ANX_COPY,<existing drawer>) copies the rest into the drawer.
 ANX_SRC := $(VENDOR)/aminetxduo-1.0.0-rc2/AmiNetXDuo
 ANX_FILES = $(filter-out Developer Developer.info,$(notdir $(wildcard $(ANX_SRC)/*)))
 ANX_COPY = cd $(ANX_SRC) && cp -R $(ANX_FILES) $(abspath $(1))/
-UPTERM_ROOT ?= $(abspath $(shell python3 -I $(CURDIR)/tools/rig/paths.py main-checkout)/..)
-# the upterm-ports checkout (a worktree works too); every upterm-ports path uses it
-# default: the kit-main worktree (the stale main checkout lacks git_SUMMARY); dist-check-ports refuses a checkout without it
-UPTERM_PORTS ?= $(if $(wildcard $(UPTERM_ROOT)/upterm-ports/.claude/worktrees/kit-main),$(UPTERM_ROOT)/upterm-ports/.claude/worktrees/kit-main,$(UPTERM_ROOT)/upterm-ports)
 # The directory of the projects that are not UP-Term repos (DCTelnet/, AmiExpress/, UpRough/): CODE_ROOT, else the
 # nearest ancestor of UPTERM_ROOT holding DCTelnet/. One rule for the flat layout and the ~/Code/UP-Term umbrella;
 # it lives in tools/rig/paths.py (code_root), which the rig scripts read too.
@@ -546,12 +536,6 @@ $(BUILD)/mdv: $(HOST_HDR) $(UPTERM_VERSION_H) view/md_main.c $(VIEW_MD) $(VIEW_C
 render/glyph_tables.inc: tools/gen_glyph_tables.py engine/vtengine.c
 	python3 tools/gen_glyph_tables.py
 
-KEYMAP_DEFAULT_INC := $(BUILD)/amiga/keymap_default.inc
-# the shipped keymap, compiled into the handler (the table when no keymap file exists)
-$(KEYMAP_DEFAULT_INC): tools/gen_keymap_default.py dist/keymap
-	@mkdir -p $(dir $@)
-	python3 tools/gen_keymap_default.py dist/keymap $@
-
 AMHELP_INC := $(BUILD)/amiga/amhelp.inc
 # the welcome window and Help view text for patina-gui, from dist/patina.help (also the man page's GETTING STARTED)
 $(AMHELP_INC): tools/gen_patina_help.py dist/patina.help dist/keymap
@@ -915,22 +899,7 @@ test-terminfo: $(BUILD)/terminfo/76/vtcon $(BUILD)/vtdump $(BUILD)/vterm_dump
 capture:
 	.venv/bin/python tools/capture.py
 
-# --- Amiga (vbcc, NDK 3.2; the same setup as DCTelnet) -----------------------
-# vbcc's install prefix: tools/vbcc-aos68k.cfg.in names it, so the cfg vc reads
-# is generated into build/ (rewritten only when its content changes).
-ifndef VBCC_PREFIX
-VBCC_PREFIX := $(shell brew --prefix vbcc 2>/dev/null || echo /opt/homebrew/opt/vbcc)
-endif
-VBCC_CFG ?= $(CURDIR)/$(BUILD)/vbcc-aos68k.cfg
-VBCC_CFG_GEN := $(shell mkdir -p $(BUILD) && sed 's|@VBCC_PREFIX@|$(VBCC_PREFIX)|g' tools/vbcc-aos68k.cfg.in > $(BUILD)/vbcc-aos68k.cfg.tmp && { cmp -s $(BUILD)/vbcc-aos68k.cfg.tmp $(BUILD)/vbcc-aos68k.cfg && rm $(BUILD)/vbcc-aos68k.cfg.tmp || mv $(BUILD)/vbcc-aos68k.cfg.tmp $(BUILD)/vbcc-aos68k.cfg; })
-# written by the line above; the empty rule lets `make build/vbcc-aos68k.cfg` ask for it
-$(BUILD)/vbcc-aos68k.cfg: ;
-CPU      ?= 68020
-# The AmigaOS 3.2 SDK headers. vendor/ is gitignored (4.1 MB of third-party
-# headers), so unpack NDK3.2R4 there once, or point this at your own copy:
-#   make amiga VTCON_NDK=<path>/Include_H
-VTCON_NDK ?= $(VENDOR)/ndk-3.2r4-Include_H
-VC       := vc +$(VBCC_CFG) -I$(VTCON_NDK) -cpu=$(CPU) -O2 -warn=-1 -dontwarn=163,166,167,168,170,306,307,81 -warnings-as-errors
+# --- Amiga: the vbcc toolchain (VC, VBCC_CFG, VTCON_NDK, CPU) is in vtcon.mk ---
 
 # The 68020 check (tty/cpucheck.c, built for the 68000): the program's main is
 # renamed up_main (-Dmain=up_main) and the object below is linked in front of it.
@@ -939,17 +908,7 @@ $(BUILD)/amiga/obj/cpuchk-%.o: tty/cpucheck.c tty/bmsg.h tty/bmsg.c
 	$(subst -cpu=$(CPU),-cpu=68000,$(VC)) -DUP_PROG=$* -c -o $@ tty/cpucheck.c
 
 
-GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
-# The base's version and the build day in the $VER of every base program (C:UPTerm, vtcon-handler,
-# pty-handler, vsh, hl, mdv, icat, sz, rz, uptelnet, upgetty, UPConsole, UPDemo), so "Version UPTerm" says the base it
-# came with: the version from dist/packages.txt (the one tools/mkkit.py writes into UP-Term.version), the
-# day as mkkit.py writes it. C:Claude ships in the up-claude add-on and says that row's version
-# (UPCLAUDE_VERSION). The header is rewritten only when it changes, so the programs rebuild when a
-# version or the day moves, not on every make.
-# Written while the Makefile is read, not by a FORCE rule: `-q` runs no recipe, so a FORCE header counted as remade
-# and every program including it was stale on every query (rig.py ensure_built rebuilt 17 programs on every start,
-# S92-STALE-STAGE2). The mtime moves only when the text does, so a build and a query agree.
-UPTERM_VERSION_WRITE := $(shell mkdir -p $(dir $(UPTERM_VERSION_H)) && printf '\#define UPTERM_VERSION "%s"\n\#define UPTERM_DATE "%s"\n\#define UPCLAUDE_VERSION "%s"\n' "$$(python3 tools/pkgs.py get base version)" "$$(date +%d.%m.%y)" "$$(python3 tools/pkgs.py get claude version)" > $(UPTERM_VERSION_H).new && if cmp -s $(UPTERM_VERSION_H).new $(UPTERM_VERSION_H); then rm $(UPTERM_VERSION_H).new; else mv $(UPTERM_VERSION_H).new $(UPTERM_VERSION_H); fi)
+# GITREV and UPTERM_VERSION_WRITE (the version header, written while the Makefile is read): vtcon.mk
 # the engine's hot loops in assembler, for the builds that define VT_ASM (S1)
 ENGINE_68K := engine/vtengine_68k.s
 # the console's history file (handler/histfile.c) by C:Claude's rule for growing files, over its DOS calls alone
@@ -1139,7 +1098,6 @@ $(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_merge.h 
 PATINA_LEAF_DEPS := handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c config/amconf_core.c config/amconf_keys.c config/amconf_dos.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c
 # CHKABORT_PROGRAMS: the Patina-family programs that handle Ctrl-C in their own Wait and hold system state; each links
 # $(NOBREAK) (empty _chkabort) and tests/test_nobreak.py checks exactly these (make chkabort-check)
-NOBREAK := handler/nobreak.c
 CHKABORT_PROGRAMS := Patina patina-gui patina-flat patina-icons upprefs upgetty top allocwatch patchcon lvoprobe frameprobe sizewatch gadprobe
 # each one depends on nobreak.c: binaries linked before their rule named it (top, allocwatch, patchcon, sizewatch, built
 # 2026-10-26) were never rebuilt and failed make dist-check's chkabort row with the library _chkabort
@@ -1188,14 +1146,6 @@ $(BUILD)/amiga/keymap.o: config/keymap.c config/keymap.h config/upconf.h config/
 # sysroot (libupkgui.a, libncursesw.a, libixcompat.a, headers). The peer checkout is only read, never built in.
 # Bump tools/upkgui.rev to relink against a new libupkgui. Idempotent: the stamp holds the pinned commit.
 # Uninstall: make upkgui-clean.
-UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
-UPKGUI_REV := $(strip $(shell cat tools/upkgui.rev))
-# The sysroot is built ONCE per pinned commit into the MAIN checkout's build/upkgui/<rev>, shared by every worktree (a
-# worktree used to build its own copy: minutes lost per agent, and the documented sibling path did not exist). One drawer
-# per rev, so a worktree on another rev never deletes the one a peer links against.
-MAIN_CHECKOUT := $(shell python3 -I $(CURDIR)/tools/rig/paths.py main-checkout)
-UPKGUI_HOME ?= $(MAIN_CHECKOUT)/$(BUILD)/upkgui/$(UPKGUI_REV)
-UPKGUI_SYS ?= $(UPKGUI_HOME)/src/build/sysroot/UP-Term
 .PHONY: upkgui upkgui-clean worktree-ready
 upkgui: $(UPKGUI_HOME)/.stamp
 	@echo "[OK] libupkgui $(UPKGUI_REV) built: $(UPKGUI_SYS)/lib/libupkgui.a"
