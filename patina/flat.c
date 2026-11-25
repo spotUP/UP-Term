@@ -1321,6 +1321,19 @@ static int c8_draw_on(Object *obj, Msg msg, int tick_pen)
     return c.rc;
 }
 
+/* FONT-PREFS-NOT-FLAT / PALETTE-BUTTONS-BEVELED: 1 when Patina themes ws (the Workbench, a listed screen, or a private one under
+ * flat-private-screens) and no exclude pattern matches its title. */
+static int scr_themed(flatshared *r, const struct Screen *ws)
+{
+    int excluded = 0, i;
+    if (ws && g_nexcl && ws != (const struct Screen *)g_wb_scr) {
+        const char *t = (const char *)(ws->DefaultTitle ? ws->DefaultTitle : ws->Title);
+        for (i = 0; t && i < g_nexcl && !excluded; i++)
+            excluded = gt_screen_match(g_excl[i], t);
+    }
+    return ws && flat_screen_themed(st_scr(r, ws) != &g_draw.plain, r->flatpriv, excluded);
+}
+
 static int c8_skip(Object *obj, Msg msg)
 {
     flatshared *r = g_r;
@@ -1332,16 +1345,8 @@ static int c8_skip(Object *obj, Msg msg)
         return 0;
     {   /* FONT-PREFS-NOT-FLAT: a window on the Workbench or a listed screen is themed even with the stock 3.1 pen map */
         struct Window *w = d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
-        const struct Screen *ws = w ? w->WScreen : NULL;
-        int excluded = 0, themed;
-        if (ws && g_nexcl && ws != (const struct Screen *)g_wb_scr) {   /* PALETTE-BUTTONS-BEVELED: exclude rule by title */
-            const char *t = (const char *)(ws->DefaultTitle ? ws->DefaultTitle : ws->Title);
-            int i;
-            for (i = 0; t && i < g_nexcl && !excluded; i++)
-                excluded = gt_screen_match(g_excl[i], t);
-        }
-        themed = ws && flat_screen_themed(st_scr(r, ws) != &g_draw.plain, r->flatpriv, excluded);
-        if (flat_frame_decide(&r->st, msg->MethodID, d->imp_DrInfo->dri_Pens[SHINEPEN], d->imp_DrInfo->dri_Pens[BACKGROUNDPEN], themed) != FLAT_DRAW_SKIP)
+        if (flat_frame_decide(&r->st, msg->MethodID, d->imp_DrInfo->dri_Pens[SHINEPEN], d->imp_DrInfo->dri_Pens[BACKGROUNDPEN],
+                              scr_themed(r, w ? w->WScreen : NULL)) != FLAT_DRAW_SKIP)
             return 0;
     }
     return c8_draw_on(obj, msg, C8_FRAME);
@@ -1401,6 +1406,63 @@ ULONG g9_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1
 {
     g9_ground(obj, msg);
     return ((oldfn_reg)g_r->gsw.saved)(h, obj, msg);
+}
+
+/* GSLIDER-FLAT: after gradientslider.gadget's GM_RENDER its 2 px bevel ring (the gadget box edge) is repainted flat: the outer
+ * edge in the window's outline pen (1 row top and bottom, side_px columns left and right, so it reads 1 px on both pixel aspects),
+ * the rest of the ring in the background pen. No outline pen: the whole ring takes the background. Stock RectFill (rsw.saved)
+ * so flat_rf_c does not see it; pen, draw mode and area pattern restored. */
+static void gs_fill(flatshared *r, struct RastPort *rp, int x0, int y0, int x1, int y1)
+{
+    if (x0 > x1 || y0 > y1)
+        return;
+    if (r->rsw.installed)
+        ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
+    else
+        RectFill(rp, x0, y0, x1, y1);
+}
+
+static void gs_ring(flatshared *r, Object *obj, Msg msg)
+{
+    struct gpRender *gp = (struct gpRender *)msg;
+    struct Gadget *g = (struct Gadget *)obj;
+    struct GadgetInfo *gi = gp->gpr_GInfo;
+    struct RastPort *rp = gp->gpr_RPort;
+    struct Window *w = gi ? gi->gi_Window : NULL;
+    int x0, y0, x1, y1, sd, op, bp;
+    UBYTE fg, dm, pt;
+    UWORD *pa;
+    if (!rp || !w || !gi->gi_DrInfo ||
+        !flat_gslider_ring(&r->st, msg->MethodID, scr_themed(r, w->WScreen), g->Flags, g->Width, g->Height))
+        return;
+    op = flat_edge_pen(st_scr(r, w->WScreen), gi->gi_DrInfo->dri_Depth, (w->Flags & WFLG_WINDOWACTIVE) != 0);
+    bp = gi->gi_DrInfo->dri_Pens[BACKGROUNDPEN];
+    sd = side_px(r, w->WScreen);
+    sd = sd < 1 ? 1 : sd > 2 ? 2 : sd;
+    x0 = g->LeftEdge; y0 = g->TopEdge; x1 = x0 + g->Width - 1; y1 = y0 + g->Height - 1;
+    fg = rp->FgPen; dm = rp->DrawMode; pt = rp->AreaPtSz; pa = (UWORD *)rp->AreaPtrn;
+    rp->AreaPtrn = 0; rp->AreaPtSz = 0;
+    SetDrMd(rp, JAM2);
+    SetAPen(rp, (UBYTE)bp);
+    gs_fill(r, rp, x0, y0, x1, y0 + 1); gs_fill(r, rp, x0, y1 - 1, x1, y1);
+    gs_fill(r, rp, x0, y0 + 2, x0 + 1, y1 - 2); gs_fill(r, rp, x1 - 1, y0 + 2, x1, y1 - 2);
+    if (op > 0) {
+        SetAPen(rp, (UBYTE)op);
+        gs_fill(r, rp, x0, y0, x1, y0); gs_fill(r, rp, x0, y1, x1, y1);
+        gs_fill(r, rp, x0, y0 + 1, x0 + sd - 1, y1 - 1); gs_fill(r, rp, x1 - sd + 1, y0 + 1, x1, y1 - 1);
+    }
+    rp->AreaPtrn = pa; rp->AreaPtSz = pt;
+    SetDrMd(rp, dm);
+    SetAPen(rp, fg);
+    r->gsrings++;
+}
+
+ULONG gs_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
+{
+    ULONG rc = ((oldfn_reg)g_r->gssw.saved)(h, obj, msg);
+    if (msg->MethodID == FLAT_GM_RENDER && obj)
+        gs_ring(g_r, obj, msg);
+    return rc;
 }
 
 /* ---- FLAT-D4: the replacement routines. They run on the caller's task with the caller's registers (a0 rp, a1 rect,
@@ -3805,6 +3867,26 @@ static int hook_install(flatshared *r)
                 r->gslot = gs;
         }
     }
+    {   /* GSLIDER-FLAT: gradientslider.gadget is a disk class: open it here and keep it open while the swap is in (no expunge
+         * under our slot). Absent or refused: the bar keeps its bevel, every other hook works. */
+        struct Library *gl = r->gslib ? r->gslib : OpenLibrary((STRPTR)"gadgets/gradientslider.gadget", 39);
+        uintptr_t *gs = gl && !r->gssw.installed ? class_slot("gradientslider.gadget", NULL, 1) : 0;   /* h_Entry, register convention */
+        if (gs && !r->gsgate)
+            r->gsgate = gate_make((void *)flat_dg_tpl, (void *)flat_dg_tpl_end, (ULONG)gs_disp_reg);
+        if (gs && r->gsgate) {
+            Forbid();
+            rc = flat_swap_install(&r->gssw, gs, (uintptr_t)r->gsgate->code);
+            if (rc == FLAT_OK)
+                gate_open(r->gsgate, r->gssw.saved);
+            Permit();
+            if (rc == FLAT_OK)
+                r->gsslot = gs;
+        }
+        if (gl && !r->gssw.installed)
+            CloseLibrary(gl);
+        else
+            r->gslib = gl;
+    }
     {   /* FLAT-C8: the second class. Its absence leaves the sysiclass hook working: report it, do not undo C2. */
         uintptr_t *fs = frameiclass_slot();
         uintptr_t fours = flat_conv(IntuitionBase->LibNode.lib_Version) == FLAT_CONV_REG ? (uintptr_t)c8_disp_reg : (uintptr_t)c8_disp_stk;
@@ -3832,6 +3914,20 @@ static int hook_remove(flatshared *r)
     int rc = FLAT_NOT_INSTALLED;
     if (!r->sw.installed)
         return rc;
+    if (r->gssw.installed) {            /* GSLIDER-FLAT: chained on top = keep all, the class library stays open */
+        gate_close(r->gsgate);
+        Forbid();
+        rc = flat_swap_remove(&r->gssw, r->gsslot, &r->st);
+        Permit();
+        if (rc == FLAT_STILL_CHAINED) {
+            gate_reopen(r->gsgate);
+            return rc;
+        }
+        gate_wait(r->gsgate);
+        r->gsslot = 0;
+        CloseLibrary(r->gslib);
+        r->gslib = 0;
+    }
     if (r->gsw.installed) {             /* INPUT-GROUND: the strgclass hook before all */
         gate_close(r->ggate);
         Forbid();

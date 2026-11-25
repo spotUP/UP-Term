@@ -129,6 +129,11 @@ typedef struct flatshared {
     /* the icon pens are no longer here: the shared holder record IPD_SEM_NAME owns them (iconpen_dos.h, F14) */
     int slider, slider_c[4], slider_pen[2]; /* MODERN-SLIDER: the scroller fill being painted is a slider (flat_prop_slider dir), its
                                              * container x,y,w,h and track / knob pens (set by slider_note, read by slider_paint) */
+    flat_swap gssw;             /* GSLIDER-FLAT: the gradientslider.gadget h_Entry swap (flat.c gs_disp_reg) */
+    uintptr_t *gsslot;
+    struct flat_gate *gsgate;   /* FLAT-UNLOAD-INFLIGHT: its never-freed gate */
+    struct Library *gslib;      /* the class library, open while the swap is in */
+    ULONG gsrings;              /* sentinel: bevel rings repainted flat */
 } flatshared;
 
 #endif

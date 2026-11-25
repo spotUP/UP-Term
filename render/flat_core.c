@@ -1255,6 +1255,11 @@ int flat_slider_disc_row(int side, int kx, int ky, int kw, int kh, int y, int *x
     return 1;
 }
 
+int flat_gslider_ring(const flat_state *s, unsigned long method, int themed, unsigned gflags, int w, int h)
+{
+    return method == FLAT_GM_RENDER && s && s->enabled && !s->held && themed && !(gflags & 0x4078u) && w > 4 && h > 4;
+}
+
 int flat_inactive_pen(const flat_state *s, int depth)
 {
     if (depth >= 4 && depth <= 8 && s->pen_inbar && s->pen_inbar < (1 << depth))

@@ -717,6 +717,12 @@ int flat_slider_track(int dir, int side, int cx, int cy, int cw, int ch, int x0,
 /* MODERN-SLIDER: the knob disc's columns *x0..*x1 on row y: a circle of min(kw / side, kh) rows (side columns per row, so it is round
  * on non-square pixels) centred in the knob box kx,ky,kw,kh. 0 = the row misses the disc. */
 int flat_slider_disc_row(int side, int kx, int ky, int kw, int kh, int y, int *x0, int *x1);
+/* GSLIDER-FLAT (owner 2026-11-25: the Palette brightness bar must lose its bevel): gradientslider.gadget draws a 2 px shine /
+ * shadow bevel itself (no frameiclass). After its GM_RENDER patina repaints that ring flat: 1 when method is FLAT_GM_RENDER, flat
+ * on and not held, the screen themed (flat_screen_themed), the box w x h larger than the ring (w, h > 4) and the gadget placed
+ * absolute (gflags without GFLG_RELBOTTOM / RELRIGHT / RELWIDTH / RELHEIGHT / RELSPECIAL, 0x4078).
+ * shortcut: a relative gadget keeps its bevel; resolve the box against the window when one shows up. */
+int flat_gslider_ring(const flat_state *s, unsigned long method, int themed, unsigned gflags, int w, int h);
 /* S56-XCON-KNOB-BOX: flat_scroller_pen with the knob rectangle given (kx,ky,kw,kh, absolute) instead of computed from pots and bodies. */
 int flat_scroller_pen_box(const flat_state *s, int depth, int active, int cx, int cy, int cw, int ch, int kx, int ky, int kw, int kh,
                           int x0, int y0, int x1, int y1);
