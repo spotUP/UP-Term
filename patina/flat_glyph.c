@@ -676,7 +676,10 @@ int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, 
     sw = flat_button_side(s->side, w);
     if (fill) {                                      /* OWNER-2026-11-08 FLAT-BUTTON-NO-RING: every push button is a solid fill, never a ring (the secondary role used to be a text-pen outline; it is now a pen_button fill, so the roles still differ: primary accent, secondary the raised button tone). S56-PRIMARY-ACCENT-FILL: primary fill = the theme accent pen (pen_line, a palette pen at every depth), pressed = the text pen; label in pen_ptext (flat_tx_arm); the scroller knob and cycle gadget keep pen_button; no outline */
         int face = s->pen_button ? s->pen_button : s->pen_back;
-        fn(ctx, ox, oy, x1, y1, role == FLAT_ROLE_PLAIN ? face : ids == 1 ? s->pen_text : role == FLAT_ROLE_SECONDARY ? face : s->pen_line);
+        /* CANCEL-INVISIBLE-FLAT: a secondary face in the label pen pen_ptext (no held select pen on an unlisted private screen: face =
+         * pen_back) hides the label and the box; that button takes the accent like the primary */
+        int sec = face != s->pen_ptext ? face : s->pen_line;
+        fn(ctx, ox, oy, x1, y1, role == FLAT_ROLE_PLAIN ? face : ids == 1 ? s->pen_text : role == FLAT_ROLE_SECONDARY ? sec : s->pen_line);
         return 1;
     }
     fn(ctx, ox, oy, x1, oy, s->pen_line);            /* top */

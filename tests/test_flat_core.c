@@ -1691,6 +1691,14 @@ static void test_which_from_gtype(void)
         memset(&f, 0, sizeof f);
         CHECK_INT(flat_frame_draw(&fs, 1, 10, 20, 8, 6, 1, 0, frame_rec, &f), 1);
         CHECK_INT(f.n == 1 && f.r[0][4] == 2, 1);                              /* pressed: text pen fill (the accent is the unpressed fill), no outline */
+        memset(&f, 0, sizeof f);
+        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, FLAT_ROLE_SECONDARY, frame_rec, &f), 1);
+        CHECK_INT(f.n == 1 && f.r[0][4] == 4, 1);                              /* secondary: the face pen_button */
+        fs.pen_button = 0; fs.pen_ptext = 0;
+        memset(&f, 0, sizeof f);
+        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, FLAT_ROLE_SECONDARY, frame_rec, &f), 1);
+        CHECK_INT(f.n == 1 && f.r[0][4] == 1, 1);                              /* CANCEL-INVISIBLE-FLAT: face = label pen: the accent, never pen_back */
+        fs.pen_button = 4;
         CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 2, 6, 1, 0, frame_rec, &f), 0);   /* too small: stock */
         CHECK_INT(flat_frame_draw(0, 0, 10, 20, 8, 6, 1, 0, frame_rec, &f), 0);
     }
