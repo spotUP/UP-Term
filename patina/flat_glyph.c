@@ -904,3 +904,26 @@ int flat_outer_ring_overlap(int w, int h, int px, int bx0, int by0, int bx1, int
     }
     return n;
 }
+
+int flat_edge_cell(int i, int w, int h, int *x, int *y)
+{
+    if (w < 1 || h < 1 || i < 0 || i >= h + w - 1)
+        return 0;
+    if (i < h) {
+        *x = w - 1; *y = i;
+    } else {
+        *x = i - h; *y = h - 1;
+    }
+    return 1;
+}
+
+int flat_edge_restore(const unsigned char *saved, int n, int w, int h, int ox, int oy, int pen, flat_fill_fn fill, void *ctx)
+{
+    int i, x, y, k = 0;
+    for (i = 0; i < n && flat_edge_cell(i, w, h, &x, &y); i++)
+        if (saved[i] != pen) {
+            fill(ctx, ox + x, oy + y, ox + x, oy + y, saved[i]);
+            k++;
+        }
+    return k;
+}

@@ -748,6 +748,38 @@ static ULONG c2_which_31(Object *obj, struct impDraw *d)
     return wh < 0 ? NOWHICH : (ULONG)wh;
 }
 
+/* PALETTE-SAMPLE-OUTLINE (FLAT-ARROWS-CORNER): a Palette 40.2 sample window is drawn by Palette inside its own window, and
+ * the sample's arrow and size images reach its outline with their last column and row. The box fill covered that outline (rig 20:
+ * x211 y276-307 and y307 x194-211 of the active sample); c2_ring_refill only knows the real window's ring. So, for an image in
+ * the Palette window's interior, the edge cells are read before the draw and the ones that held another pen than the box are
+ * put back after it. Real border gadgets (inside BorderRight / BorderBottom) are not touched.
+ * shortcut: one static buffer, Palette runs one sample draw at a time; guard it if a second task ever takes this path. */
+#define PAL_EDGE_CELLS 128
+static UBYTE pal_edge[PAL_EDGE_CELLS];
+static int c2_pal_edge_n(struct impDraw *d, struct Image *im, int pen)
+{
+    struct Window *w = d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
+    int ox = im->LeftEdge + d->imp_Offset.X, oy = im->TopEdge + d->imp_Offset.Y, n = im->Width + im->Height - 1;
+    if (pen < 0 || !w || !g_r->rsw.saved || n < 1 || n > PAL_EDGE_CELLS || ox + im->Width > w->Width - w->BorderRight
+        || oy + im->Height > w->Height - w->BorderBottom || !pal_task())
+        return 0;
+    return n;
+}
+static int c2_pal_edge_save(struct impDraw *d, struct Image *im, int pen)
+{
+    int i, x, y, n = c2_pal_edge_n(d, im, pen);
+    for (i = 0; i < n && flat_edge_cell(i, im->Width, im->Height, &x, &y); i++)
+        pal_edge[i] = (UBYTE)ReadPixel(d->imp_RPort, im->LeftEdge + d->imp_Offset.X + x, im->TopEdge + d->imp_Offset.Y + y);
+    return n;
+}
+static void c2_pal_edge_put(struct impDraw *d, struct Image *im, int n, int pen)
+{
+    UBYTE fg = d->imp_RPort->FgPen;
+    if (n > 0 && flat_edge_restore(pal_edge, n, im->Width, im->Height, im->LeftEdge + d->imp_Offset.X,
+                                   im->TopEdge + d->imp_Offset.Y, pen, c2_ring_fill, d->imp_RPort) > 0)
+        SetAPen(d->imp_RPort, fg);
+}
+
 #define C8_MX 0x1000                /* tick_pen >= C8_MX: an MX image, pen = tick_pen - C8_MX */
 static int c8_draw_on(Object *obj, Msg msg, int tick_pen);
 /* PALETTE-AMIGAKEY-FLAT: a Palette 40.2 sample image takes the flat pens, not the sample DrawInfo's. Own function (flat budget). */
@@ -766,6 +798,7 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     struct Image *im = (struct Image *)obj;
     ULONG which = 0xFFFF, raw_which;
     c2_pens pens;
+    int edge, drawn;
     r->st.calls++;
     if (msg->MethodID != FLAT_IM_DRAW || !r->st.enabled || r->st.held || !d->imp_RPort)
         return 0;
@@ -788,10 +821,12 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
         return c8_draw_on(obj, msg, pens.text);   /* S74-CHECKBOX-GROUND; pen fallback in check_draw keeps this frame small */
     /* S93-GADGET-GLYPH: OS 3.1's sysiclass marker render has no usable outlines (close/depth/zoom/iconify all mapped to plain
      * squares on rig 93), so below Intuition 44 the title-bar gadgets take flat's own plan glyphs */
-    if (flat_conv(IntuitionBase->LibNode.lib_Version) == FLAT_CONV_REG
-        && flat_clone_route(&r->st, which, msg->MethodID) && c2_clone(hk, obj, msg, reg, which, raw_which, &pens))
-        return 1;
-    return c2_glyph(obj, msg, which, &pens);
+    edge = c2_pal_edge_save(d, im, pens.frame);
+    drawn = (flat_conv(IntuitionBase->LibNode.lib_Version) == FLAT_CONV_REG
+             && flat_clone_route(&r->st, which, msg->MethodID) && c2_clone(hk, obj, msg, reg, which, raw_which, &pens))
+            || c2_glyph(obj, msg, which, &pens);
+    c2_pal_edge_put(d, im, drawn ? edge : 0, pens.frame);
+    return drawn;
 }
 
 ULONG c2_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)

@@ -160,6 +160,10 @@ int flat_outer_edge_fill(int w, int h, int x0, int y0, int x1, int y1, int px, i
  * row overlaps the ring; the caller refills these with the edge pen after the box fill. The rects go to a callback, not an
  * array, so the caller's stack frame stays inside the flat budget. */
 int flat_outer_ring_overlap(int w, int h, int px, int bx0, int by0, int bx1, int by1, flat_fill_fn fill, void *ctx, int pen);
+/* PALETTE-SAMPLE-OUTLINE: cell i of a w x h box's last column (i < h), then of its last row (h <= i < h + w - 1); 0 past the end */
+int flat_edge_cell(int i, int w, int h, int *x, int *y);
+/* Repaint the n saved edge cells (flat_edge_cell order) that held a pen other than the box pen; returns the cells repainted */
+int flat_edge_restore(const unsigned char *saved, int n, int w, int h, int ox, int oy, int pen, flat_fill_fn fill, void *ctx);
 
 
 /* FLAT-GLYPH-OS-SHAPES: the clone of the system's own gadget image. The OS side draws the stock image offscreen with a private

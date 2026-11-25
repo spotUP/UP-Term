@@ -3368,6 +3368,38 @@ static void test_clone_private_slot(void)
     CHECK_INT((1 << FLAT_CLONE_DEPTH) > FLAT_CLONE_MARK(FLAT_CLONE_MARKS - 1), 1);
 }
 
+/* PALETTE-SAMPLE-OUTLINE (FLAT-ARROWS-CORNER): the size box in a Palette sample's corner covers the sample outline with its
+ * last column and row; the saved edge cells put the outline back, the rest of the box keeps the box pen */
+static void test_pal_sample_edge(void)
+{
+    unsigned char saved[32];
+    int i, x, y, n;
+    CHECK_INT(flat_edge_cell(0, 8, 9, &x, &y), 1);
+    CHECK_INT(x, 7); CHECK_INT(y, 0);
+    CHECK_INT(flat_edge_cell(9, 8, 9, &x, &y), 1);
+    CHECK_INT(x, 0); CHECK_INT(y, 8);
+    CHECK_INT(flat_edge_cell(15, 8, 9, &x, &y), 1);
+    CHECK_INT(x, 6); CHECK_INT(y, 8);                              /* the corner cell is the column's, not twice */
+    CHECK_INT(flat_edge_cell(16, 8, 9, &x, &y), 0);
+    cv_clear();
+    cv_fill(0, 10, 0, 10, 20, 'D');                                  /* the sample's right outline */
+    cv_fill(0, 0, 20, 10, 20, 'D');                                  /* and its bottom outline */
+    n = 8 + 9 - 1;
+    for (i = 0; i < n && flat_edge_cell(i, 8, 9, &x, &y); i++)
+        saved[i] = (unsigned char)cv[12 + y][3 + x];
+    cv_fill(0, 3, 12, 10, 20, 'F');                                  /* the box fill, as clone_paint does */
+    CHECK_INT(flat_edge_restore(saved, n, 8, 9, 3, 12, 'F', cv_fill, 0), 9 + 7);
+    for (y = 0; y <= 20; y++)
+        CHECK_INT(cv[y][10], 'D');                                   /* the outline column is whole again */
+    for (x = 0; x <= 10; x++)
+        CHECK_INT(cv[20][x], 'D');                                   /* and the bottom row */
+    CHECK_INT(cv[15][5], 'F');                                       /* the box inside keeps its pen */
+    cv_clear();                                                      /* no outline under the box: nothing repainted */
+    for (i = 0; i < n; i++)
+        saved[i] = 'F';
+    CHECK_INT(flat_edge_restore(saved, n, 8, 9, 3, 12, 'F', cv_fill, 0), 0);
+}
+
 static void test_glyph_clone(void)
 {
     flat_state st;
@@ -4676,6 +4708,7 @@ void suite_flat_core(void)
     test_arrow_s69_shape();
     test_clone_arrows();
     test_glyph_clone();
+    test_pal_sample_edge();
     test_clone_private_slot();
     test_clone_arrow_sizes();
     test_clone_no_dividers();
