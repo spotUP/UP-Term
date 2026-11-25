@@ -4076,6 +4076,16 @@ static void test_no_outlines(void)
         CHECK_INT(flat_display_gadget(0x8007, 0x0001), 0);
         CHECK_INT(flat_frame_class(221, 88, 155, 14, in_g, 2), FLAT_FC_DISPLAY);    /* was BORDERED: the stock outline */
         CHECK_INT(flat_frame_class(386, 30, 166, 130, lv_g, 2), FLAT_FC_BORDERED);  /* a listview border holds its list: unchanged */
+        {   /* PALETTE-SWATCH-FRAME: Palette 40.2 on KS 3.1 (rig 12): the PALETTE_KIND swatch grid is custom gadget 15,20 285x20 */
+            flat_gadbox pal_g[3] = { { 15, 20, 285, 20, FLAT_GK_CUSTOM }, { 315, 17, 293, 14, FLAT_GK_OTHER }, { 317, 37, 270, 108, FLAT_GK_OTHER } };
+            flat_gadbox cyc_g[1] = { { 315, 17, 293, 14, FLAT_GK_OTHER } };
+            CHECK_INT(flat_frame_class(15, 20, 285, 20, pal_g, 3), FLAT_FC_SELFDRAWN);    /* its frame: no box, no accent ring */
+            CHECK_INT(flat_frame_class(315, 17, 293, 14, cyc_g, 1), FLAT_FC_BORDERED);    /* a bool cycle is not touched */
+            CHECK_INT(flat_frame_class(317, 37, 270, 108, pal_g, 3), FLAT_FC_BORDERED);   /* the pen list box is not touched */
+            CHECK_INT(flat_frame_class(10, 10, 300, 40, pal_g, 1), FLAT_FC_GROUP);        /* a group box round the palette: unchanged */
+            CHECK_INT(flat_frame_class(17, 21, 36, 18, pal_g, 1), FLAT_FC_CELL);          /* a frame inside it still counts as inside */
+            CHECK_INT(flat_noline_pen(&s, FLAT_FC_SELFDRAWN, 4, 0), -1);                  /* nothing to fill */
+        }
     }
     {   /* S74-CHECKBOX-GROUND: CHECKIMAGE takes the ground box; the tick only in the selected states, in the given pen, inside the box */
         rect_log tl;

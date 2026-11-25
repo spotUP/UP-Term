@@ -868,19 +868,22 @@ static int gad_borders(int fx, int fy, int fw, int fh, const flat_gadbox *g)
 
 void flat_fc_add(flat_fc *a, int fx, int fy, int fw, int fh, const flat_gadbox *g)
 {
+    int other = g->kind == FLAT_GK_OTHER || g->kind == FLAT_GK_CUSTOM;
     if (g->w <= 0 || g->h <= 0)
         return;
     if (g->kind == FLAT_GK_STRING && gad_borders(fx, fy, fw, fh, g))
         a->string = 1;
     else if (g->kind == FLAT_GK_PROP && gad_borders(fx, fy, fw, fh, g))
         a->track = 1;
-    else if (g->kind == FLAT_GK_OTHER && gad_borders(fx, fy, fw, fh, g))
+    else if (other && gad_borders(fx, fy, fw, fh, g)) {
         a->others++;
+        a->custom += g->kind == FLAT_GK_CUSTOM;
+    }
     else if (g->kind == FLAT_GK_DISPLAY && gad_borders(fx, fy, fw, fh, g)) {
         a->display++;
         return;                                 /* the display gadget's own bevel: its box is not a held gadget */
     }
-    else if (g->kind == FLAT_GK_OTHER && fx >= g->x && fy >= g->y && fx + fw <= g->x + g->w && fy + fh <= g->y + g->h && (fw < g->w || fh < g->h))
+    else if (other && fx >= g->x && fy >= g->y && fx + fw <= g->x + g->w && fy + fh <= g->y + g->h && (fw < g->w || fh < g->h))
         a->inside = 1;
     if (g->x >= fx && g->y >= fy && g->x + g->w <= fx + fw && g->y + g->h <= fy + fh)
         a->holds = 1;
@@ -905,7 +908,7 @@ int flat_fc_class(const flat_fc *a)
     if (a->display && !a->others && !a->holds)
         return FLAT_FC_DISPLAY;                 /* S74-TEXT-BOX: the bevel of a read-only text / number box: the input ground */
     if (a->others + a->display == 1)
-        return FLAT_FC_BORDERED;
+        return a->custom ? FLAT_FC_SELFDRAWN : FLAT_FC_BORDERED;
     return a->holds ? FLAT_FC_GROUP : FLAT_FC_DISPLAY;
 }
 

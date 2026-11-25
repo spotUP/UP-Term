@@ -1172,7 +1172,7 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
         else if (flat_display_gadget(g->Flags, g->Activation))
             gb.kind = FLAT_GK_DISPLAY;      /* S74-TEXT-BOX: GadTools TEXT_KIND / NUMBER_KIND with its own bevel */
         else
-            gb.kind = FLAT_GK_OTHER;
+            gb.kind = gt == GTYP_CUSTOMGADGET ? FLAT_GK_CUSTOM : FLAT_GK_OTHER;   /* PALETTE-SWATCH-FRAME */
         flat_fc_add(&fc, ox, oy, w, h, &gb);
     }
     cls = flat_fc_class(&fc);
@@ -1183,7 +1183,7 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
     }
     if (fill)
         return 0;
-    if (cls == FLAT_FC_GROUP) {
+    if (cls == FLAT_FC_GROUP || cls == FLAT_FC_SELFDRAWN) {    /* PALETTE-SWATCH-FRAME: no accent ring around a palette's swatches */
         r->gbhits++;
         return 1;
     }
