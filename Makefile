@@ -53,9 +53,12 @@ HOST_HDR := $(ENGINE_INC) $(wildcard engine/*.h engine/*.inc render/*.h render/*
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_rip.c tests/test_kitty.c tests/test_kittyout.c pic/kittyout.c tests/test_iterm2.c tests/test_pcansi.c tests/test_ansimusic.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
-           tests/test_desk.c tests/test_upcon.c tests/test_upconf.c tests/test_keymap.c tests/test_dopustb.c tests/test_dopusenv.c tests/test_dopustb_bank.c tests/test_prefs.c tests/test_amconf.c tests/test_settings_def.c tests/test_iconspec.c tests/test_updiff.c tests/test_zmodem.c tests/test_ripxfer.c tests/test_ripglue.c tests/test_dlsave.c tests/test_otag.c tests/test_ttf.c tests/test_slash.c tests/test_winspec.c tests/test_screenreq.c tests/test_wbpark.c tests/test_cmdline.c tests/test_fontpair.c tests/test_updemo.c tests/test_tabprog.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c tests/test_menusrv.c tests/test_gthemes.c tests/test_pkgs.c tests/test_job.c tests/test_bar.c tests/test_tick.c tests/test_demo_core.c tests/test_wbmode.c tests/test_status_core.c tests/test_barconf.c tests/test_note_core.c tests/test_flat_core.c tests/test_flat_role_core.c tests/test_iclabel.c tests/test_richaa.c tests/test_iconfile.c tests/test_iconapply.c tests/test_iconpen.c tests/test_menu_fontspec.c patina/menu_fontspec_core.c tests/test_wbreset.c tests/test_borderblank.c tests/test_inst.c tests/test_help_core.c tests/test_themeprev.c tests/test_menu_text.c \
+           tests/test_desk.c tests/test_upcon.c tests/test_upconf.c tests/test_keymap.c tests/test_prefs.c tests/test_amconf.c tests/test_settings_def.c tests/test_iconspec.c tests/test_updiff.c tests/test_zmodem.c tests/test_ripxfer.c tests/test_ripglue.c tests/test_dlsave.c tests/test_otag.c tests/test_ttf.c tests/test_slash.c tests/test_winspec.c tests/test_screenreq.c tests/test_wbpark.c tests/test_cmdline.c tests/test_fontpair.c tests/test_updemo.c tests/test_tabprog.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c tests/test_gthemes.c tests/test_flat_core.c tests/test_iconpen.c \
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_layout.c tests/test_splits_state.c tests/test_tabslot.c tests/test_menudef.c tests/test_telnet.c tests/test_upagent.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
-           tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_sh_jobgone.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_ttyown.c tests/test_closeeof.c tests/test_upassign.c tests/test_bigvol.c tests/test_fssm.c tests/test_clips.c tests/test_shot_core.c tests/test_win.c tests/test_tile.c
+           tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_sh_jobgone.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_ttyown.c tests/test_closeeof.c tests/test_upassign.c tests/test_bigvol.c tests/test_fssm.c tests/test_win.c
+# the Patina host suites (patina_host, tests/test_main_patina.c): the tests of patina/ code, and the *_patina.c halves of
+# vtcon tests that also check Patina (D15 of the split plan)
+PATINA_TESTS := tests/harness.c tests/test_main_patina.c tests/test_clips.c tests/test_shot_core.c tests/test_pkgs.c tests/test_job.c tests/test_bar.c tests/test_tick.c tests/test_demo_core.c tests/test_wbmode.c tests/test_status_core.c tests/test_barconf.c tests/test_note_core.c tests/test_flat_role_core.c tests/test_iclabel.c tests/test_richaa.c tests/test_iconfile.c tests/test_iconapply.c tests/test_dopusenv.c tests/test_dopustb_bank.c tests/test_dopustb.c tests/test_menu_fontspec.c tests/test_wbreset.c tests/test_borderblank.c tests/test_inst.c tests/test_help_core.c tests/test_themeprev.c tests/test_menusrv.c tests/test_menu_text.c tests/test_tile.c patina/menu_fontspec_core.c tests/test_amconf_patina.c tests/test_settings_def_patina.c tests/test_gthemes_patina.c tests/test_keymap_patina.c tests/test_flat_core_patina.c
 
 .PHONY: symbolsnerd phosphor lucide lucide-dat screennotify jbmono wasabi wasabi-clean nas-deploy nas-deploy-dry bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check dist-check-ports golden vttest venv capture quirks amiga clean
 
@@ -223,16 +226,18 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # (tests/test_gcc_mul_overflow_cc.py, the installed $(AGCC); runs the result under vamos if present)
 # ONLY=gcc_move2_overlap the 68080 move2.l load pair skips a load whose base the first load overwrites,
 # and volatile loads (tests/test_gcc_move2_overlap.py, the installed $(AGCC), -m68080 -mexperimental)
-# The ONLY= names of the recipe lines below; the C suites are tests/test_main.c's (vttest_host --has)
+# The ONLY= names of the recipe lines below; the C suites are tests/test_main.c's (vttest_host --has) and
+# tests/test_main_patina.c's (patina_host --has)
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
 TEST_PY_ONLY := put_skips lha_prestart dist_name_len win_refresh gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_patina_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free dopus_toolbar flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list patina_rows_buffer flat_single_instance flat_clone_stack flat_hook_locks flat_unload_inflight uterm_wiring rig_warn_stale_build rig_softreset
-TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
+TEST_BINS := $(BUILD)/vttest_host $(BUILD)/patina_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 # the icon rows import fontTools: they run in the repo .venv like the icon generators (VENV_PY, below)
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS)) | $(VENV_FONTTOOLS)
-	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
+	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY) && ! ./$(BUILD)/patina_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
 	@if [ -z "$(filter $(ONLY),$(TEST_PY_ONLY))" ] && { [ -z "$(ONLY)" ] || ./$(BUILD)/vttest_host --has $(ONLY); }; then ./$(BUILD)/vttest_host $(ONLY); fi
+	@if [ -z "$(filter $(ONLY),$(TEST_PY_ONLY))" ] && { [ -z "$(ONLY)" ] || ./$(BUILD)/patina_host --has $(ONLY); }; then ./$(BUILD)/patina_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = claude_fixture ]; then python3 tools/test_claude_fixture.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = build_stamp ]; then python3 -I tools/test_build_stamp.py; fi
@@ -451,10 +456,15 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS)) | $(VENV_FONTTOOLS)
 # never clash), -MMD/-MP dependency files so a header change rebuilds only the objects that include it, and a link step.
 # Editing one file recompiles one object (HOST-TEST-INCREMENTAL). The generated menu icon page is order-only: it must
 # exist before the first compile, and from then on the .d file names it as an ordinary prerequisite.
-VTTEST_HOST_SRC := handler/brk.c $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) $(CONF) $(SPLITS) config/keymap.c config/cxdesc.c config/amconf_core.c config/amconf_keys.c patina/menu_core.c patina/leaf_core.c patina/leaf_pkg.c patina/menu_tree.c patina/index_core.c patina/index_load.c patina/clips_core.c patina/shot_core.c patina/icon_core.c patina/menu_geom.c patina/menu_icon.c patina/menu_theme.c patina/dopustb_core.c patina/dopusenv_core.c patina/dopustb_bank_core.c config/win_core.c patina/tile_core.c handler/keymap_act.c handler/upmru.c $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS) render/gthemes_core.c render/desk_core.c patina/menu_text_core.c patina/menusrv_core.c patina/pkgs_core.c patina/job_core.c patina/bar_core.c patina/tick_core.c patina/demo_core.c patina/wbmode_core.c patina/status_core.c patina/barconf_core.c patina/note_core.c render/flat_core.c patina/flat_role_core.c patina/iclabel_core.c patina/iconfile_core.c patina/iconapply_core.c render/iconpen_core.c handler/pubscr_core.c patina/flat_glyph.c patina/roundaa_core.c patina/richaa_core.c patina/wbreset_core.c patina/borderblank_core.c patina/inst_core.c patina/help_core.c patina/themeprev_core.c
+# patina/ sources the Patina host suites link (patina_host); vttest_host links none (the split plan, S4)
+PATINA_HOST_CORE := patina/menu_core.c patina/leaf_core.c patina/leaf_pkg.c patina/menu_tree.c patina/index_core.c patina/index_load.c patina/clips_core.c patina/shot_core.c patina/icon_core.c patina/menu_geom.c patina/menu_icon.c patina/menu_theme.c patina/dopustb_core.c patina/dopusenv_core.c patina/dopustb_bank_core.c patina/tile_core.c patina/menu_text_core.c patina/menusrv_core.c patina/pkgs_core.c patina/job_core.c patina/bar_core.c patina/tick_core.c patina/demo_core.c patina/wbmode_core.c patina/status_core.c patina/barconf_core.c patina/note_core.c patina/flat_role_core.c patina/iclabel_core.c patina/iconfile_core.c patina/iconapply_core.c patina/flat_glyph.c patina/roundaa_core.c patina/richaa_core.c patina/wbreset_core.c patina/borderblank_core.c patina/inst_core.c patina/help_core.c patina/themeprev_core.c
+VTTEST_HOST_SRC := handler/brk.c $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) $(CONF) $(SPLITS) config/keymap.c config/cxdesc.c config/amconf_core.c config/amconf_keys.c config/win_core.c handler/keymap_act.c handler/upmru.c $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS) render/gthemes_core.c render/desk_core.c render/flat_core.c render/iconpen_core.c handler/pubscr_core.c
+# test_brk.c stays: it holds the exec stubs (Forbid, Signal, SysBase) handler/brk.c links against.
+PATINA_HOST_SRC := $(filter-out $(filter-out tests/test_brk.c,$(TESTS)),$(VTTEST_HOST_SRC)) $(PATINA_HOST_CORE) $(PATINA_TESTS)
 VTTEST_HOST_OBJ := $(patsubst %.c,$(BUILD)/host-obj/%.o,$(VTTEST_HOST_SRC))
+PATINA_HOST_OBJ := $(patsubst %.c,$(BUILD)/host-obj/%.o,$(PATINA_HOST_SRC))
 
-$(VTTEST_HOST_OBJ): $(BUILD)/host-obj/%.o: %.c | $(MENU_ICONS_INC)
+$(sort $(VTTEST_HOST_OBJ) $(PATINA_HOST_OBJ)): $(BUILD)/host-obj/%.o: %.c | $(MENU_ICONS_INC)
 	@mkdir -p $(dir $@)
 	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -I$(CURDIR) -Itests/exec_host -I$(BUILD)/amiga -MMD -MP -c -o $@ $<
 
@@ -462,7 +472,11 @@ $(BUILD)/vttest_host: $(VTTEST_HOST_OBJ)
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -o $@ $^
 
--include $(VTTEST_HOST_OBJ:.o=.d)
+$(BUILD)/patina_host: $(PATINA_HOST_OBJ)
+	@mkdir -p $(BUILD)
+	$(HOSTCC) $(HOSTCFLAGS) -o $@ $^
+
+-include $(sort $(VTTEST_HOST_OBJ:.o=.d) $(PATINA_HOST_OBJ:.o=.d))
 
 # render/amiga_render.c itself on the host (ledger R8): the NDK's structs and a fake graphics.library
 # (tests/render_host/gfx_fake.c) that logs the calls and draws into a pixel canvas. Its own binary: the
@@ -1164,11 +1178,11 @@ worktree-ready:
 	python3 -I tools/worktree_ready.py
 	$(MAKE) upkgui
 # One suite, fast: only the host test binary, at the lowest priority (make test ONLY= rebuilds every test binary).
-# SUITE= a tests/test_main.c suite (vttest_host --has); python-only suites: make test ONLY=<name>.
+# SUITE= a tests/test_main.c or tests/test_main_patina.c suite (vttest_host / patina_host --has); python-only suites: make test ONLY=<name>.
 .PHONY: test-one
-test-one: $(BUILD)/vttest_host
+test-one: $(BUILD)/vttest_host $(BUILD)/patina_host
 	@if [ -z "$(SUITE)" ]; then echo "[ERROR] make test-one SUITE=<name>"; exit 2; fi
-	nice -n 19 ./$(BUILD)/vttest_host $(SUITE)
+	if ./$(BUILD)/patina_host --has $(SUITE); then nice -n 19 ./$(BUILD)/patina_host $(SUITE); else nice -n 19 ./$(BUILD)/vttest_host $(SUITE); fi
 PATINA_MENU_SRC := render/iconpen_core.c handler/pubscr_core.c patina/iconpen_dos.c patina/flat_role_core.c patina/rexx_host.c patina/poll_timer.c patina/taskalive.c patina/menusrv_core.c patina/termenv.c patina/uterm_dos.c patina/menu_open.c patina/menu.c patina/leaf.c patina/wblaunch.c patina/leaf_core.c patina/leaf_pkg.c handler/frontscr.c handler/pubscr.c patina/menu_core.c patina/menu_tree.c patina/index_core.c patina/index_load.c patina/ixwatch.c config/keymap.c config/win_core.c config/keymap_load.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c patina/clips_core.c handler/clip.c handler/clipfmt.c handler/be32.c render/gthemes_core.c patina/gthemes_cur_dos.c patina/gthemes_dos.c patina/desk_dos.c patina/bar_core.c patina/win_refresh.c render/flat_core.c render/desk_core.c render/gthemes_scan_dos.c patina/proclaunch.c patina/pkgs_core.c patina/pkgs_dos.c $(PATINA_LEAF_DEPS) prefs/prefs_asl.c patina/job_core.c patina/job_dos.c patina/sentinel_dos.c patina/menu_theme.c patina/wbreset_core.c patina/wbreset.c patina/dopustb_core.c patina/dopusenv_core.c patina/dopustb_bank_core.c patina/dopustb_dos.c patina/iconfile_core.c patina/menu_font.c render/fontpair.c
 .PHONY: patina-menu
 patina-menu: $(BUILD)/amiga/patina-menu
