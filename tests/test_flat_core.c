@@ -2304,8 +2304,9 @@ static void test_slider(void)
     CHECK_INT(flat_slider_disc_row(1, 10, 20, 6, 7, 25, &x0, &x1) ? x0 : -1, 11);
     for (i = 0; i < 8; i++)
         w[i] = flat_slider_disc_row(2, 10, 20, 6, 7, 20 + i, &x0, &x1) ? x1 - x0 + 1 : 0;
-    CHECK_INT((w[0] == 0) + (w[1] == 0) + (w[5] == 0) + (w[6] == 0), 3);
-    CHECK_INT(w[3], 6);
+    /* side 2: min(6 / 2, 7) = 3 rows (22..24) of 6 columns, 3 x 3 visual units; rows 20, 21, 25, 26 miss it */
+    CHECK_INT((w[0] == 0) + (w[1] == 0) + (w[5] == 0) + (w[6] == 0), 4);
+    CHECK_INT(w[2], 4); CHECK_INT(w[3], 6); CHECK_INT(w[4], 4);
     CHECK_INT(flat_slider_track(1, 1, 100, 50, 149, 7, 0, 0, 999, 999, t), 1);
     CHECK_INT(t[1], 53); CHECK_INT(t[3], 53);
     CHECK_INT(t[0], 100); CHECK_INT(t[2], 248);
@@ -2313,6 +2314,18 @@ static void test_slider(void)
     CHECK_INT(flat_slider_track(1, 1, 100, 50, 149, 7, 120, 0, 130, 999, t) ? t[2] - t[0] : -1, 10);
     CHECK_INT(flat_slider_track(2, 2, 10, 0, 16, 90, 0, 0, 999, 999, t), 1);
     CHECK_INT(t[0], 17); CHECK_INT(t[2] - t[0] + 1, 2);
+    {   /* GSLIDER-FLAT: ring repaint only after GM_RENDER of an absolute box on a themed screen with flat on */
+        flat_state g;
+        memset(&g, 0, sizeof g);
+        g.enabled = 1;
+        CHECK_INT(flat_gslider_ring(&g, FLAT_GM_RENDER, 1, 0, 18, 91), 1);
+        CHECK_INT(flat_gslider_ring(&g, 0x202, 1, 0, 18, 91), 0);        /* not GM_RENDER */
+        CHECK_INT(flat_gslider_ring(&g, FLAT_GM_RENDER, 0, 0, 18, 91), 0);  /* stock screen */
+        CHECK_INT(flat_gslider_ring(&g, FLAT_GM_RENDER, 1, 0x0010, 18, 91), 0);   /* GFLG_RELRIGHT */
+        CHECK_INT(flat_gslider_ring(&g, FLAT_GM_RENDER, 1, 0, 4, 91), 0);   /* nothing inside the ring */
+        g.held = 1;
+        CHECK_INT(flat_gslider_ring(&g, FLAT_GM_RENDER, 1, 0, 18, 91), 0);
+    }
 }
 
 static void test_scroller(void)
