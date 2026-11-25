@@ -545,6 +545,9 @@ unsigned long flat_knob_colour(unsigned long surface, unsigned long muted);
 int flat_knob_pen(const flat_state *s, int depth);
 /* A fill (x0,y0)-(x1,y1) on surface surf by task with area pattern size ptsz: the record it ghosts, or 0 (not enabled, held,
  * no pattern, no record of that surface and task containing the rect). */
+/* PALETTE-G17-GHOST (owner 2026-11-25): 1 when a patterned fill x0,y0..x1,y1 (ptsz = rp->AreaPtSz) is the ghost dither over a
+ * disabled custom gadget's box gx,gy gw x gh: inside the box, every edge at most 2 px in. */
+int flat_ghost_custom(int ptsz, int custom_disabled, int gx, int gy, int gw, int gh, int x0, int y0, int x1, int y1);
 const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void *surf, const void *task, int ptsz, int x0, int y0, int x1, int y1);
 
 /* PREFS-NO-OUTLINES (owner 2026-11-11): a frameiclass frame on a flat screen never draws a line in pen_line. An edges-only frame
