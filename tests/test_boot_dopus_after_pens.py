@@ -41,6 +41,18 @@ class BootDopusAfterPens(unittest.TestCase):
                "                     void *ud, const dopus_tb_ops *tb)"
         self.assertIn("tb->force", body(MT, head))
 
+    def test_holder_syncs_while_opus_hidden(self):
+        """S92d-PENS-HIDE-FIRST: Reveal hands Opus the pens Hide freed; the holder must take 4-15 between the two."""
+        head = "int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char *line, char *result, int cap, void *ud),\n" \
+               "                     void *ud, const dopus_tb_ops *tb)"
+        b = body(MT, head)
+        hide, hook, reveal = b.index('"command wait Hide"'), b.index("tb->hidden(th)"), b.index('"command wait Reveal"')
+        self.assertLess(hide, hook)
+        self.assertLess(hook, reveal)
+        h = body(DESK, "static void dk_dopus_hidden(const gtheme *th)")
+        self.assertLess(h.index("ipd_resync()"), h.index("dk_live_pens("), "the holder owns the pens before the live writes")
+        self.assertIn("tb.hidden = dk_dopus_hidden", DESK)
+
 
 class PensBeforeLister(unittest.TestCase):
     """S92e PENS-BEFORE-LISTER: the holder syncs on an open Workbench before LoadWB (DOpus LoadDB) runs."""

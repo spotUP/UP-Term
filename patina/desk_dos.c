@@ -636,6 +636,15 @@ static void dk_confirm_ask(unsigned mask);
 /* the live role pens (FLAT-PEN5-MAGENTA) are set last, in desk_dos_apply: every Workbench reset of this apply (palette, wbpattern,
  * wbborder USE) reopens the screen with the graphics defaults on pens 4-7. 1 = theme colours, -1 = restore the kept ones, 0 = leave. */
 static int dk_live_want, dk_live_flat;
+/* S92d-PENS-HIDE-FIRST: Opus is hidden and holds no pens: the holder's own sync (exclusive 4-15) now, then the live role pens through it. */
+static void dk_dopus_hidden(const gtheme *th)
+{
+    ipd_resync();
+    am_sentinel("PATINA_DESK_HIDDEN_RESYNC", 1L);
+    if (dk_live_want)
+        dk_live_pens(dk_live_want > 0 ? th : 0, dk_live_flat);
+}
+
 static const gtheme *dk_rv_theme;   /* FP1-REVERT-THEME-LINE: the previous theme while desk_dos_revert restores; 0 = the stock baseline */
 static long dk_palette_base(int restore, const unsigned char pens[DK_SLOTS], int depth, unsigned char *buf, long cap);
 
@@ -2310,6 +2319,7 @@ int desk_dos_start_apply(void)
          * the pens of that moment; forced so the bank a lister kept from its saved layout is set again and remapped. */
         dopus_tb_ops tb = dopustb_dos_ops;
         tb.force = 1;
+        tb.hidden = dk_dopus_hidden;
         desk_dos_dopus_sends++;
         desk_dos_dopus_wait();
         dopus_theme_send(&th, dk_dopus_send, 0, &tb);
