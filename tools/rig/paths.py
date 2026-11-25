@@ -563,7 +563,8 @@ def stale_targets(targets, run=subprocess.run, cwd=None, on_error=None):
             env={**os.environ, "UPTERM_ROOT": str(UPTERM_ROOT)})
     out = (r.stdout or "") + (r.stderr or "")
     must = set(re.findall(r"Must remake target [`']([^']+)'", out))
-    bad = set(re.findall(r"(?:No rule to make target|Failed to remake target file) [`']([^']+)'", out))
+    # a missing prerequisite names the target only in "needed by `t'" (and -k's "Target `t' not remade")
+    bad = set(re.findall(r"(?:No rule to make target|Failed to remake target file|needed by|Target) [`']([^']+)'", out))
     if r.returncode and not bad:
         bad = set(targets)
     for t in targets:

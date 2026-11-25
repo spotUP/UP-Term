@@ -71,6 +71,14 @@ class OnePass(unittest.TestCase):
         self.assertEqual(paths.stale_targets(["a", "b", "c"], run, on_error=lambda t, r: seen.append(t)), ["b"])
         self.assertEqual((len(calls), seen), (1, ["c"]))
 
+    def test_missing_prerequisite_is_an_error_for_its_target(self):
+        import paths
+        seen = []   # GNU make -n -k names the target only in "needed by" / "Target ... not remade"
+        run = lambda cmd, **kw: subprocess.CompletedProcess(cmd, 2, "Must remake target `b'.\n",
+            "make: *** No rule to make target `/x/ixpipe-handler.c', needed by `h'.\nTarget `h' not remade because of errors.\n")
+        self.assertEqual(paths.stale_targets(["h", "b"], run, on_error=lambda t, r: seen.append(t)), ["b"])
+        self.assertEqual(seen, ["h"])
+
     def test_make_error_without_target_lines_is_an_error_for_all(self):
         import paths
         seen = []
