@@ -5,8 +5,8 @@
 #ifndef PATINA_HELP_CORE_H
 #define PATINA_HELP_CORE_H
 
-#include "../config/keymap.h"
-#include "../config/amconf_core.h"
+#include "config/keymap.h"
+#include "config/amconf_core.h"
 #include "menu_theme.h"
 
 #define HC_UNBOUND "(unbound)"

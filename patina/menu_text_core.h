@@ -8,7 +8,7 @@
 #ifndef MENU_TEXT_CORE_H
 #define MENU_TEXT_CORE_H
 
-#include "../render/ttf.h"
+#include "render/ttf.h"
 
 #define MTC_SLOTS 512 /* direct-mapped by code point */
 

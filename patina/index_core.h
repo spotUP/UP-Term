@@ -4,7 +4,7 @@
 #ifndef PATINA_INDEX_CORE_H
 #define PATINA_INDEX_CORE_H
 
-#include "../config/keymap.h"
+#include "config/keymap.h"
 #include "menu_core.h"
 #include "pkgs_core.h"
 

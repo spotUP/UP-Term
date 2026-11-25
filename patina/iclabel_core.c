@@ -2,9 +2,9 @@
 #include <string.h>
 #include <stddef.h>
 #include "iclabel_core.h"
-#include "../render/iconpen_core.h"
-#include "../render/flat_core.h"
-#include "../render/aa_ink_rule.h"
+#include "render/iconpen_core.h"
+#include "render/flat_core.h"
+#include "render/aa_ink_rule.h"
 
 int icl_accept(int aa_on, int mode, int apen, int bpen, int x, int y, int w, int h, int il, int it, int ir, int ib)
 {

@@ -10,7 +10,7 @@
 #include <proto/graphics.h>
 #include <proto/diskfont.h>
 #include "menu_font.h"
-#include "../render/fontpair.h"
+#include "render/fontpair.h"
 
 struct Library *DiskfontBase;
 

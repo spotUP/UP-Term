@@ -466,7 +466,7 @@ VTTEST_HOST_OBJ := $(patsubst %.c,$(BUILD)/host-obj/%.o,$(VTTEST_HOST_SRC))
 
 $(VTTEST_HOST_OBJ): $(BUILD)/host-obj/%.o: %.c | $(MENU_ICONS_INC)
 	@mkdir -p $(dir $@)
-	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -Itests/exec_host -I$(BUILD)/amiga -MMD -MP -c -o $@ $<
+	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -I$(CURDIR) -Itests/exec_host -I$(BUILD)/amiga -MMD -MP -c -o $@ $<
 
 $(BUILD)/vttest_host: $(VTTEST_HOST_OBJ)
 	@mkdir -p $(BUILD)
@@ -973,7 +973,7 @@ $(BUILD)/amiga/top: proc/top_amiga.c proc/tasks_amiga.c proc/tasks_amiga.h proc/
 	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ $(NOBREAK) proc/top_amiga.c proc/tasks_amiga.c $(PROC_CORE) $(BUILD)/amiga/obj/vbsample.o $(BUILD)/amiga/obj/cpuchk-top.o
 $(BUILD)/amiga/shotprobe: tests/amiga/shotprobe.c patina/shot_core.c patina/shot_core.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -o $@ tests/amiga/shotprobe.c patina/shot_core.c
+	$(VC) -I$(CURDIR) -dontwarn=153,65 -o $@ tests/amiga/shotprobe.c patina/shot_core.c
 $(BUILD)/amiga/shotscreen: tests/amiga/shotscreen.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ tests/amiga/shotscreen.c
@@ -1156,7 +1156,7 @@ endif
 PATINA_SRC := patina/menu_core.c patina/desk_confirm_dos.c patina/sentinel_dos.c render/iconpen_core.c handler/pubscr_core.c patina/iconpen_dos.c patina/flat_role_core.c patina/note.c patina/note_core.c patina/shot.c patina/shot_core.c patina/rexx_host.c patina/taskalive.c patina/menusrv_core.c patina/termenv.c patina/uterm_dos.c claude/util.c handler/frontscr.c handler/pubscr.c patina/leaf_core.c patina/leaf_pkg.c patina/wblaunch.c patina/menu_open.c patina/patina.c patina/demo.c patina/demo_core.c patina/cx.c patina/act.c patina/win.c patina/win_apply.c patina/bar_usable.c config/win_core.c patina/tile_core.c config/cxdesc.c patina/menu_tree.c config/keymap.c config/keymap_load.c $(PATINA_LEAF_DEPS) handler/upactive.c handler/upmru.c patina/clipwatch.c patina/clips_core.c handler/clip.c handler/clipfmt.c handler/be32.c patina/index_core.c patina/pkgs_core.c render/gthemes_core.c patina/gthemes_cur_dos.c patina/gthemes_dos.c prefs/prefs_asl.c patina/desk_dos.c patina/win_refresh.c render/flat_core.c render/desk_core.c render/gthemes_scan_dos.c patina/proclaunch.c patina/poll_timer.c patina/tick.c patina/tick_core.c patina/wbmode_core.c patina/wbmode.c patina/status_core.c patina/barconf_core.c patina/barconf_dos.c patina/themewin.c patina/bar.c patina/bar_core.c patina/menu_theme.c render/pens_amiga.c handler/upreq.c handler/keymap_act.c patina/wbreset_core.c patina/wbreset.c patina/wbreset_patch.c patina/ipatch.c patina/strut_patch.c patina/inst_core.c patina/borderblank_core.c patina/help_core.c patina/borderblank_patch.c $(NOBREAK) patina/dopustb_core.c patina/dopusenv_core.c patina/dopustb_bank_core.c patina/dopustb_dos.c patina/iconfile_core.c patina/menu_font.c render/fontpair.c
 $(BUILD)/amiga/Patina: $(PATINA_SRC) patina/inst_core.h patina/win_refresh.h render/flat_shared.h render/flat_core.h patina/note.h patina/note_core.h patina/shot.h patina/shot_core.h patina/rexx_host.h patina/taskalive.h patina/menusrv_core.h patina/menu_open.h config/segstack.h config/cmdpath.h patina/clipwatch.h patina/clips_core.h handler/clip.h patina/wblaunch.h patina/act.h patina/leaf.h patina/win.h patina/demo.h patina/demo_core.h patina/win_apply.h patina/bar_usable.h config/win_core.h patina/tile_core.h handler/frontscr.h patina/cx.h config/cxdesc.h patina/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC) config/amconf_core.h config/amconf_dos.h prefs/prefs_dos.h patina/index_core.h patina/pkgs_core.h render/gthemes_core.h patina/gthemes_dos.h patina/desk_dos.h render/desk_core.h render/gthemes_scan_dos.h patina/proclaunch.h patina/poll_timer.h patina/tick.h patina/tick_core.h patina/wbmode_core.h patina/wbmode.h patina/status_core.h patina/barconf_core.h patina/barconf_dos.h patina/themewin.h patina/bar.h patina/bar_core.h patina/menu_theme.h render/pens_amiga.h handler/upreq.h patina/uterm_dos.h handler/tabprog.h handler/menu_ids.h demo/updemo.h shell/vsh_quote.h config/upassign.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -I$(VTCON_NETINCLUDE) -o $@ $(PATINA_SRC)
+	$(VC) -I$(CURDIR) -dontwarn=153,65 -I$(BUILD)/amiga -I$(VTCON_NETINCLUDE) -o $@ $(PATINA_SRC)
 
 .PHONY: ttf-testdata
 # Regenerates tests/data/symnerd_subset.h and ttf_golden.h (needs fontTools and Homebrew FreeType); not part of any default target
@@ -1224,12 +1224,12 @@ PATINA_MENU_SRC := render/iconpen_core.c handler/pubscr_core.c patina/iconpen_do
 patina-menu: $(BUILD)/amiga/patina-menu
 $(BUILD)/amiga/patina-menu: $(PATINA_MENU_SRC) patina/iconpen_dos.h render/iconpen_core.h patina/win_refresh.h render/flat_shared.h render/flat_core.h patina/rexx_host.h patina/taskalive.h patina/menusrv_core.h patina/menu_open.h patina/termenv.h handler/frontscr.h patina/clips_core.h patina/menu_core.h patina/index_core.h patina/ixwatch.h patina/leaf.h patina/wblaunch.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a render/gthemes_core.h patina/gthemes_dos.h patina/desk_dos.h render/desk_core.h render/gthemes_scan_dos.h config/amconf_core.h config/amconf_dos.h prefs/prefs_dos.h patina/proclaunch.h config/cmdpath.h patina/pkgs_core.h patina/pkgs_dos.h patina/job_core.h patina/job_dos.h patina/sentinel_dos.h patina/menu_theme.h patina/uterm_dos.h handler/tabprog.h handler/menu_ids.h demo/updemo.h shell/vsh_quote.h config/upassign.h
 	@mkdir -p $(BUILD)/amiga
-	$(UPTERM_PORTS)/tools/m68k-cc -m68020 -O2 -Wall -I$(BUILD)/amiga -I$(UPKGUI_SYS)/include -I$(UPKGUI_SYS)/include/ncursesw -o $@ $(PATINA_MENU_SRC) $(UPKGUI_SYS)/lib/libupkgui.a $(UPKGUI_SYS)/lib/libncursesw.a $(UPKGUI_SYS)/lib/libixcompat.a
+	$(UPTERM_PORTS)/tools/m68k-cc -I$(CURDIR) -m68020 -O2 -Wall -I$(BUILD)/amiga -I$(UPKGUI_SYS)/include -I$(UPKGUI_SYS)/include/ncursesw -o $@ $(PATINA_MENU_SRC) $(UPKGUI_SYS)/lib/libupkgui.a $(UPKGUI_SYS)/lib/libncursesw.a $(UPKGUI_SYS)/lib/libixcompat.a
 
 # jobprobe: RJ.1 proof of patina/job_dos.c on the rig (tools/probes/jobrun/jobprobe.c)
 $(BUILD)/amiga/jobprobe: tools/probes/jobrun/jobprobe.c patina/taskalive.c patina/job_core.c patina/job_dos.c patina/sentinel_dos.c patina/leaf_core.c render/gthemes_core.c patina/proclaunch.c $(PATINA_LEAF_DEPS) patina/job_core.h patina/job_dos.h patina/sentinel_dos.h patina/proclaunch.h patina/taskalive.h handler/tabprog.h handler/menu_ids.h demo/updemo.h shell/vsh_quote.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ tools/probes/jobrun/jobprobe.c patina/taskalive.c patina/job_core.c patina/job_dos.c patina/sentinel_dos.c patina/leaf_core.c render/gthemes_core.c patina/proclaunch.c $(PATINA_LEAF_DEPS)
+	$(VC) -I$(CURDIR) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ tools/probes/jobrun/jobprobe.c patina/taskalive.c patina/job_core.c patina/job_dos.c patina/sentinel_dos.c patina/leaf_core.c render/gthemes_core.c patina/proclaunch.c $(PATINA_LEAF_DEPS)
 
 # patina-gui: the drawn menu and key viewer (plan 2026-10-23-patina-drawn-menu.md, G5). A plain vbcc
 # Intuition program, no ixemul, same command line as patina-menu.
@@ -1238,7 +1238,7 @@ PATINA_GUI_SRC := render/iconpen_core.c handler/pubscr_core.c patina/iconpen_dos
 patina-gui: $(BUILD)/amiga/patina-gui
 $(BUILD)/amiga/patina-gui: $(PATINA_GUI_SRC) patina/iconpen_dos.h render/iconpen_core.h patina/win_refresh.h render/flat_shared.h render/flat_core.h patina/rexx_host.h patina/taskalive.h patina/menusrv_core.h patina/menu_open.h patina/clips_core.h patina/menu_core.h patina/index_core.h patina/ixwatch.h patina/icon_core.h patina/icon_gfx.h patina/wblaunch.h patina/menu_geom.h patina/menu_icon.h patina/menu_font.h render/emoji.h render/fontpair.h render/unifont.h $(MENU_ICONS_INC) patina/menu_theme.h patina/leaf.h config/cxdesc.h render/pens_amiga.h handler/frontscr.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h prefs/prefs_core.h $(KEYMAP_DEFAULT_INC) config/amconf_core.h config/amconf_dos.h prefs/prefs_dos.h render/gthemes_core.h patina/gthemes_dos.h patina/desk_dos.h render/desk_core.h render/gthemes_scan_dos.h patina/menu_text.h patina/menu_text_core.h patina/iclabel_core.h render/aa_ink.h render/aa_ink_rule.h render/pen_match.h render/ttf.h render/otag.h render/outline.h patina/proclaunch.h patina/pkgs_core.h patina/pkgs_dos.h patina/job_core.h patina/job_dos.h patina/sentinel_dos.h patina/help_core.h $(AMHELP_INC) patina/themeprev_core.h patina/uterm_dos.h handler/tabprog.h handler/menu_ids.h demo/updemo.h shell/vsh_quote.h config/upassign.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(PATINA_GUI_SRC)
+	$(VC) -I$(CURDIR) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(PATINA_GUI_SRC)
 
 # patina-index: the app index scanner (plan 2026-10-23-patina-app-index.md, X2). A plain vbcc DOS program,
 # no ixemul; it writes ENVARC:Patina/apps, which Patina reads (it never scans itself).
@@ -1247,7 +1247,7 @@ PATINA_INDEX_SRC := patina/taskalive.c patina/index.c install/hardvol.c patina/i
 patina-index: $(BUILD)/amiga/patina-index
 $(BUILD)/amiga/patina-index: $(PATINA_INDEX_SRC) patina/stkprobe.h patina/stkprobe.c patina/taskalive.h patina/index_core.h patina/pkgs_core.h patina/ixwatch.h patina/menu_core.h config/upconf.h tty/qmark.h install/hardvol.h install/fssm.h config/amconf_core.h config/amconf_dos.h prefs/prefs_dos.h render/gthemes_core.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ $(PATINA_INDEX_SRC) $(STKPROBE_SRC)
+	$(VC) -I$(CURDIR) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ $(PATINA_INDEX_SRC) $(STKPROBE_SRC)
 
 # patina-flat: the resident flat-UI program (plan 2026-10-29-patina-flat-ui-patch.md FLAT-C0). A plain vbcc DOS program,
 # no ixemul; it keeps the public state block "Patina.Flat" that Patina writes. flat_core.c is host-tested.
@@ -1263,7 +1263,7 @@ $(BUILD)/amiga/patina-flat: device/romspan.h patina/stkprobe.h render/flat_share
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_tx.o patina/flat_tx.s
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_dg.o patina/flat_dg.s
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_stk.o patina/flat_stk.s
-	$(VC) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ patina/flat.c $(STKPROBE_SRC) $(NOBREAK) $(BUILD)/amiga/obj/flat_rf.o $(BUILD)/amiga/obj/flat_mn.o $(BUILD)/amiga/obj/flat_cg.o $(BUILD)/amiga/obj/flat_mui.o $(BUILD)/amiga/obj/flat_tx.o $(BUILD)/amiga/obj/flat_dg.o $(BUILD)/amiga/obj/flat_stk.o patina/flat_glyph.c patina/roundaa_core.c patina/iclabel_core.c render/emoji.c render/unifont.c patina/menu_font.c render/fontpair.c render/flat_core.c render/desk_core.c patina/gthemes_cur_dos.c render/gthemes_core.c render/iconpen_core.c handler/pubscr_core.c patina/iconpen_dos.c patina/flat_role_core.c handler/pubscr.c handler/be32.c patina/taskalive.c patina/win_refresh.c patina/poll_timer.c $(PATINA_LEAF_DEPS)
+	$(VC) -I$(CURDIR) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ patina/flat.c $(STKPROBE_SRC) $(NOBREAK) $(BUILD)/amiga/obj/flat_rf.o $(BUILD)/amiga/obj/flat_mn.o $(BUILD)/amiga/obj/flat_cg.o $(BUILD)/amiga/obj/flat_mui.o $(BUILD)/amiga/obj/flat_tx.o $(BUILD)/amiga/obj/flat_dg.o $(BUILD)/amiga/obj/flat_stk.o patina/flat_glyph.c patina/roundaa_core.c patina/iclabel_core.c render/emoji.c render/unifont.c patina/menu_font.c render/fontpair.c render/flat_core.c render/desk_core.c patina/gthemes_cur_dos.c render/gthemes_core.c render/iconpen_core.c handler/pubscr_core.c patina/iconpen_dos.c patina/flat_role_core.c handler/pubscr.c handler/be32.c patina/taskalive.c patina/win_refresh.c patina/poll_timer.c $(PATINA_LEAF_DEPS)
 
 # patina-icons: filled icons on the Workbench default icons, APPLY and RESTORE (plan 2026-10-31-patina-lucide-icons.md L8, L9).
 # A plain vbcc DOS program; every decision is patina/iconapply_core.c (host suite iconapply).
@@ -1277,7 +1277,7 @@ chkabort-check: $(CHKABORT_PROGRAMS:%=$(BUILD)/amiga/%)
 patina-icons: $(BUILD)/amiga/patina-icons
 $(BUILD)/amiga/patina-icons: patina/icons.c patina/stkprobe.h patina/iconapply_core.c patina/iconapply_core.h patina/iconfile_core.c patina/iconfile_core.h render/iconpen_core.c handler/pubscr_core.c render/iconpen_core.h patina/iconpen_dos.c patina/flat_role_core.c patina/flat_role_core.h patina/iconpen_dos.h handler/pubscr.c handler/pubscr.h render/gthemes_core.c render/gthemes_core.h render/desk_core.c render/desk_core.h config/amconf_core.h config/amconf_dos.h handler/be32.c handler/be32.h tty/qmark.h $(PATINA_LEAF_DEPS)
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ $(NOBREAK) $(STKPROBE_SRC) patina/icons.c patina/iconfile_core.c patina/iconapply_core.c render/iconpen_core.c handler/pubscr_core.c patina/iconpen_dos.c patina/flat_role_core.c handler/pubscr.c render/gthemes_core.c render/desk_core.c handler/be32.c $(PATINA_LEAF_DEPS)
+	$(VC) -I$(CURDIR) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ $(NOBREAK) $(STKPROBE_SRC) patina/icons.c patina/iconfile_core.c patina/iconapply_core.c render/iconpen_core.c handler/pubscr_core.c patina/iconpen_dos.c patina/flat_role_core.c handler/pubscr.c render/gthemes_core.c render/desk_core.c handler/be32.c $(PATINA_LEAF_DEPS)
 
 # FLAT-C3: vbcc's assembly of the dispatcher objects, checked by tests/test_flat_budget.py (entry frames <= 64 bytes, no libc call)
 FLAT_ASM_DIR := $(BUILD)/amiga/flat_asm
@@ -1291,7 +1291,7 @@ flat-budget: $(FLAT_BUDGET_ASM)
 	python3 tests/test_flat_budget.py $(FLAT_BUDGET_ASM)
 $(FLAT_ASM_DIR)/%.s: patina/%.c render/flat_core.h render/flat_glyph.h patina/roundaa_core.h patina/iclabel_core.h
 	@mkdir -p $(FLAT_ASM_DIR)
-	$(VC) -dontwarn=153,65 -S -o $@ $<
+	$(VC) -I$(CURDIR) -dontwarn=153,65 -S -o $@ $<
 $(FLAT_ASM_DIR)/pubscr.s $(FLAT_ASM_DIR)/pubscr_core.s: $(FLAT_ASM_DIR)/%.s: handler/%.c handler/pubscr.h handler/pubscr_core.h
 	@mkdir -p $(FLAT_ASM_DIR)
 	$(VC) -dontwarn=153,65 -S -o $@ $<
@@ -1308,12 +1308,12 @@ $(FLAT_ASM_DIR)/flat_core.s: render/flat_core.c render/flat_core.h
 amnotify: $(BUILD)/amiga/amnotify
 $(BUILD)/amiga/amnotify: patina/amnotify.c patina/note_core.c patina/rexx_host.c patina/poll_timer.c patina/note.h patina/note_core.h patina/rexx_host.h tty/qmark.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -o $@ patina/amnotify.c patina/note_core.c patina/rexx_host.c patina/poll_timer.c
+	$(VC) -I$(CURDIR) -dontwarn=153,65 -o $@ patina/amnotify.c patina/note_core.c patina/rexx_host.c patina/poll_timer.c
 
 # rexxbound + deafport: the bound of rexx_send (tools/rig/rexxbound_rig.py; REXX-DEAD-AFTER-THEME)
 $(BUILD)/amiga/rexxbound: tests/amiga/rexxbound.c patina/rexx_host.c patina/poll_timer.c patina/rexx_host.h patina/poll_timer.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -o $@ tests/amiga/rexxbound.c patina/rexx_host.c patina/poll_timer.c
+	$(VC) -I$(CURDIR) -dontwarn=153,65 -o $@ tests/amiga/rexxbound.c patina/rexx_host.c patina/poll_timer.c
 $(BUILD)/amiga/deafport: tests/amiga/deafport.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/deafport.c
@@ -1335,7 +1335,7 @@ AMTILE_SRC := handler/frontscr.c handler/pubscr.c handler/pubscr_core.c patina/p
 AmTile: $(BUILD)/amiga/AmTile
 $(BUILD)/amiga/AmTile: $(AMTILE_SRC) patina/stkprobe.h tty/qmark.h patina/win_refresh.h patina/poll_timer.h patina/rexx_host.h patina/tile_core.h config/win_core.h patina/win_apply.h patina/bar_usable.h patina/bar_core.h config/amconf_core.h config/amconf_dos.h prefs/prefs_dos.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ $(AMTILE_SRC) $(STKPROBE_SRC)
+	$(VC) -I$(CURDIR) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ $(AMTILE_SRC) $(STKPROBE_SRC)
 
 # ixemul programs: bebbo's gcc (thoughts plan: TOOLCHAIN), linked against
 # Aminet's ixemul SDK (-m68020 is safe since the driver names ixemul/lib/crt0.o by path,
@@ -1501,7 +1501,7 @@ $(BUILD)/amiga/iconprobe: tests/amiga/iconprobe.c
 
 $(BUILD)/amiga/wbrun: tests/amiga/wbrun.c patina/wblaunch.c patina/leaf_core.c render/gthemes_core.c $(PATINA_LEAF_DEPS) patina/wblaunch.h patina/leaf.h handler/tabprog.h handler/menu_ids.h demo/updemo.h shell/vsh_quote.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ tests/amiga/wbrun.c patina/wblaunch.c patina/leaf_core.c render/gthemes_core.c $(PATINA_LEAF_DEPS)
+	$(VC) -I$(CURDIR) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ tests/amiga/wbrun.c patina/wblaunch.c patina/leaf_core.c render/gthemes_core.c $(PATINA_LEAF_DEPS)
 
 $(BUILD)/amiga/wbfake: tests/amiga/wbfake.c
 	@mkdir -p $(BUILD)/amiga
@@ -1708,7 +1708,7 @@ $(BUILD)/amiga/flatwin: tests/amiga/flatwin.c render/flat_core.h
 # A public or a private screen to hold in front, and the font numbers of a public screen (patina_gui_rig, G7)
 $(BUILD)/amiga/scrprobe: tests/amiga/scrprobe.c patina/menu_font.c patina/menu_font.h render/fontpair.c render/fontpair.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ tests/amiga/scrprobe.c patina/menu_font.c render/fontpair.c
+	$(VC) -I$(CURDIR) -o $@ tests/amiga/scrprobe.c patina/menu_font.c render/fontpair.c
 
 # The front-to-back windows of the Workbench screen with Flags and borders (BAR-ZOOMED-DRAWER)
 $(BUILD)/amiga/winprobe: tests/amiga/winprobe.c

@@ -22,7 +22,7 @@
 #include "index_core.h"
 #include "ixwatch.h"
 #include "leaf.h"
-#include "../config/amconf_dos.h"
+#include "config/amconf_dos.h"
 #include "gthemes_dos.h"
 #include "pkgs_dos.h"
 #include "job_dos.h"
@@ -41,10 +41,10 @@
 #undef timerequest
 #include "termenv.h"
 #include "taskalive.h"
-#include "../config/keymap_load.h"
-#include "../handler/upreq.h"
-#include "../handler/upactive.h"
-#include "../tty/qmark.h"
+#include "config/keymap_load.h"
+#include "handler/upreq.h"
+#include "handler/upactive.h"
+#include "tty/qmark.h"
 #include "keymap_default.inc"
 
 /* ixemul runs main on a stack of this size (ncurses and the UI library are deep); the cookie is what

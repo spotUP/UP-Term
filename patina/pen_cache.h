@@ -7,7 +7,7 @@
 #ifndef PEN_CACHE_H
 #define PEN_CACHE_H
 
-#include "../render/pen_rule.h"
+#include "render/pen_rule.h"
 
 #define PC_MAX 24
 

@@ -1,5 +1,5 @@
 /* gthemes_dos: see gthemes_dos.h. */
-#include "../prefs/prefs_asl.h"
+#include "prefs/prefs_asl.h"
 #include <string.h>
 #include <dos/dos.h>
 #include <dos/dosextens.h>
@@ -15,9 +15,9 @@
 #include "gthemes_dos.h"
 #include "desk_dos.h"
 #include "iconpen_dos.h"
-#include "../render/desk_core.h"
-#include "../config/amconf_dos.h"
-#include "../prefs/prefs_dos.h"
+#include "render/desk_core.h"
+#include "config/amconf_dos.h"
+#include "prefs/prefs_dos.h"
 #include "menu_theme.h"
 #include "dopustb_dos.h"
 #include "rexx_host.h"

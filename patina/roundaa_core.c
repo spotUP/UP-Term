@@ -1,7 +1,7 @@
 /* roundaa_core -- see roundaa_core.h */
 #include "roundaa_core.h"
-#include "../render/emoji.h"
-#include "../render/pen_match.h"
+#include "render/emoji.h"
+#include "render/pen_match.h"
 
 int raa_radius(int h)
 {

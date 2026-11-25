@@ -18,7 +18,7 @@
 #include "taskalive.h"
 #include "sentinel_dos.h"
 #define UPASSIGN_DOS
-#include "../config/upassign.h"
+#include "config/upassign.h"
 
 #define JB_NAME "patina-job"
 #define JB_TICK_MICROS 200000UL

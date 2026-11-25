@@ -7,7 +7,7 @@
 #ifndef PATINA_MENU_ICON_H
 #define PATINA_MENU_ICON_H
 
-#include "../render/emoji.h"
+#include "render/emoji.h"
 #include "menu_core.h"
 #include "menu_geom.h"
 

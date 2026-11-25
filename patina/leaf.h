@@ -4,11 +4,11 @@
 #ifndef PATINA_LEAF_H
 #define PATINA_LEAF_H
 
-#include "../config/keymap.h"
+#include "config/keymap.h"
 #include "index_core.h"
 #include "menu_core.h"
-#include "../config/amconf_core.h"
-#include "../prefs/settings_def.h"
+#include "config/amconf_core.h"
+#include "prefs/settings_def.h"
 
 /* the window a run: leaf gets (the README's NewShell line, as open:uterm) */
 #define LF_UTERM_SPEC "XCON:0/20/640/300/UP-Term/CLOSE"

@@ -28,13 +28,13 @@
 #include <string.h>
 #include "rexx_host.h"
 #include "tile_core.h"
-#include "../config/amconf_dos.h"
+#include "config/amconf_dos.h"
 #include "win_apply.h"
 #include "win_refresh.h"
 #include "poll_timer.h"
-#include "../config/amconf_core.h"
-#include "../handler/frontscr.h"
-#include "../tty/qmark.h"
+#include "config/amconf_core.h"
+#include "handler/frontscr.h"
+#include "tty/qmark.h"
 #include "stkprobe.h"
 
 #define PORT_NAME      "AMTILE"

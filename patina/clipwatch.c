@@ -10,7 +10,7 @@
 #include <proto/dos.h>
 #include "clipwatch.h"
 #include "clips_core.h"
-#include "../handler/clip.h"
+#include "handler/clip.h"
 
 static struct MsgPort *cw_port;
 static struct IOClipReq *cw_io;

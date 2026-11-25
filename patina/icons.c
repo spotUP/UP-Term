@@ -23,10 +23,10 @@
 #include <proto/graphics.h>
 #include <graphics/gfxbase.h>
 #include "iconapply_core.h"
-#include "../config/amconf_core.h"
-#include "../config/amconf_dos.h"
+#include "config/amconf_core.h"
+#include "config/amconf_dos.h"
 #include "iconpen_dos.h"
-#include "../tty/qmark.h"
+#include "tty/qmark.h"
 #include "stkprobe.h"
 
 long __stack = STK_BYTES(16384);

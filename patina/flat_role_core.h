@@ -10,8 +10,8 @@
 #define PATINA_FLAT_ROLE_CORE_H
 
 #include <stdint.h>
-#include "../render/flat_core.h"
-#include "../render/gthemes_core.h"
+#include "render/flat_core.h"
+#include "render/gthemes_core.h"
 
 /* the seven rows, the order of flat_role_pens.pen[] and of the table */
 enum { FLAT_ROLE_OUTLINE, FLAT_ROLE_BUTTON, FLAT_ROLE_PTEXT, FLAT_ROLE_DIMTEXT, FLAT_ROLE_TEXT, FLAT_ROLE_LINE, FLAT_ROLE_BACK,

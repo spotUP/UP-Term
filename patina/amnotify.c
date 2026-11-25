@@ -9,7 +9,7 @@
 #include <string.h>
 #include <dos/dos.h>
 #include <proto/dos.h>
-#include "../tty/qmark.h"
+#include "tty/qmark.h"
 #include "note.h"
 #include "note_core.h"
 #include "rexx_host.h"

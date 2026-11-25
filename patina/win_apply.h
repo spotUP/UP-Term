@@ -4,7 +4,7 @@
 #ifndef PATINA_WIN_APPLY_H
 #define PATINA_WIN_APPLY_H
 
-#include "../config/win_core.h"
+#include "config/win_core.h"
 
 struct Window;
 

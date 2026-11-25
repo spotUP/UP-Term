@@ -14,11 +14,11 @@
 #include <proto/intuition.h>
 #include <string.h>
 #include "wbreset.h"
-#include "../render/flat_core.h"
+#include "render/flat_core.h"
 #include "libpatch.h"
 #include "ipatch.h"
 #include "sentinel_dos.h"
-#include "../handler/pubscr.h"
+#include "handler/pubscr.h"
 
 extern struct IntuitionBase *IntuitionBase;
 

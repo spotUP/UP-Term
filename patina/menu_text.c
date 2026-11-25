@@ -14,14 +14,14 @@
 #include "menu_text.h"
 #include "menu_text_core.h"
 #include "menu_font.h"
-#include "../render/aa_ink.h"
+#include "render/aa_ink.h"
 #include "iclabel_core.h"
-#include "../render/fontpair.h"
-#include "../render/outline.h"
-#include "../render/pens_amiga.h"
-#include "../render/pen_match.h"
+#include "render/fontpair.h"
+#include "render/outline.h"
+#include "render/pens_amiga.h"
+#include "render/pen_match.h"
 #include "pen_cache.h"
-#include "../prefs/prefs_core.h"
+#include "prefs/prefs_core.h"
 
 #define MT_INK_RGB 0x80000000UL /* aa_ink's direct-colour ink (render/amiga_render.c VR_INK_RGB) */
 

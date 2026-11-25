@@ -4,8 +4,8 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include "leaf.h"
-#include "../handler/tabprog.h"
-#include "../handler/menu_ids.h"
+#include "handler/tabprog.h"
+#include "handler/menu_ids.h"
 
 lf_how lf_plan(int kind)
 {

@@ -18,7 +18,7 @@
 #include <proto/icon.h>
 #include <proto/wb.h>
 #define CMDPATH_DOS
-#include "../config/cmdpath.h"
+#include "config/cmdpath.h"
 #include "wblaunch.h"
 #include "leaf.h"
 
