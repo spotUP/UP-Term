@@ -1091,6 +1091,14 @@ int flat_cycle_frame(unsigned gadget_type, unsigned activation, int gx, int gy, 
     return fw > 0 && fh > 0 && gx == fx && gy == fy && gw == fw && gh == fh;
 }
 
+int flat_cycle_paper(flat_state *st, int ox, int oy, int w, int h, int in[4])
+{
+    int sw = flat_button_side(st->side, w);
+    st->pen_button = st->pen_line;
+    in[0] = ox + sw; in[1] = oy + 1; in[2] = ox + w - 1 - sw; in[3] = oy + h - 2;
+    return st->pen_back;
+}
+
 int flat_border_button(unsigned gadget_type, unsigned flags, const void *gadget_render, const void *select_render, int has_text, int w, int h)
 {
     if ((gadget_type & 0x8000u) || (gadget_type & 0x0007u) != 0x0005u)     /* GTYP_SYSGADGET / not GTYP_CUSTOMGADGET */
@@ -1936,10 +1944,13 @@ const char *flat_trow_why_name(int why)
 
 static const unsigned long pal_edge[] = { 0x54ac, 0x54e4, 0x5526, 0x5556 };
 static const unsigned long pal_dither[] = { 0x5418, 0x5bf2, 0x5dfa };
-static const unsigned long pal_groove[] = { 0x34ec, 0x353e };  /* PALETTE-GROOVE: SHADOWPEN row, SHINEPEN row above the samples */
+static const unsigned long pal_groove[] = { 0x34ec, 0x353e,     /* PALETTE-GROOVE: SHADOWPEN row, SHINEPEN row above the samples */
+                                            0x5ace, 0x5ae0 };   /* PALETTE-PREVIEW-FRAMES: Active sample's FILLPEN left and right border fills */
 static const unsigned long pal_knob[] = { 0x5c88, 0x5e68 };    /* PALETTE-SAMPLE-SCROLLER: Active (FILLPEN), Inactive (BACKGROUNDPEN) knob fills */
 
-static const unsigned long pal_button[] = { 0x5fb2, 0x6106, 0x6142 };   /* bevel calls at 0x5fae, 0x6102, 0x613e */
+/* bevel calls at 0x5fae, 0x6102, 0x613e (sample push buttons); PALETTE-PREVIEW-FRAMES: 0x5a84, 0x5d0e = the inner bevel of the
+ * Active and Inactive sample window (the outer bevel at 0x5a52 / 0x5cda keeps its 1 px accent outline, like a Patina window) */
+static const unsigned long pal_button[] = { 0x5fb2, 0x6106, 0x6142, 0x5a88, 0x5d12 };
 
 int flat_palette_button(unsigned long off)
 {

@@ -1992,6 +1992,16 @@ static void test_which_from_gtype(void)
             CHECK_INT(flat_cycle_frame(0x0001, 0x0003, 589, 123, 19, 12, 589, 123, 19, 12), 0);   /* scroller arrow: IMMEDIATE */
             CHECK_INT(flat_cycle_frame(0x0003, 0x0001, 149, 137, 149, 7, 149, 137, 149, 7), 0);   /* prop */
             CHECK_INT(flat_cycle_frame(0x0004, 0x0001, 20, 20, 100, 14, 20, 20, 100, 14), 0);     /* string */
+            {   /* PALETTE-CYCLE-PAPER: the cycle face is the accent, the inside is the surface pen (a Patina window) */
+                flat_state cs; int in[4], sw;
+                memset(&cs, 0, sizeof cs);
+                cs.side = 2; cs.pen_line = 7; cs.pen_back = 0; cs.pen_button = 3;
+                sw = flat_button_side(cs.side, 293);
+                CHECK_INT(flat_cycle_paper(&cs, 315, 17, 293, 14, in), 0);
+                CHECK_INT(cs.pen_button, 7);
+                CHECK_INT(in[0] == 315 + sw && in[1] == 18 && in[2] == 607 - sw && in[3] == 29, 1);
+                CHECK_INT(sw >= 1, 1);
+            }
             CHECK_INT(flat_cycle_frame(0x0005, 0x0001, 15, 20, 285, 20, 15, 20, 285, 20), 0);     /* custom (Palette's colour wheel) */
             CHECK_INT(flat_cycle_frame(0x8001, 0x0001, 0, 0, 18, 11, 0, 0, 18, 11), 0);           /* system gadget */
             CHECK_INT(flat_cycle_frame(0x0001, 0x0001, 0, 0, 0, 0, 0, 0, 0, 0), 0);
@@ -4014,6 +4024,13 @@ static void test_palette_preview_sites(void)
     CHECK_INT(flat_palette_button(0x6106), 1);
     CHECK_INT(flat_palette_button(0x6142), 1);
     CHECK_INT(flat_palette_button(0x5a56), 0);                  /* the sample window bevel keeps its edge */
+    /* PALETTE-PREVIEW-FRAMES: inner sample-window bevels and the FILLPEN side fills go paper; the outer bevels keep the outline */
+    CHECK_INT(flat_palette_button(0x5a88), 1);
+    CHECK_INT(flat_palette_button(0x5d12), 1);
+    CHECK_INT(flat_palette_button(0x5cde), 0);
+    CHECK_INT(flat_palette_site(0x5ace), FLAT_PAL_GROOVE);
+    CHECK_INT(flat_palette_site(0x5ae0), FLAT_PAL_GROOVE);
+    CHECK_INT(flat_palette_site(0x5ab8) == FLAT_PAL_GROOVE, 0);  /* the title band keeps its accent */
     CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 1, 0, 5), 1);     /* SLIDER-SCROLLER-NO-FRAME: slider: no box */
     CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 0, 1, 5), 1);     /* filled holder of a scroller: no box, the prop stays */
     CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 0, 0, -1), 1);    /* no input ground: no box either, never the accent ring */

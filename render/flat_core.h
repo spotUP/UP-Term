@@ -657,6 +657,9 @@ int flat_button_gadget(const void *gadget_render, const void *select_render, con
  * render == select image, so flat_button_gadget misses it and the frame drew edges only: no ground, square ring). 1 when the
  * unanswered frame box is exactly the box of a GTYP_BOOLGADGET without GACT_IMMEDIATE (not a scroller arrow): fill it, role PLAIN. */
 int flat_cycle_frame(unsigned gadget_type, unsigned activation, int gx, int gy, int gw, int gh, int fx, int fy, int fw, int fh);
+/* PALETTE-CYCLE-PAPER (owner 2026-11-25): a 3.1 cycle gadget looks like a Patina window: the rounded face is drawn in the accent
+ * (st->pen_button = st->pen_line), then in[] (the box inside the side-wide outline) is filled with the returned surface pen st->pen_back */
+int flat_cycle_paper(flat_state *st, int ox, int oy, int w, int h, int in[4]);
 
 /* The PRIMARY button fill pen for a screen of the given depth: under 8 colours (depth < 3) the accent pen_line; from 8 colours the
  * theme lighter background pen_button, or pen_back when it is 0 or not a pen of that depth. */

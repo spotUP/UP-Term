@@ -1223,7 +1223,7 @@ static int c8_draw(Object *obj, Msg msg)
         struct Image *im = (struct Image *)obj;
         ULONG eo = 1;
         /* Fill only when the frame says it is not edges-only (an unanswered OM_GET counts as edges-only: never erase content). */
-        int fill, role = -1;
+        int fill, role = -1, cyc = 0;
         flat_state st;
         {   /* S57-BUTTON-ASPECT-BORDERS: the outline columns of this window's screen (slot table read, no Intuition call) */
             struct Layer *sl = d->imp_RPort->Layer;
@@ -1238,7 +1238,7 @@ static int c8_draw(Object *obj, Msg msg)
             fill = flat_frame_fill(1, (int)eo, push_gadget_of(d->imp_RPort, obj));
         else if (button_gadget_of(d->imp_RPort, obj))     /* 3.1 frameiclass V40 does not answer OM_GET: a button renders this image as render and select */
             fill = 1;
-        else if ((fill = cycle_gadget_at(d->imp_RPort, ox, oy, w, h)) != 0)
+        else if ((fill = cyc = cycle_gadget_at(d->imp_RPort, ox, oy, w, h)) != 0)
             role = FLAT_ROLE_PLAIN;                       /* PALETTE-CYCLE-FLAT: the 3.1 cycle's own image draws this frame */
         if (border_button_at(d->imp_RPort, ox, oy, ox + w - 1, oy + h - 1, NULL)) {
             /* INSTALLER-BORDER-BUTTON: the rounded fill was painted at the erase (flat_rf_c) and the label is drawn; no ring */
@@ -1265,9 +1265,14 @@ static int c8_draw(Object *obj, Msg msg)
             return 1;
         if (role < 0)
             role = role_of(d->imp_RPort, obj);
-        if (!raa_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role, c2_fill, c2_read, c2_rgb,
-                            fill ? raa_load(d->imp_RPort) : 0, d->imp_RPort, NULL))
-            return 0;
+        {
+            int in[4], paper = cyc ? flat_cycle_paper(&st, ox, oy, w, h, in) : -1;
+            if (!raa_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role, c2_fill, c2_read, c2_rgb,
+                                fill ? raa_load(d->imp_RPort) : 0, d->imp_RPort, NULL))
+                return 0;
+            if (paper >= 0)              /* PALETTE-CYCLE-PAPER: accent outline, surface inside */
+                c2_fill(d->imp_RPort, in[0], in[1], in[2], in[3], paper);
+        }
         flat_gh_frame(&r->gh, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL), d->imp_State == 1, fill,
                       ox, oy, ox + w - 1, oy + h - 1);
         /* a pressed filled frame arms the Text patch for its label; any other frame draw on this rastport disarms */
