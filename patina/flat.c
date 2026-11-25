@@ -3363,6 +3363,8 @@ static void print_status(void)
     int tinst = 0;
     int cginst = 0, twhy = 0;   /* S74-TIME-ROW */
     unsigned long cgcalls = 0, trows = 0;
+    int muinst = 0;             /* MUI-FLAT */
+    unsigned long munew = 0, mumake = 0, muiredir = 0;
     WORD traw[2][5];
     unsigned long scmin = 0, schw = 0, scstk = 0, scno = 0, scb256 = 0, scb8a = 0, scb8b = 0, schdr = 0, scguard = 0, scdeep = 0;
     char sctask[16] = "";
@@ -3388,6 +3390,7 @@ static void print_status(void)
         memcpy(dsum, r->dsum, sizeof dsum);
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat; fbusy = r->fbusy; fnostk = r->fnostk;
         cginst = r->cgsw.installed; cgcalls = r->cgcalls; trows = r->trow.rows; twhy = r->trow.why;
+        muinst = r->munsw.installed; munew = r->munew; mumake = r->mumake; muiredir = r->muiredir;
         CopyMem(r->trow_raw, traw, sizeof traw);
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; mnhits = r->mnhits; mninst = r->msw.installed && r->nsw.installed && r->bsw.installed; bhits = r->bhits; gbhits = r->gbhits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits; labels = r->labels; lskip = r->lskip;
@@ -3478,6 +3481,16 @@ static void print_status(void)
         put_word(line, &n, " gboxes=");             put_num(line, &n, gbhits);
         put_word(line, &n, " side=");               put_num(line, &n, (unsigned long)apx);
         put_word(line, &n, " looks=");              put_num(line, &n, alooks);
+        line[n] = 0;
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+    }
+    if (found) {                                    /* MUI-FLAT: new / make rising = the patches run, redir = UP twins handed out */
+        int n = 0;
+        put_word(line, &n, "mui installed=");       put_word(line, &n, muinst ? "yes" : "no");
+        put_word(line, &n, " munew=");              put_num(line, &n, munew);
+        put_word(line, &n, " mumake=");             put_num(line, &n, mumake);
+        put_word(line, &n, " muiredir=");           put_num(line, &n, muiredir);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
