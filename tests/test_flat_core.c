@@ -4083,6 +4083,16 @@ static void test_palette_preview_sites(void)
         CHECK_INT(flat_img_record_pal(tab, 4, NULL, FLAT_W_DEPTH, 0), 0);
         CHECK_INT(flat_img_which(tab, 4, &objs[0], NULL), FLAT_W_CLOSE);
         CHECK_INT(flat_img_which(tab, 4, &objs[2], NULL), FLAT_W_AMIGAKEY);
+        {   /* PALETTE-AMIGAKEY-FLAT: the sample key in pen_line on pen_back; other images keep their pens */
+            flat_state ps; int fr = 7, tx = 8;
+            memset(&ps, 0, sizeof ps); ps.pen_back = 1; ps.pen_line = 5;
+            CHECK_INT(flat_pal_glyph_pens(&ps, FLAT_W_AMIGAKEY, &fr, &tx), 1);
+            CHECK_INT(fr, 1); CHECK_INT(tx, 5);
+            fr = 7; tx = 8;
+            CHECK_INT(flat_pal_glyph_pens(&ps, FLAT_W_MENUCHECK, &fr, &tx), 0);
+            CHECK_INT(fr, 7); CHECK_INT(tx, 8);
+            CHECK_INT(flat_pal_glyph_pens(NULL, FLAT_W_AMIGAKEY, &fr, &tx), 0);
+        }
     }
     memset(code, 0, sizeof code);
     CHECK_INT(flat_palette_id(code, sizeof code), 0);          /* not Palette */

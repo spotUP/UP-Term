@@ -750,6 +750,15 @@ static ULONG c2_which_31(Object *obj, struct impDraw *d)
 
 #define C8_MX 0x1000                /* tick_pen >= C8_MX: an MX image, pen = tick_pen - C8_MX */
 static int c8_draw_on(Object *obj, Msg msg, int tick_pen);
+/* PALETTE-AMIGAKEY-FLAT: a Palette 40.2 sample image takes the flat pens, not the sample DrawInfo's. Own function (flat budget). */
+static void c2_pal_pens(flatshared *r, struct impDraw *d, ULONG which, c2_pens *p)
+{
+    int fr, tx;
+    if (which == FLAT_W_AMIGAKEY && pal_task() && flat_pal_glyph_pens(st_rp(r, d->imp_RPort), which, &fr, &tx)) {
+        p->frame = (short)fr; p->text = (short)tx;
+    }
+}
+
 static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
 {
     flatshared *r = g_r;
@@ -772,6 +781,7 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     raw_which = which;
     which = flat_which_alias(which);
     c2_get_pens(r, d, im, which, &pens);
+    c2_pal_pens(r, d, which, &pens);
     if (flat_mx_image(which))
         return c8_draw_on(obj, msg, pens.text + C8_MX);   /* S93-MX-GROUND: pens.text >= 0 */
     if (flat_check_image(which))

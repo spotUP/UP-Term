@@ -518,6 +518,17 @@ int flat_img_record_pal(flat_img_rec *t, int n, const void *obj, unsigned long w
     return flat_img_record(t, n, obj, which, size);
 }
 
+/* PALETTE-AMIGAKEY-FLAT: Palette's menu sample draws its Amiga-key image with the sample's own DrawInfo, whose pens are the
+ * edited palette (rig 12: a 00ffff box around a 0000ff key). Flat: the key in the accent pen on the paper, no box colour of its own. */
+int flat_pal_glyph_pens(const flat_state *st, unsigned long which, int *frame, int *text)
+{
+    if (!st || which != FLAT_W_AMIGAKEY)
+        return 0;
+    *frame = st->pen_back;
+    *text = st->pen_line;
+    return 1;
+}
+
 static int img_put(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size)
 {
     int i, free_i = -1;

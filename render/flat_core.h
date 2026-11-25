@@ -370,6 +370,8 @@ int flat_img_record(flat_img_rec *t, int n, const void *obj, unsigned long which
  * gadget behind them (depth, size, close, screen depth, menu check, Amiga key), so the 3.1 sysiclass hook (no OM_GET) knows
  * their Which. Called only for an OM_NEW from the identified Palette hunk: any other program keeps the narrow set. */
 int flat_img_record_pal(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size);
+/* PALETTE-AMIGAKEY-FLAT: the box and glyph pens of a Palette sample image. 1 when which is one (pens set), else 0 (unchanged). */
+int flat_pal_glyph_pens(const flat_state *st, unsigned long which, int *frame, int *text);
 void flat_img_forget(flat_img_rec *t, int n, const void *obj);
 /* The recorded Which of obj, -1 when none; *size (if non-NULL) gets its SYSIA_Size. */
 int flat_img_which(const flat_img_rec *t, int n, const void *obj, unsigned long *size);
