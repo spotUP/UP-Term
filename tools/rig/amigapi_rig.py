@@ -163,7 +163,7 @@ not run again; a phase with every check recorded is skipped. --force runs everyt
 
   make build/amiga/pi-llmprobe build/amiga/Claude build/amiga/snipprobe; make -C $UPTERM_ROOT/amiga-pi amiga
   UPTERM_RIG=2 python3 -I tools/rig/rig.py start --max
-  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|6|7|8|9|10|11|13|14] [--force]
+  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|6|7|8|9|10|11|13|14|16] [--force]
 """
 import argparse
 import json
@@ -1743,10 +1743,124 @@ def pathlib_home():
     return pathlib.Path.home()
 
 
+def step16(port):
+    """Step 16 (PI-ONEHIST, owner 2026-11-01: one pi prompt list for both modes). In a visible XCON window titled
+    "amiga-pi step 16": amiga-pi in line mode (stdout redirected, so main_amiga.c does not take the raw TUI) gets
+    PIPROMPT-ALPHA and PIPROMPT-BETA, then Up + Return there; /quit; the Shell's Up; then amiga-pi in raw TUI mode
+    gets RAWPROMPT-GAMMA, then Up until PIPROMPT-ALPHA + Return. Asserted from the fixture's request bodies (the
+    user text a recalled line sends) and the prompt-history file the host reads, not from pixels:
+      16a line mode's Up recalls PIPROMPT-BETA (request 3 is PIPROMPT-BETA)
+      16b the prompt-history file holds ALPHA and BETA as JSON lines of project "" (the handler wrote raw mode's form)
+      16c the Shell's Up after /quit recalls the Shell's own line (VTC:amiga-pi ...), not a pi prompt
+      16d raw TUI's Up reaches PIPROMPT-ALPHA (the last request's user text ends with it)"""
+    if not AMIGA_PI.exists():
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
+    shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
+    shutil.copy(ROOT / 'build' / 'amiga' / 'snipprobe', VTC / 'snipprobe')
+    had = assigns()
+    assert 'UP-TERM' in had, 'rig.py setup (UT1) assigns UP-Term: to VTC:Apps; reboot the rig'
+    log = paths.reports_dir() / 'amigapi_fixture16.log'
+    dump = paths.reports_dir() / 'amigapi_dump16'
+    # the drawer amiga-pi really uses (claude/datadir.c dd_dir): the one ENVARC:up-term/Dir names, else UP-Term:var
+    dirf = (ami.read_file('ENVARC:up-term/Dir') or b'').decode('latin-1').splitlines()
+    real = dirf[0].strip() if dirf else ''
+    drawer = (real + ('' if real[-1:] in (':', '/') else '/') if real else 'UP-Term:') + 'var/amiga-pi'
+    hist_path = drawer + '/prompt-history'
+
+    def read_hist():
+        return (ami.read_file(hist_path) or b'').decode('utf-8', 'replace').splitlines()
+    agent = VTC / 'pi16agent'
+    shutil.rmtree(dump, ignore_errors=True)
+    dump.mkdir(parents=True)
+    fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
+                           '--dump', str(dump)], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+    time.sleep(1)
+    UP = 0x4C
+
+    def wait_requests(n, secs=90):
+        for _ in range(secs * 2):
+            if len(list(dump.glob('*.json'))) >= n:
+                time.sleep(4)
+                return True
+            time.sleep(0.5)
+        return False
+
+    def last_user():
+        k = len(list(dump.glob('*.json')))
+        return user_text(body_of(dump, k)).strip().splitlines()[-1:] or ['']
+
+    try:
+        agent.mkdir(exist_ok=True)
+        (agent / 'models.json').write_text(json.dumps({'providers': {'fixo': {
+            'baseUrl': 'http://127.0.0.1:%d/v1' % port, 'api': 'openai-completions', 'apiKey': '!Echo rig-test-key',
+            'models': [{'id': 'm2', 'contextWindow': 32000}]}}}))
+        (agent / 'settings.json').write_text(json.dumps({'enabledModels': ['fixo/m2']}))
+        c.run('Delete "%s" QUIET' % hist_path)
+        tw.open_xcon('amiga-pi step 16', '0/12/760/440')
+        for line in ('Stack 32768', 'SetEnv PI_CODING_AGENT_DIR VTC:pi16agent', 'CD RAM:'):
+            tw.typ(line)
+            tw.key(tw.RET, wait=1)
+        tw.typ('VTC:amiga-pi --model fixo/m2 --no-tools >RAM:pi16-line.out')
+        tw.key(tw.RET, wait=8)
+        for n, p in enumerate(('PIPROMPT-ALPHA', 'PIPROMPT-BETA'), 1):
+            tw.typ(p)
+            tw.key(tw.RET, wait=1)
+            wait_requests(n)
+        tw.key(UP, wait=1)
+        tw.key(tw.RET, wait=1)
+        check('16a line mode Up recalls PIPROMPT-BETA', wait_requests(3) and last_user() == ['PIPROMPT-BETA'],
+              repr(last_user()))
+        tw.typ('/quit')
+        tw.key(tw.RET, wait=4)
+        rows = [json.loads(x) for x in read_hist() if x.strip()]
+        shown = [(r.get('display'), r.get('project')) for r in rows if isinstance(r, dict)]
+        (paths.reports_dir() / 'amigapi16-history.txt').write_text(repr(shown))
+        ok16b = ('PIPROMPT-ALPHA', '') in shown and ('PIPROMPT-BETA', '') in shown
+        check('16b prompt-history holds line-mode ALPHA, BETA as project ""', ok16b, repr(shown))
+        if not ok16b:
+            # where the handler wrote, if anywhere: every prompt-history on the rig's volumes, from the Amiga's side
+            diag = VTC / 'pi16diag.txt'
+            for vol in ('VTC:', 'SYS:', 'ENVARC:', 'RAM:'):
+                c.run('List %s ALL PAT=#?history#? LFORMAT "%%p%%n %%l" >>VTC:pi16diag.txt' % vol, 120)
+            c.run('List "%s" >>VTC:pi16diag.txt' % drawer, 20)
+            (paths.reports_dir() / 'amigapi16-where.txt').write_text(
+                diag.read_text(errors='replace') if diag.exists() else 'no listing')
+        tw.key(UP, wait=1)
+        t = tw.screen_text('RAM:pi16-shell.txt')
+        (paths.reports_dir() / 'amigapi16-shell.txt').write_text(t)
+        last = [x for x in t.splitlines() if x.strip()][-1:] or ['']
+        check('16c Shell Up recalls its own line', 'VTC:amiga-pi' in last[0] and 'PIPROMPT' not in last[0], repr(last))
+        tw.key(tw.BS, tw.SHIFT, wait=0.5)     # Shift+Backspace: erase the recalled line
+        tw.key(0x58, tw.CTRL, wait=0.5)       # Ctrl+X too, in case Shift+Backspace is not bound
+        tw.typ('VTC:amiga-pi --model fixo/m2 --no-tools')
+        tw.key(tw.RET, wait=10)
+        tw.typ('RAWPROMPT-GAMMA')
+        tw.key(tw.RET, wait=1)
+        wait_requests(4)
+        time.sleep(2)
+        rows = [json.loads(x) for x in read_hist() if x.strip()]
+        ds = [r.get('display') for r in rows if isinstance(r, dict) and r.get('project') == '']
+        ups = len(ds) - max(i for i, d in enumerate(ds) if d == 'PIPROMPT-ALPHA') if 'PIPROMPT-ALPHA' in ds else 4
+        for _ in range(ups):
+            tw.key(UP, wait=0.6)
+        t = tw.screen_text('RAM:pi16-raw.txt')
+        (paths.reports_dir() / 'amigapi16-raw.txt').write_text(t)
+        tw.key(tw.RET, wait=1)
+        check('16d raw TUI Up reaches line-mode PIPROMPT-ALPHA', wait_requests(5) and last_user() == ['PIPROMPT-ALPHA'],
+              'ups=%d history=%r last=%r' % (ups, ds, last_user()))
+        tw.key(0x22, tw.CTRL, wait=0.2)
+        tw.key(0x22, tw.CTRL, wait=3)
+        tw.typ('endcli')
+        tw.key(tw.RET, wait=2)
+    finally:
+        fx.terminate()
+        shutil.rmtree(agent, ignore_errors=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8092, help="the fixture's port (8080 may be another rig's)")
-    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15), help='one step only (default: all but 13, 14 and 15)')
+    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16), help='one step only (default: all but 13, 14, 15 and 16)')
     ap.add_argument('--force', action='store_true', help='step 13: run every check again')
     a = ap.parse_args()
     global force13
@@ -1781,6 +1895,8 @@ def main():
         step14(a.port + 13)
     if a.step == 15:
         step15(a.port + 14)
+    if a.step == 16:
+        step16(a.port + 15)
     print('amigapi_rig: %s' % ('PASS' if not fails else 'FAIL: ' + ', '.join(fails)))
     return 1 if fails else 0
 
