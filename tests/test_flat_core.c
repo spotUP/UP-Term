@@ -2529,6 +2529,14 @@ static void test_disabled_button_dim_fill(void)
     CHECK_INT(m && m->str && m->count == 3 && m->lx == 14 && m->ly == 32, 1);
     CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 12, 22, 20, 30) != 0, 1);
     CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 0, 10, 20, 49, 39) == 0, 1);
+    /* PALETTE-G17-GHOST: Palette G17 315,147 293x20 */
+    CHECK_INT(flat_ghost_custom(1, 1, 315, 147, 293, 20, 315, 147, 607, 166), 1);
+    CHECK_INT(flat_ghost_custom(1, 1, 315, 147, 293, 20, 317, 148, 605, 165), 1);   /* inset ghost */
+    CHECK_INT(flat_ghost_custom(0, 1, 315, 147, 293, 20, 315, 147, 607, 166), 0);   /* solid fill: not a ghost */
+    CHECK_INT(flat_ghost_custom(1, 0, 315, 147, 293, 20, 315, 147, 607, 166), 0);   /* enabled or not custom */
+    CHECK_INT(flat_ghost_custom(1, 1, 315, 147, 293, 20, 315, 147, 607, 150), 0);   /* part of the box */
+    CHECK_INT(flat_ghost_custom(1, 1, 315, 147, 293, 20, 314, 147, 607, 166), 0);   /* outside the box */
+    CHECK_INT(flat_ghost_custom(1, 1, 315, 147, -8, 20, 315, 147, 607, 166), 0);    /* relative width */
     CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 60, 20, 80, 39) == 0, 1);
     CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 5, 20, 49, 39) == 0, 1);
     CHECK_INT(flat_gh_match(&s, &g, &b, &c1, 2, 10, 20, 49, 39) == 0, 1);

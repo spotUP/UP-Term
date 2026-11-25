@@ -747,6 +747,14 @@ void flat_gh_text(flat_gh *g, const void *surf, const void *task, int cx, int cy
     }
 }
 
+int flat_ghost_custom(int ptsz, int custom_disabled, int gx, int gy, int gw, int gh, int x0, int y0, int x1, int y1)
+{
+    if (!ptsz || !custom_disabled || gw <= 0 || gh <= 0)
+        return 0;
+    return x0 >= gx && x0 <= gx + 2 && y0 >= gy && y0 <= gy + 2 && x1 <= gx + gw - 1 && x1 >= gx + gw - 3 && y1 <= gy + gh - 1 &&
+           y1 >= gy + gh - 3;
+}
+
 int flat_dim_pen(const flat_state *s, int depth)
 {
     if (depth >= 3 && depth <= 8 && s->pen_dim && s->pen_dim < (1 << depth))

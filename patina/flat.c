@@ -2941,6 +2941,35 @@ static int pal_fill(flatshared *r, struct RastPort *rp, struct Window *w, const 
     return 1;
 }
 
+/* PALETTE-G17-GHOST (owner 2026-11-25): the ROM ghost dither over a disabled custom gadget (Palette G17, no recorded button box)
+ * becomes a solid dim fill, no dither. shortcut: absolute gadget boxes on the window rastport only (no GFLG_REL*, no GZZ);
+ * widen when such a gadget shows a ghost. */
+static int rf_ghost_custom(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b)
+{
+    struct Gadget *g;
+    UBYTE fg, dm, pt;
+    UWORD *pa;
+    if (!rp->AreaPtSz)
+        return 0;
+    for (g = w->FirstGadget; g; g = g->NextGadget)
+        if (flat_ghost_custom(rp->AreaPtSz, (g->GadgetType & GTYP_GTYPEMASK) == GTYP_CUSTOMGADGET && (g->Flags & GFLG_DISABLED) != 0,
+                              g->LeftEdge, g->TopEdge, g->Width, g->Height, (int)b[0], (int)b[1], (int)b[2], (int)b[3]))
+            break;
+    if (!g)
+        return 0;
+    fg = rp->FgPen; dm = rp->DrawMode; pt = rp->AreaPtSz;
+    pa = (UWORD *)rp->AreaPtrn;
+    r->ghits++;
+    rp->AreaPtrn = 0; rp->AreaPtSz = 0;
+    SetDrMd(rp, JAM2);
+    SetAPen(rp, (UBYTE)flat_dim_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0));
+    ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+    SetAPen(rp, fg);
+    SetDrMd(rp, dm);
+    rp->AreaPtrn = pa; rp->AreaPtSz = pt;
+    return 1;
+}
+
 void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG ret)
 {
     flatshared *r = g_r;
@@ -2982,7 +3011,7 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
         rf_strfill(r, rp, b);
     if (on && rf_gbox(r, rp, b))
         return;
-    if (on && w && rom && (rf_disabled(r, rp, w, b) || rf_scroller(r, rp, w, b)))
+    if (on && w && rom && (rf_disabled(r, rp, w, b) || rf_ghost_custom(r, rp, w, b) || rf_scroller(r, rp, w, b)))
         return;
     if (on && r->st.pen_outline && w && !(w->Flags & WFLG_BORDERLESS) && rom && (rf_edge(r, rp, w, b) || rf_side(r, rp, w, b) || rf_inner(r, rp, w, b)))
         return;
