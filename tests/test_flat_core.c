@@ -1985,6 +1985,18 @@ static void test_which_from_gtype(void)
             CHECK_INT(flat_button_gadget(&img, &other, &img), 0);
             CHECK_INT(flat_button_gadget(&other, &other, &img), 0);           /* another gadget's image */
             CHECK_INT(flat_button_gadget(0, 0, 0), 0);
+            /* PALETTE-CYCLE-FLAT: rig 12 Palette 40.2 "Multicolor Settings" cycle, bool gadget 315,17 293x14 */
+            CHECK_INT(flat_cycle_frame(0x0001, 0x0001, 315, 17, 293, 14, 315, 17, 293, 14), 1);
+            CHECK_INT(flat_cycle_frame(0x1001, 0x0001, 315, 17, 293, 14, 315, 17, 293, 14), 1);   /* GTYP_GADTOOLS bit set */
+            CHECK_INT(flat_cycle_frame(0x0001, 0x0001, 315, 17, 293, 14, 316, 18, 291, 12), 0);   /* an inner box (list frame) */
+            CHECK_INT(flat_cycle_frame(0x0001, 0x0003, 589, 123, 19, 12, 589, 123, 19, 12), 0);   /* scroller arrow: IMMEDIATE */
+            CHECK_INT(flat_cycle_frame(0x0003, 0x0001, 149, 137, 149, 7, 149, 137, 149, 7), 0);   /* prop */
+            CHECK_INT(flat_cycle_frame(0x0004, 0x0001, 20, 20, 100, 14, 20, 20, 100, 14), 0);     /* string */
+            CHECK_INT(flat_cycle_frame(0x0005, 0x0001, 15, 20, 285, 20, 15, 20, 285, 20), 0);     /* custom (Palette's colour wheel) */
+            CHECK_INT(flat_cycle_frame(0x8001, 0x0001, 0, 0, 18, 11, 0, 0, 18, 11), 0);           /* system gadget */
+            CHECK_INT(flat_cycle_frame(0x0001, 0x0001, 0, 0, 0, 0, 0, 0, 0, 0), 0);
+            /* a slider holder also matches, but noline_frame classes its frame TRACK first and draws nothing when filled */
+            CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 0, 1, 5), 1);
         }
         {   /* INSTALLER-BORDER-BUTTON: the 3.2 Installer's buttons (rig 97 gprobe: type 5, flags 0002, render != select, no text, 238x16) */
             int ren = 0, sel = 0;

@@ -1081,6 +1081,13 @@ int flat_button_gadget(const void *gadget_render, const void *select_render, con
     return image && gadget_render == image && select_render == image;
 }
 
+int flat_cycle_frame(unsigned gadget_type, unsigned activation, int gx, int gy, int gw, int gh, int fx, int fy, int fw, int fh)
+{
+    if ((gadget_type & 0x8000u) || (gadget_type & 0x0007u) != 0x0001u || (activation & 0x0002u))   /* GTYP_BOOLGADGET, no GACT_IMMEDIATE */
+        return 0;
+    return fw > 0 && fh > 0 && gx == fx && gy == fy && gw == fw && gh == fh;
+}
+
 int flat_border_button(unsigned gadget_type, unsigned flags, const void *gadget_render, const void *select_render, int has_text, int w, int h)
 {
     if ((gadget_type & 0x8000u) || (gadget_type & 0x0007u) != 0x0005u)     /* GTYP_SYSGADGET / not GTYP_CUSTOMGADGET */
