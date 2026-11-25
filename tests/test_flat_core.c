@@ -4004,9 +4004,26 @@ static void test_palette_preview_sites(void)
     CHECK_INT(flat_palette_site(0x5418), FLAT_PAL_DITHER);
     CHECK_INT(flat_palette_site(0x5bf2), FLAT_PAL_DITHER);
     CHECK_INT(flat_palette_site(0x5dfa), FLAT_PAL_DITHER);
+    CHECK_INT(flat_palette_site(0x5c88), FLAT_PAL_KNOB);       /* PALETTE-SAMPLE-SCROLLER: Active knob fill */
+    CHECK_INT(flat_palette_site(0x5e68), FLAT_PAL_KNOB);       /* Inactive knob fill */
+    CHECK_INT(flat_palette_site(0x5c84), FLAT_PAL_STOCK);      /* the jsr itself, not its return */
     CHECK_INT(flat_palette_site(0x53da), FLAT_PAL_STOCK);      /* the dither box's ground fill */
     CHECK_INT(flat_palette_site(0x5abc), FLAT_PAL_STOCK);      /* a FILLPEN fill of the sample */
     CHECK_INT(flat_palette_site(0), FLAT_PAL_STOCK);
+    {   /* PALETTE-SAMPLE-GLYPHS: Palette's title-bar, size, menu images get a Which record; other programs keep the narrow set */
+        static flat_img_rec tab[4];
+        static int objs[5];
+        memset(tab, 0, sizeof tab);
+        CHECK_INT(flat_img_record(tab, 4, &objs[0], FLAT_W_CLOSE, 0), 0);
+        CHECK_INT(flat_img_record_pal(tab, 4, &objs[0], FLAT_W_CLOSE, 0), 1);
+        CHECK_INT(flat_img_record_pal(tab, 4, &objs[1], FLAT_W_SIZE, 0), 1);
+        CHECK_INT(flat_img_record_pal(tab, 4, &objs[2], FLAT_W_AMIGAKEY, 0), 1);
+        CHECK_INT(flat_img_record_pal(tab, 4, &objs[3], FLAT_W_CHECKIMAGE, 0), 1);     /* the narrow set still records */
+        CHECK_INT(flat_img_record_pal(tab, 4, &objs[4], 0x20, 0), 0);                  /* an unknown Which: none */
+        CHECK_INT(flat_img_record_pal(tab, 4, NULL, FLAT_W_DEPTH, 0), 0);
+        CHECK_INT(flat_img_which(tab, 4, &objs[0], NULL), FLAT_W_CLOSE);
+        CHECK_INT(flat_img_which(tab, 4, &objs[2], NULL), FLAT_W_AMIGAKEY);
+    }
     memset(code, 0, sizeof code);
     CHECK_INT(flat_palette_id(code, sizeof code), 0);          /* not Palette */
     CHECK_INT(flat_palette_id(NULL, sizeof code), 0);

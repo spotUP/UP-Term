@@ -366,6 +366,10 @@ typedef struct { const void *obj; unsigned char which; unsigned char size; } fla
 /* DOPUS-ZOOM-WHICH: a ZOOMIMAGE (Which 0x01) is recorded too, so an app title-bar zoom gadget resolves to the zoom glyph.
  * 1 recorded (an existing entry for obj is replaced), 0 not an arrow/zoom Which or table full (the image stays ROM-drawn). */
 int flat_img_record(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size);
+/* PALETTE-SAMPLE-GLYPHS: flat_img_record plus the images Palette 40.2 draws in its example windows with DrawImageState and no
+ * gadget behind them (depth, size, close, screen depth, menu check, Amiga key), so the 3.1 sysiclass hook (no OM_GET) knows
+ * their Which. Called only for an OM_NEW from the identified Palette hunk: any other program keeps the narrow set. */
+int flat_img_record_pal(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size);
 void flat_img_forget(flat_img_rec *t, int n, const void *obj);
 /* The recorded Which of obj, -1 when none; *size (if non-NULL) gets its SYSIA_Size. */
 int flat_img_which(const flat_img_rec *t, int n, const void *obj, unsigned long *size);
@@ -959,7 +963,7 @@ const char *flat_trow_why_name(int why);
  * caller's return offset inside Palette's code hunk, and only once the hunk is identified (flat_palette_id). Offsets from the
  * 40.2 disassembly: 0x5428 is its bevel routine (pen A top/left, pen B bottom/right), 0x538e its two-pen dither box, 0x5bee and
  * 0x5df6 the scroller-container dither of the Active/Inactive samples. Text, checkmarks and arrows are other calls: stock. */
-enum { FLAT_PAL_STOCK, FLAT_PAL_EDGE, FLAT_PAL_DITHER };
+enum { FLAT_PAL_STOCK, FLAT_PAL_EDGE, FLAT_PAL_DITHER, FLAT_PAL_KNOB };    /* PALETTE-SAMPLE-SCROLLER: KNOB = a sample scroller's knob fill */
 #define FLAT_PAL_CODE_LEN 0x6704UL
 /* 1 when code (len bytes, the first hunk of the caller's seglist) is Palette 40.2: size, the bevel routine's FNV-1a and the
  * jsr RectFill opcode before every site. Relocation-free bytes only (the hunk is relocated in memory). */

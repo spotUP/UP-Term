@@ -499,11 +499,28 @@ int flat_zoom_hijacked(unsigned gadget_type, const void *gadget_render, const vo
     return !(gadget_type & 0x8000u) && image && (gadget_render == image || select_render == image) && top >= 0 && top + height <= border_top && !has_sys_zoom && has_sys_depth;
 }
 
+static int img_put(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size);
+
 int flat_img_record(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size)
 {
-    int i, free_i = -1;
     if (!obj || (which != 0x01u && which != FLAT_W_CHECKIMAGE && which != FLAT_W_MXIMAGE && which != FLAT_W_PROPKNOB && (which < 0x0Au || which > 0x0Du)))   /* ZOOMIMAGE, CHECKIMAGE (sysiclass answers no OM_GET: S74-CHECKBOX-GROUND), a prop knob frame or an arrow */
         return 0;
+    return img_put(t, n, obj, which, size);
+}
+
+int flat_img_record_pal(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size)
+{
+    static const unsigned char ext[] = { FLAT_W_DEPTH, FLAT_W_SIZE, FLAT_W_CLOSE, 0x05, FLAT_W_MENUCHECK, FLAT_W_AMIGAKEY };
+    unsigned i;
+    for (i = 0; obj && i < sizeof ext; i++)
+        if (which == ext[i])
+            return img_put(t, n, obj, which, size);
+    return flat_img_record(t, n, obj, which, size);
+}
+
+static int img_put(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size)
+{
+    int i, free_i = -1;
     for (i = 0; i < n; i++) {
         if (t[i].obj == obj) { free_i = i; break; }
         if (!t[i].obj && free_i < 0)
@@ -1901,6 +1918,7 @@ const char *flat_trow_why_name(int why)
 
 static const unsigned long pal_edge[] = { 0x54ac, 0x54e4, 0x5526, 0x5556 };
 static const unsigned long pal_dither[] = { 0x5418, 0x5bf2, 0x5dfa };
+static const unsigned long pal_knob[] = { 0x5c88, 0x5e68 };    /* PALETTE-SAMPLE-SCROLLER: Active (FILLPEN), Inactive (BACKGROUNDPEN) knob fills */
 
 int flat_palette_site(unsigned long off)
 {
@@ -1911,20 +1929,31 @@ int flat_palette_site(unsigned long off)
     for (i = 0; i < sizeof pal_dither / sizeof pal_dither[0]; i++)
         if (off == pal_dither[i])
             return FLAT_PAL_DITHER;
+    for (i = 0; i < sizeof pal_knob / sizeof pal_knob[0]; i++)
+        if (off == pal_knob[i])
+            return FLAT_PAL_KNOB;
     return FLAT_PAL_STOCK;
+}
+
+/* 1 when a jsr -306(a6) (RectFill) ends at off. Byte compare, no memcmp: the OM dispatcher reaches this (flat budget). */
+static int pal_jsr_rf(const unsigned char *code, unsigned long off)
+{
+    return code[off - 4] == 0x4e && code[off - 3] == 0xae && code[off - 2] == 0xfe && code[off - 1] == 0xce;
 }
 
 int flat_palette_id(const unsigned char *code, unsigned long len)
 {
-    static const unsigned char jsr_rf[4] = { 0x4e, 0xae, 0xfe, 0xce };     /* jsr -306(a6) */
     unsigned long h = 0x811c9dc5UL, i;
     if (!code || len < FLAT_PAL_CODE_LEN || len > FLAT_PAL_CODE_LEN + 16)
         return 0;
     for (i = 0; i < sizeof pal_edge / sizeof pal_edge[0]; i++)
-        if (memcmp(code + pal_edge[i] - 4, jsr_rf, 4))
+        if (!pal_jsr_rf(code, pal_edge[i]))
             return 0;
     for (i = 0; i < sizeof pal_dither / sizeof pal_dither[0]; i++)
-        if (memcmp(code + pal_dither[i] - 4, jsr_rf, 4))
+        if (!pal_jsr_rf(code, pal_dither[i]))
+            return 0;
+    for (i = 0; i < sizeof pal_knob / sizeof pal_knob[0]; i++)
+        if (!pal_jsr_rf(code, pal_knob[i]))
             return 0;
     for (i = 0x5428; i < 0x5568; i++)
         h = ((h ^ code[i]) * 0x01000193UL) & 0xffffffffUL;

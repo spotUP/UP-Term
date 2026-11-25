@@ -554,6 +554,16 @@ static void clone_stack_note(flatshared *r, int after)
 /* DOPUS-ARROW-WHICH: the arrow images made after flat started (flat_img_record holds the rule). Hooks run in many tasks, so the
  * table is touched under Forbid as the other shared tables are; the walk is FLAT_IMG_RECS (256) entries: each app scroller window holds 2-4 arrow images. A full table leaves the image ROM-drawn. */
 static flat_img_rec img_tab[FLAT_IMG_RECS];
+static const unsigned char *pal_hunk(ULONG *len);
+
+/* PALETTE-SAMPLE-GLYPHS: 1 when the calling task runs Palette 40.2 (its example-window images). Its own frame, off the OM
+ * dispatcher's (flat budget). */
+static int pal_task(void)
+{
+    ULONG len = 0;
+    const unsigned char *pal = pal_hunk(&len);
+    return pal && flat_palette_id(pal, len);
+}
 static int img_lookup(Object *obj, ULONG *size)
 {
     int wh;
@@ -580,8 +590,9 @@ static void img_note_new(Object *obj, struct opSet *ops)
     }
     if (!ok)
         return;
+    ok = pal_task();
     Forbid();
-    flat_img_record(img_tab, FLAT_IMG_RECS, obj, which, size);
+    (ok ? flat_img_record_pal : flat_img_record)(img_tab, FLAT_IMG_RECS, obj, which, size);
     Permit();
 }
 
@@ -2837,6 +2848,13 @@ static int pal_fill(flatshared *r, struct RastPort *rp, struct Window *w, const 
         fg = rp->FgPen;
         SetAPen(rp, (UBYTE)flat_edge_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0, 1));
         ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+        SetAPen(rp, fg);
+        return 1;
+    }
+    if (site == FLAT_PAL_KNOB) {    /* PALETTE-SAMPLE-SCROLLER: the flat scroller knob (rf_scroller's pen), over the bevel one pixel out */
+        fg = rp->FgPen;
+        SetAPen(rp, (UBYTE)flat_knob_state_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0, 1));
+        ((rectfn)r->rsw.saved)(rp, b[0] - 1, b[1] - 1, b[2] + 1, b[3] + 1, (struct Library *)GfxBase);
         SetAPen(rp, fg);
         return 1;
     }
