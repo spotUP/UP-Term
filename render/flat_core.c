@@ -886,6 +886,14 @@ void flat_fc_add(flat_fc *a, int fx, int fy, int fw, int fh, const flat_gadbox *
         a->holds = 1;
 }
 
+int flat_track_frame(int cls, int slider, int fill, int pen)
+{
+    if (cls != FLAT_FC_TRACK)
+        return 0;
+    /* a slider, a filled holder (drawn after the prop: a fill would erase it) or no input ground: the window ground stays */
+    return slider || fill || pen < 0 ? 1 : 2;
+}
+
 int flat_fc_class(const flat_fc *a)
 {
     if (a->string)
@@ -1919,6 +1927,17 @@ const char *flat_trow_why_name(int why)
 static const unsigned long pal_edge[] = { 0x54ac, 0x54e4, 0x5526, 0x5556 };
 static const unsigned long pal_dither[] = { 0x5418, 0x5bf2, 0x5dfa };
 static const unsigned long pal_knob[] = { 0x5c88, 0x5e68 };    /* PALETTE-SAMPLE-SCROLLER: Active (FILLPEN), Inactive (BACKGROUNDPEN) knob fills */
+
+static const unsigned long pal_button[] = { 0x5fb2, 0x6106, 0x6142 };   /* bevel calls at 0x5fae, 0x6102, 0x613e */
+
+int flat_palette_button(unsigned long off)
+{
+    unsigned i;
+    for (i = 0; i < sizeof pal_button / sizeof pal_button[0]; i++)
+        if (off == pal_button[i])
+            return 1;
+    return 0;
+}
 
 int flat_palette_site(unsigned long off)
 {

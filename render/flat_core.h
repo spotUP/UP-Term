@@ -581,6 +581,8 @@ typedef struct flat_gadbox {
 } flat_gadbox;
 #define FLAT_FC_STRING   0
 #define FLAT_FC_TRACK    1
+/* SLIDER-SCROLLER-NO-FRAME: what a frame around a prop draws: 0 not a track frame, 1 nothing (no box), 2 the ground box of pen */
+int flat_track_frame(int cls, int slider, int fill, int pen);
 #define FLAT_FC_CELL     2
 #define FLAT_FC_BORDERED 3
 #define FLAT_FC_GROUP    4
@@ -970,5 +972,7 @@ enum { FLAT_PAL_STOCK, FLAT_PAL_EDGE, FLAT_PAL_DITHER, FLAT_PAL_KNOB };    /* PA
 int flat_palette_id(const unsigned char *code, unsigned long len);
 /* FLAT_PAL_* of a RectFill whose return address is off bytes into the identified hunk */
 int flat_palette_site(unsigned long off);
+/* PALETTE-PREVIEW-BUTTONS: 1 when off is the return of a bevel call (0x5428) that draws a sample push button */
+int flat_palette_button(unsigned long off);
 
 #endif

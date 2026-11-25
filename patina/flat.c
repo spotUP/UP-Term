@@ -1141,7 +1141,7 @@ static int prop_slider_of(flatshared *r, struct Window *win, struct Gadget *g, c
            flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, win->WScreen)) != 0;
 }
 
-static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int w, int h)
+static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int w, int h, int fill)
 {
     struct Layer *lay = rp->Layer;
     struct Window *win = lay ? (struct Window *)lay->Window : NULL;
@@ -1176,10 +1176,13 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
         flat_fc_add(&fc, ox, oy, w, h, &gb);
     }
     cls = flat_fc_class(&fc);
-    if (cls == FLAT_FC_TRACK && slider) {       /* MODERN-SLIDER: no box around a slider, the window ground stays */
+    pen = cls == FLAT_FC_TRACK ? flat_noline_pen(st_scr(r, win->WScreen), cls, depth, -1) : 0;
+    if (flat_track_frame(cls, slider, fill, pen) == 1) {   /* MODERN-SLIDER, SLIDER-SCROLLER-NO-FRAME: no box around a prop */
         r->gbhits++;
         return 1;
     }
+    if (fill)
+        return 0;
     if (cls == FLAT_FC_GROUP) {
         r->gbhits++;
         return 1;
@@ -1243,7 +1246,7 @@ static int c8_draw(Object *obj, Msg msg)
             r->fflat++;
             return 1;
         }
-        if (!fill && d->imp_State == 0 && noline_frame(r, d->imp_RPort, ox, oy, w, h))
+        if (d->imp_State == 0 && noline_frame(r, d->imp_RPort, ox, oy, w, h, fill))
             return 1;
         if (!raa_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role_of(d->imp_RPort, obj), c2_fill, c2_read, c2_rgb,
                             fill ? raa_load(d->imp_RPort) : 0, d->imp_RPort, NULL))
@@ -2850,7 +2853,7 @@ static const unsigned char *pal_hunk(ULONG *len)
     return (const unsigned char *)(h + 1);
 }
 
-static int pal_fill(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b, ULONG ret)
+static int pal_fill(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b, ULONG ret, const ULONG *sp)
 {
     ULONG len = 0;
     const unsigned char *code = pal_hunk(&len);
@@ -2860,8 +2863,15 @@ static int pal_fill(flatshared *r, struct RastPort *rp, struct Window *w, const 
         return 0;
     site = flat_palette_site(ret - (ULONG)code);
     if (site == FLAT_PAL_EDGE) {
+        int pen = flat_edge_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0, 1), i;
+        /* PALETTE-PREVIEW-BUTTONS: sp is Palette's stack at the RectFill; the bevel's return to its caller lies a few longs up */
+        for (i = 0; i < 32; i++)
+            if (sp[i] >= (ULONG)code && sp[i] < (ULONG)code + len && flat_palette_button(sp[i] - (ULONG)code)) {
+                pen = st_scr(r, w->WScreen)->pen_back;      /* a sample push button has no frame: its edges are the ground */
+                break;
+            }
         fg = rp->FgPen;
-        SetAPen(rp, (UBYTE)flat_edge_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0, 1));
+        SetAPen(rp, (UBYTE)pen);
         ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
         SetAPen(rp, fg);
         return 1;
@@ -2896,7 +2906,7 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
     b[0] = x0; b[1] = y0; b[2] = x1; b[3] = y1;
     if (on && rp->Layer)
         w = (struct Window *)rp->Layer->Window;
-    if (on && w && !rom && pal_fill(r, rp, w, b, ret))
+    if (on && w && !rom && pal_fill(r, rp, w, b, ret, (const ULONG *)((ULONG)&ret + 8)))   /* the caller's sp: flat_rf.s pushes a copy of ret below it */
         return;
     if (on && rp->AreaPtSz && rom && !w && ghost_menu(r, rp, b))
         return;

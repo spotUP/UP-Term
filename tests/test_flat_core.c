@@ -3998,6 +3998,15 @@ static void test_palette_preview_sites(void)
     char path[512];
     FILE *f;
     CHECK_INT(flat_palette_site(0x54ac), FLAT_PAL_EDGE);
+    CHECK_INT(flat_palette_button(0x5fb2), 1);                  /* PALETTE-PREVIEW-BUTTONS: the three sample push button bevels */
+    CHECK_INT(flat_palette_button(0x6106), 1);
+    CHECK_INT(flat_palette_button(0x6142), 1);
+    CHECK_INT(flat_palette_button(0x5a56), 0);                  /* the sample window bevel keeps its edge */
+    CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 1, 0, 5), 1);     /* SLIDER-SCROLLER-NO-FRAME: slider: no box */
+    CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 0, 1, 5), 1);     /* filled holder of a scroller: no box, the prop stays */
+    CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 0, 0, -1), 1);    /* no input ground: no box either, never the accent ring */
+    CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 0, 0, 5), 2);     /* edges-only track with an input ground: the ground box */
+    CHECK_INT(flat_track_frame(FLAT_FC_CELL, 0, 1, 5), 0);
     CHECK_INT(flat_palette_site(0x54e4), FLAT_PAL_EDGE);
     CHECK_INT(flat_palette_site(0x5526), FLAT_PAL_EDGE);
     CHECK_INT(flat_palette_site(0x5556), FLAT_PAL_EDGE);
