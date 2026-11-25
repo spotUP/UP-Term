@@ -4315,6 +4315,7 @@ static void dopus_theme_send_follows_the_lister_font(void)
 
     gt_builtin(&th);
     amconf_defaults(&prefs);
+    memset(&ops, 0, sizeof ops);                    /* hidden and any later member: NULL, not stack garbage */
     ops.screen = dopus_tb_screen;
     ops.recolour = dopus_tb_recolour;
     ops.outline = dopus_tb_outline;
@@ -4351,6 +4352,7 @@ static void dopus_theme_send_picks_the_set_and_recolours(void)
     gt_builtin(&th);
     dt_cmap(&th, want);
     amconf_defaults(&prefs);                        /* icon-style filled, the default */
+    memset(&ops, 0, sizeof ops);                    /* hidden and any later member: NULL, not stack garbage */
     ops.screen = dopus_tb_screen;
     ops.recolour = dopus_tb_recolour;
     ops.outline = dopus_tb_outline;
