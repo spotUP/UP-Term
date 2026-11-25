@@ -4027,6 +4027,9 @@ static void test_palette_preview_sites(void)
     CHECK_INT(flat_palette_site(0x5dfa), FLAT_PAL_DITHER);
     CHECK_INT(flat_palette_site(0x5c88), FLAT_PAL_KNOB);       /* PALETTE-SAMPLE-SCROLLER: Active knob fill */
     CHECK_INT(flat_palette_site(0x5e68), FLAT_PAL_KNOB);       /* Inactive knob fill */
+    CHECK_INT(flat_palette_site(0x34ec), FLAT_PAL_GROOVE);     /* PALETTE-GROOVE: SHADOWPEN row above the samples */
+    CHECK_INT(flat_palette_site(0x353e), FLAT_PAL_GROOVE);     /* its SHINEPEN row */
+    CHECK_INT(flat_palette_site(0x34e8), FLAT_PAL_STOCK);
     CHECK_INT(flat_palette_site(0x5c84), FLAT_PAL_STOCK);      /* the jsr itself, not its return */
     CHECK_INT(flat_palette_site(0x53da), FLAT_PAL_STOCK);      /* the dither box's ground fill */
     CHECK_INT(flat_palette_site(0x5abc), FLAT_PAL_STOCK);      /* a FILLPEN fill of the sample */

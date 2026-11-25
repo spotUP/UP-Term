@@ -1936,6 +1936,7 @@ const char *flat_trow_why_name(int why)
 
 static const unsigned long pal_edge[] = { 0x54ac, 0x54e4, 0x5526, 0x5556 };
 static const unsigned long pal_dither[] = { 0x5418, 0x5bf2, 0x5dfa };
+static const unsigned long pal_groove[] = { 0x34ec, 0x353e };  /* PALETTE-GROOVE: SHADOWPEN row, SHINEPEN row above the samples */
 static const unsigned long pal_knob[] = { 0x5c88, 0x5e68 };    /* PALETTE-SAMPLE-SCROLLER: Active (FILLPEN), Inactive (BACKGROUNDPEN) knob fills */
 
 static const unsigned long pal_button[] = { 0x5fb2, 0x6106, 0x6142 };   /* bevel calls at 0x5fae, 0x6102, 0x613e */
@@ -1961,6 +1962,9 @@ int flat_palette_site(unsigned long off)
     for (i = 0; i < sizeof pal_knob / sizeof pal_knob[0]; i++)
         if (off == pal_knob[i])
             return FLAT_PAL_KNOB;
+    for (i = 0; i < sizeof pal_groove / sizeof pal_groove[0]; i++)
+        if (off == pal_groove[i])
+            return FLAT_PAL_GROOVE;
     return FLAT_PAL_STOCK;
 }
 
@@ -1983,6 +1987,9 @@ int flat_palette_id(const unsigned char *code, unsigned long len)
             return 0;
     for (i = 0; i < sizeof pal_knob / sizeof pal_knob[0]; i++)
         if (!pal_jsr_rf(code, pal_knob[i]))
+            return 0;
+    for (i = 0; i < sizeof pal_groove / sizeof pal_groove[0]; i++)
+        if (!pal_jsr_rf(code, pal_groove[i]))
             return 0;
     for (i = 0x5428; i < 0x5568; i++)
         h = ((h ^ code[i]) * 0x01000193UL) & 0xffffffffUL;

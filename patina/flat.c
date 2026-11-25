@@ -2876,6 +2876,7 @@ static int pal_fill(flatshared *r, struct RastPort *rp, struct Window *w, const 
     const unsigned char *code = pal_hunk(&len);
     int site;
     UBYTE fg, sz;
+    UWORD *pa;
     if (!code || ret < (ULONG)code || ret >= (ULONG)code + len || !flat_palette_id(code, len))
         return 0;
     site = flat_palette_site(ret - (ULONG)code);
@@ -2893,6 +2894,13 @@ static int pal_fill(flatshared *r, struct RastPort *rp, struct Window *w, const 
         SetAPen(rp, fg);
         return 1;
     }
+    if (site == FLAT_PAL_GROOVE) {  /* PALETTE-GROOVE: the separator rows above the samples become window ground */
+        fg = rp->FgPen;
+        SetAPen(rp, (UBYTE)st_scr(r, w->WScreen)->pen_back);
+        ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+        SetAPen(rp, fg);
+        return 1;
+    }
     if (site == FLAT_PAL_KNOB) {    /* PALETTE-SAMPLE-SCROLLER: the flat scroller knob (rf_scroller's pen), over the bevel one pixel out */
         fg = rp->FgPen;
         SetAPen(rp, (UBYTE)flat_knob_state_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0, 1));
@@ -2905,9 +2913,10 @@ static int pal_fill(flatshared *r, struct RastPort *rp, struct Window *w, const 
     if (b[3] - b[1] > 1)        /* a scroller container: its ground was filled first (or is the window's) */
         return 1;
     sz = rp->AreaPtSz;
-    rp->AreaPtSz = 0;
+    pa = (UWORD *)rp->AreaPtrn;          /* PALETTE-MENU-SEPARATOR: size 0 alone still patterns with the first word (dotted line) */
+    rp->AreaPtrn = 0; rp->AreaPtSz = 0;
     ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
-    rp->AreaPtSz = sz;
+    rp->AreaPtrn = pa; rp->AreaPtSz = sz;
     return 1;
 }
 

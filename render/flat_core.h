@@ -971,8 +971,10 @@ const char *flat_trow_why_name(int why);
  * from its own code (no frameiclass, no ROM caller), so the bevels and scroller dithers stay 3D. The rule is keyed on the
  * caller's return offset inside Palette's code hunk, and only once the hunk is identified (flat_palette_id). Offsets from the
  * 40.2 disassembly: 0x5428 is its bevel routine (pen A top/left, pen B bottom/right), 0x538e its two-pen dither box, 0x5bee and
- * 0x5df6 the scroller-container dither of the Active/Inactive samples. Text, checkmarks and arrows are other calls: stock. */
-enum { FLAT_PAL_STOCK, FLAT_PAL_EDGE, FLAT_PAL_DITHER, FLAT_PAL_KNOB };    /* PALETTE-SAMPLE-SCROLLER: KNOB = a sample scroller's knob fill */
+ * 0x5df6 the scroller-container dither of the Active/Inactive samples.
+ * PALETTE-GROOVE: 0x34e8 / 0x353a are the two 1-row fills (SHADOWPEN, SHINEPEN of Palette's own pens) of the groove above the
+ * samples: GROOVE = paint the ground instead. Text, checkmarks and arrows are other calls: stock. */
+enum { FLAT_PAL_STOCK, FLAT_PAL_EDGE, FLAT_PAL_DITHER, FLAT_PAL_KNOB, FLAT_PAL_GROOVE };    /* PALETTE-SAMPLE-SCROLLER: KNOB = a sample scroller's knob fill */
 #define FLAT_PAL_CODE_LEN 0x6704UL
 /* 1 when code (len bytes, the first hunk of the caller's seglist) is Palette 40.2: size, the bevel routine's FNV-1a and the
  * jsr RectFill opcode before every site. Relocation-free bytes only (the hunk is relocated in memory). */
