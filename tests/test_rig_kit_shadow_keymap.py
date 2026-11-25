@@ -22,8 +22,8 @@ class KitShadowKeymap(unittest.TestCase):
         go = rig.kit_shadow_lines(False)
         for dest, bak in (("SYS:Prefs/Env-Archive/up-term/keymap", "ENVARC-up-term-keymap"),
                           ("RAM:Env/up-term/keymap", "ENV-up-term-keymap")):
-            self.assertIn("C:Copy >NIL: VTC:keymap %s CLONE" % dest, go)
-            self.assertIn("C:Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, dest), go)   # kit-restore puts the kit's back
+            self.assertIn("Copy >NIL: VTC:keymap %s CLONE" % dest, go)
+            self.assertIn("Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, dest), go)   # kit-restore puts the kit's back
         self.assertNotIn("keymap.user", go)
 
     def test_up_term_shadows_run_before_the_patina_block_and_go_skips_then(self):
@@ -36,7 +36,7 @@ class KitShadowKeymap(unittest.TestCase):
         self.assertEqual(rig.user_startup_with_shadows_block(out.encode("latin-1")).decode("latin-1"), out)   # once
         self.assertEqual(rig.user_startup_with_shadows_block(b"; no kit\n"), b"; no kit\n" + rig.SHADOWS_UP_BLOCK_TEXT.encode())   # never go (RIG-GO-EARLY)
         script = rig.SHADOWS_UP_SCRIPT
-        self.assertIn("C:Copy >NIL: VTC:patina-flat UP-Term:bin/patina-flat CLONE", script)
+        self.assertIn("Copy >NIL: VTC:patina-flat UP-Term:bin/patina-flat CLONE", script)
         self.assertNotIn("patina-flat", rig.GO)   # go no longer runs any shadow pass
 
     def test_early_block_assigns_libs_ixp6_before_patina_and_go_skips_then(self):
@@ -112,8 +112,8 @@ class KitShadowKeymap(unittest.TestCase):
         self.assertEqual(sorted(names), sorted(["AmTile", "Patina", "patina-flat", "patina-gui", "patina-icons", "patina-index", "patina-menu", "amnotify"]))
         up = rig.kit_shadow_lines(True)
         for n in names:
-            self.assertIn("C:Copy >NIL: VTC:%s UP-Term:bin/%s CLONE" % (n, n), up)
-            self.assertIn("C:Copy >NIL: VTC:kit-orig/UP-Term-bin-%s UP-Term:bin/%s CLONE" % (n, n), up)
+            self.assertIn("Copy >NIL: VTC:%s UP-Term:bin/%s CLONE" % (n, n), up)
+            self.assertIn("Copy >NIL: VTC:kit-orig/UP-Term-bin-%s UP-Term:bin/%s CLONE" % (n, n), up)
             self.assertEqual(rig.kit_shadow_src(n), rig.build_amiga() / n)
 
     def test_install_stages_patina_themes_and_font_and_boot_places_them(self):

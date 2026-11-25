@@ -93,8 +93,10 @@ class ClashRig(unittest.TestCase):
 class RequireFresh(unittest.TestCase):
     def run_q(self, codes):
         def run(cmd, **kw):
-            rcs = [codes[t] for t in cmd[2:]]   # make -q over a group: 2 on any error, else 1 on any stale
-            return mock.Mock(returncode=2 if 2 in rcs else max(rcs), stdout="", stderr="")
+            # one `make -n -k --debug=b` pass over all targets: rc 1 = stale, rc 2 = no rule (paths.stale_targets)
+            out = "".join("Must remake target `%s'.\n" % t for t in cmd[4:] if codes[t] == 1)
+            err = "".join("make: *** No rule to make target `%s'.\n" % t for t in cmd[4:] if codes[t] == 2)
+            return mock.Mock(returncode=2 if err else 0, stdout=out, stderr=err)
         return run
 
     def test_stale_target_is_named(self):

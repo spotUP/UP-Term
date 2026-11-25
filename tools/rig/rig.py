@@ -316,7 +316,7 @@ def kit_shadow_lines(upterm):
     out = ["If NOT EXISTS VTC:kit-orig", "  C:MakeDir >NIL: VTC:kit-orig", "EndIf",
            "If EXISTS VTC:kit-restore"]
     for _, dest, bak in shadows:
-        out += kit_guard(dest, ["If EXISTS VTC:kit-orig/%s" % bak, "  C:Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, q(dest)), "EndIf"])
+        out += kit_guard(dest, ["If EXISTS VTC:kit-orig/%s" % bak, "  Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, q(dest)), "EndIf"])
     # the kit's own files are back: the next shadowing boot runs the full pass (kitstamp)
     out.append("  C:Delete >NIL: VTC:%s QUIET" % kitstamp.STAMP)
     out.append("Else")
@@ -326,14 +326,14 @@ def kit_shadow_lines(upterm):
         if dest.startswith("C:"):
             # a C: command the kit installs: on a rig with no kit it is put there too (W-R4)
             copy += ["  If EXISTS %s" % q(dest), "    If NOT EXISTS VTC:kit-orig/%s" % bak,
-                     "      C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak), "    EndIf", "  EndIf"]
-            copy += ["  C:Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"]
+                     "      Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak), "    EndIf", "  EndIf"]
+            copy += ["  Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"]
             body += copy
             continue
         body += kit_guard(dest, copy[:1] + ["  If NOT EXISTS VTC:kit-orig/%s" % bak,
-                                "    C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak),
+                                "    Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak),
                                 "  EndIf",
-                                "  C:Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"])
+                                "  Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"])
     # RIG-SLOW-BOOT: a full pass already put this kit on this DH0: (kitstamp; the host drops the stamp when either changed)
     out += ["  If EXISTS VTC:%s" % kitstamp.STAMP, '    Echo >>BOOTX:boot.log "kit shadows skipped"', "  Else"]
     out += ["    " + l for l in body]
@@ -369,7 +369,14 @@ SHADOWS_UP_BLOCK = user_startup.RIG_SHADOWS_BLOCK
 # then skips them (a second Assign ADD would list each path twice).
 RIG_LIBS_DONE = "RAM:rig-libs-done"
 KIT_PATINA_BLOCK = ";BEGIN UP-Term Patina"
+# RIG-BLACK-SCREEN: the boot CLI writes to BOOTX:boot.console (bootcap), so nothing opened a screen before LoadWB and
+# the window stayed black for the whole pass. A CON: window opens the Workbench screen now (IPrefs has run: right mode;
+# LoadWB itself must stay after the pass, it starts WBStartup's Patina). The shadow rows say bare `Copy`, which the
+# shell finds on the resident list, so C:Copy is loaded once instead of once per row (~550 rows).
 SHADOWS_UP_SCRIPT = """FailAt 21
+C:Echo >"CON:0/0/480/30/UP-Term rig/CLOSE" "UP-Term rig: copying the build (shadows-up)"
+Echo >>BOOTX:boot.log "screen opened (before shadows)"
+C:Resident >NIL: C:Copy PURE
 Echo >>BOOTX:boot.log "early UP-Term shadows started (before Patina)"
 C:Assign >NIL: VTC: EXISTS
 If NOT WARN
@@ -401,6 +408,7 @@ If NOT WARN
   EndIf
   Echo >>BOOTX:boot.log "UP-Term shadows done"
 EndIf
+C:Resident >NIL: Copy REMOVE
 """ % {"shadows": ind(kit_shadow_lines(False), 1), "shadows_up": ind(kit_shadow_lines(True), 1),
        "kit_stamp": ind(KIT_STAMP_BOOT, 1), "libs": "\n".join("      C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE}
 SHADOWS_UP_BLOCK_TEXT = ";BEGIN %s\nExecute BOOTX:shadows-up\n;END %s\n" % (SHADOWS_UP_BLOCK, SHADOWS_UP_BLOCK)
@@ -1947,9 +1955,9 @@ RETIRED_VTC_FILES = ("bin/sh",)
 
 def ensure_built(files, run=None):
     """Makes every file of this tree's build/amiga in `files` current before it is pushed to a rig: make's own graph
-    (`make -q`) says which are older than their sources, and those are rebuilt with `make`; a failed build exits with
-    `[ERROR] ... <program>`. A file make has no rule for or fails on (rc 2) is pushed as it is, with a [WARN]. Nothing stale: one `make -q`, no
-    build. Before, install and the refresh gate copied build/amiga as-is, and rig 91 ran a pre-K40d handler after a merge
+    (one `make -n` pass, paths.stale_targets) says which are older than their sources, and those are rebuilt with `make`; a failed build exits with
+    `[ERROR] ... <program>`. A file make has no rule for or fails on (rc 2) is pushed as it is, with a [WARN]. Nothing stale: one make pass, no
+    build. Held under paths.build_lock. Before, install and the refresh gate copied build/amiga as-is, and rig 91 ran a pre-K40d handler after a merge
     (RIG-PUSH-STALE-BUILD). Files outside this tree's build/amiga (the main checkout's, via merge_build) are not ours to build."""
     run = run or subprocess.run
     own = (ROOT / "build/amiga").resolve()
@@ -1958,8 +1966,12 @@ def ensure_built(files, run=None):
         return []
     env = {**os.environ, "UPTERM_ROOT": str(paths.UPTERM_ROOT)}
     targets = ["build/amiga/" + n for n in names]
+    with paths.build_lock(ROOT):   # parallel rig starts on this tree wait here instead of racing in build/
+        return _build_stale(targets, run, env)
+
+def _build_stale(targets, run, env):
     stale = paths.stale_targets(targets, run, ROOT, on_error=lambda t, r: print(
-        "[WARN] make -q failed (rc %d) for %s, it may be stale: %s" % (r.returncode, t, r.stderr.strip()[-300:])))
+        "[WARN] make -n failed (rc %d) for %s, it may be stale: %s" % (r.returncode, t, r.stderr.strip()[-300:])))
     if not stale:
         return []
     print("[BUILD] stale before push: " + ", ".join(t.rsplit("/", 1)[1] for t in stale))

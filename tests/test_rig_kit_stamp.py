@@ -72,7 +72,7 @@ class GoScript(unittest.TestCase):
         skip = g.index("If EXISTS VTC:%s" % kitstamp.STAMP)
         self.assertEqual(g[skip + 1], 'Echo >>BOOTX:boot.log "kit shadows skipped"')
         self.assertEqual(g[skip + 2], "Else")
-        self.assertIn("C:Copy >NIL: VTC:vsh C:vsh CLONE", g[skip:])
+        self.assertIn("Copy >NIL: VTC:vsh C:vsh CLONE", g[skip:])
 
     def test_restore_branch_drops_the_stamp(self):
         g = self.lines()
@@ -82,7 +82,7 @@ class GoScript(unittest.TestCase):
     def test_stamp_written_after_both_passes(self):
         g = self.lines()
         write = g.index("C:Copy >NIL: VTC:%s VTC:%s" % (kitstamp.HASH, kitstamp.STAMP))
-        shadow_copies = {"C:Copy >NIL: VTC:%s %s CLONE" % (src, rig.q(dest)) for src, dest, _ in rig.KIT_SHADOWS}
+        shadow_copies = {"Copy >NIL: VTC:%s %s CLONE" % (src, rig.q(dest)) for src, dest, _ in rig.KIT_SHADOWS}
         self.assertLess(max(i for i, l in enumerate(g) if l in shadow_copies), write)
         self.assertLess(write, g.index('Echo >>BOOTX:boot.log "UP-Term shadows done"'))
 
