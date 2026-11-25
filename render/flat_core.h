@@ -953,4 +953,18 @@ void flat_trow_drop(flat_trow_tab *t, const void *task);
 /* STATUS name of a FLAT_TROW_* reason ("ok", "nobutton", ...); "bad" out of range. */
 const char *flat_trow_why_name(int why);
 
+
+/* PALETTE-FLAT-PREVIEW (owner 2026-11-25): Palette 40.2 (the 3.1 editor) draws its three example windows itself with RectFill
+ * from its own code (no frameiclass, no ROM caller), so the bevels and scroller dithers stay 3D. The rule is keyed on the
+ * caller's return offset inside Palette's code hunk, and only once the hunk is identified (flat_palette_id). Offsets from the
+ * 40.2 disassembly: 0x5428 is its bevel routine (pen A top/left, pen B bottom/right), 0x538e its two-pen dither box, 0x5bee and
+ * 0x5df6 the scroller-container dither of the Active/Inactive samples. Text, checkmarks and arrows are other calls: stock. */
+enum { FLAT_PAL_STOCK, FLAT_PAL_EDGE, FLAT_PAL_DITHER };
+#define FLAT_PAL_CODE_LEN 0x6704UL
+/* 1 when code (len bytes, the first hunk of the caller's seglist) is Palette 40.2: size, the bevel routine's FNV-1a and the
+ * jsr RectFill opcode before every site. Relocation-free bytes only (the hunk is relocated in memory). */
+int flat_palette_id(const unsigned char *code, unsigned long len);
+/* FLAT_PAL_* of a RectFill whose return address is off bytes into the identified hunk */
+int flat_palette_site(unsigned long off);
+
 #endif

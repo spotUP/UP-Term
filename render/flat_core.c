@@ -1898,3 +1898,35 @@ const char *flat_trow_why_name(int why)
     static const char *const nm[] = { "ok", "nobutton", "order", "id", "geom", "nocycle", "row" };
     return why >= FLAT_TROW_OK && why <= FLAT_TROW_ROW ? nm[why] : "bad";
 }
+
+static const unsigned long pal_edge[] = { 0x54ac, 0x54e4, 0x5526, 0x5556 };
+static const unsigned long pal_dither[] = { 0x5418, 0x5bf2, 0x5dfa };
+
+int flat_palette_site(unsigned long off)
+{
+    unsigned i;
+    for (i = 0; i < sizeof pal_edge / sizeof pal_edge[0]; i++)
+        if (off == pal_edge[i])
+            return FLAT_PAL_EDGE;
+    for (i = 0; i < sizeof pal_dither / sizeof pal_dither[0]; i++)
+        if (off == pal_dither[i])
+            return FLAT_PAL_DITHER;
+    return FLAT_PAL_STOCK;
+}
+
+int flat_palette_id(const unsigned char *code, unsigned long len)
+{
+    static const unsigned char jsr_rf[4] = { 0x4e, 0xae, 0xfe, 0xce };     /* jsr -306(a6) */
+    unsigned long h = 0x811c9dc5UL, i;
+    if (!code || len < FLAT_PAL_CODE_LEN || len > FLAT_PAL_CODE_LEN + 16)
+        return 0;
+    for (i = 0; i < sizeof pal_edge / sizeof pal_edge[0]; i++)
+        if (memcmp(code + pal_edge[i] - 4, jsr_rf, 4))
+            return 0;
+    for (i = 0; i < sizeof pal_dither / sizeof pal_dither[0]; i++)
+        if (memcmp(code + pal_dither[i] - 4, jsr_rf, 4))
+            return 0;
+    for (i = 0x5428; i < 0x5568; i++)
+        h = ((h ^ code[i]) * 0x01000193UL) & 0xffffffffUL;
+    return h == 0x99a5f5e6UL;
+}

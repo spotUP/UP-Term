@@ -3989,6 +3989,42 @@ static void test_draw_epoch(void)
 
 /* PREFS-NO-OUTLINES: the class of an edges-only frame from its box and the window's gadget boxes (the five boxes measured in
  * Prefs/Time and Prefs/Font), the pen each class takes, and the ground box records the content fills are matched against. */
+/* PALETTE-FLAT-PREVIEW: the Palette 40.2 example windows' bevel edges and scroller dithers are told apart from its text,
+ * checkmark and arrow calls by call site; an unknown Palette build stays stock */
+static void test_palette_preview_sites(void)
+{
+    static unsigned char code[FLAT_PAL_CODE_LEN];
+    const char *home = getenv("HOME");
+    char path[512];
+    FILE *f;
+    CHECK_INT(flat_palette_site(0x54ac), FLAT_PAL_EDGE);
+    CHECK_INT(flat_palette_site(0x54e4), FLAT_PAL_EDGE);
+    CHECK_INT(flat_palette_site(0x5526), FLAT_PAL_EDGE);
+    CHECK_INT(flat_palette_site(0x5556), FLAT_PAL_EDGE);
+    CHECK_INT(flat_palette_site(0x5418), FLAT_PAL_DITHER);
+    CHECK_INT(flat_palette_site(0x5bf2), FLAT_PAL_DITHER);
+    CHECK_INT(flat_palette_site(0x5dfa), FLAT_PAL_DITHER);
+    CHECK_INT(flat_palette_site(0x53da), FLAT_PAL_STOCK);      /* the dither box's ground fill */
+    CHECK_INT(flat_palette_site(0x5abc), FLAT_PAL_STOCK);      /* a FILLPEN fill of the sample */
+    CHECK_INT(flat_palette_site(0), FLAT_PAL_STOCK);
+    memset(code, 0, sizeof code);
+    CHECK_INT(flat_palette_id(code, sizeof code), 0);          /* not Palette */
+    CHECK_INT(flat_palette_id(NULL, sizeof code), 0);
+    CHECK_INT(flat_palette_id(code, 0x1000), 0);               /* too short to hold the sites */
+    snprintf(path, sizeof path, "%s/Library/CloudStorage/Dropbox/WB/Prefs/Palette", home ? home : "");
+    f = fopen(path, "rb");
+    if (!f) {
+        printf("note: %s absent, Palette 40.2 accept case not run\n", path);
+        return;
+    }
+    if (fseek(f, 0x24, SEEK_SET) == 0 && fread(code, 1, sizeof code, f) == sizeof code) {
+        CHECK_INT(flat_palette_id(code, sizeof code), 1);      /* the 3.1 editor, hunk 0 (no relocs in the checked bytes) */
+        code[0x5430] ^= 1;
+        CHECK_INT(flat_palette_id(code, sizeof code), 0);      /* another build: stock */
+    }
+    fclose(f);
+}
+
 static void test_no_outlines(void)
 {
     flat_state s;
@@ -4575,6 +4611,7 @@ void suite_flat_core(void)
     test_round_partial_mask();
     test_round_pen_byte();
     test_no_outlines();
+    test_palette_preview_sites();
     test_flat_spacing();
     test_trow_name();
     test_trow_time39();

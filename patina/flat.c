@@ -2800,6 +2800,57 @@ static int rf_menu(flatshared *r, struct RastPort *rp, const LONG *b)
     return 1;
 }
 
+/* PALETTE-FLAT-PREVIEW (owner 2026-11-25): Palette 40.2 draws its example windows with RectFill from its own code, so no ROM
+ * rule sees them. The calling process's first hunk, once flat_palette_id says it is that editor, maps the call site to the
+ * flat preview: a bevel edge (pen A or B) becomes the outline pen, a scroller dither the plain ground under it, a 2-row dither
+ * (separator) a solid line. Checked on every call: a freed hunk reused by another program fails the identity check. */
+static const unsigned char *pal_hunk(ULONG *len)
+{
+    struct Process *pr = (struct Process *)FindTask(NULL);
+    struct CommandLineInterface *cli;
+    BPTR seg = 0;
+    ULONG *h;
+    if (pr->pr_Task.tc_Node.ln_Type != NT_PROCESS)
+        return NULL;
+    cli = (struct CommandLineInterface *)BADDR(pr->pr_CLI);
+    if (cli)
+        seg = cli->cli_Module;
+    else if (pr->pr_SegList)
+        seg = ((BPTR *)BADDR(pr->pr_SegList))[3];
+    if (!seg)
+        return NULL;
+    h = (ULONG *)BADDR(seg);
+    *len = h[-1] - 8;           /* LoadSeg: the long before the hunk is its allocation, next-hunk BPTR and size included */
+    return (const unsigned char *)(h + 1);
+}
+
+static int pal_fill(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b, ULONG ret)
+{
+    ULONG len = 0;
+    const unsigned char *code = pal_hunk(&len);
+    int site;
+    UBYTE fg, sz;
+    if (!code || ret < (ULONG)code || ret >= (ULONG)code + len || !flat_palette_id(code, len))
+        return 0;
+    site = flat_palette_site(ret - (ULONG)code);
+    if (site == FLAT_PAL_EDGE) {
+        fg = rp->FgPen;
+        SetAPen(rp, (UBYTE)flat_edge_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0, 1));
+        ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+        SetAPen(rp, fg);
+        return 1;
+    }
+    if (site != FLAT_PAL_DITHER)
+        return 0;
+    if (b[3] - b[1] > 1)        /* a scroller container: its ground was filled first (or is the window's) */
+        return 1;
+    sz = rp->AreaPtSz;
+    rp->AreaPtSz = 0;
+    ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+    rp->AreaPtSz = sz;
+    return 1;
+}
+
 void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG ret)
 {
     flatshared *r = g_r;
@@ -2812,6 +2863,8 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
     b[0] = x0; b[1] = y0; b[2] = x1; b[3] = y1;
     if (on && rp->Layer)
         w = (struct Window *)rp->Layer->Window;
+    if (on && w && !rom && pal_fill(r, rp, w, b, ret))
+        return;
     if (on && rp->AreaPtSz && rom && !w && ghost_menu(r, rp, b))
         return;
     /* a patterned fill only in the panel's stock ground pen: the separator's dotted punch through its bar image (rig 92: 00FE80DE,
