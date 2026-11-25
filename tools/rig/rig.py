@@ -212,7 +212,8 @@ RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6",
             "Assign >NIL: LIBS: DH0:MUI/Libs ADD",
             "Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD",
             "Assign >NIL: LIBS: DH0:AmiSSL/Libs ADD",
-            "Assign >NIL: LIBS: VTC:amissl ADD"]
+            "Assign >NIL: LIBS: VTC:amissl ADD",
+            "Assign >NIL: AmiSSL: DH0:AmiSSL"]   # AmiSSL:Certs for TLS peers (a fresh rig has no AmiSSL: after go; makerelease packer, 2026-11-24)
 
 # The rig's lines in the system disk's S:Shell-Startup (go adds them once).
 # The bare "Path >NIL: VTC:gg/bin ADD" an earlier go wrote raised "Please
