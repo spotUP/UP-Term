@@ -1285,7 +1285,9 @@ FLAT_ASM_DIR := $(BUILD)/amiga/flat_asm
 # S62-FLAT-RF-TX-BUDGET: the RectFill and Text hooks (flat_rf_c, flat_tx_c) reach iclabel_core (the label shades) and
 # render/emoji.c (ce_mix, the corner antialias blend), so their assembly is checked too.
 FLAT_BUDGET_ASM := $(FLAT_ASM_DIR)/flat.s $(FLAT_ASM_DIR)/flat_glyph.s $(FLAT_ASM_DIR)/flat_core.s $(FLAT_ASM_DIR)/roundaa_core.s \
-	$(FLAT_ASM_DIR)/iclabel_core.s $(FLAT_ASM_DIR)/emoji.s $(FLAT_ASM_DIR)/pubscr.s $(FLAT_ASM_DIR)/pubscr_core.s
+	$(FLAT_ASM_DIR)/iclabel_core.s $(FLAT_ASM_DIR)/emoji.s $(FLAT_ASM_DIR)/pubscr.s $(FLAT_ASM_DIR)/pubscr_core.s \
+	$(FLAT_ASM_DIR)/gthemes_core.s
+# FLAT-EXCLUDE-BUDGET: scr_themed (c8_skip, gs_ring) matches the exclude patterns with gt_screen_match, so its frame counts too.
 # S74-TIME-ROW: cg_feed (under flat_cg_c) locks the default public screen through handler/pubscr.c, so its frames count too.
 flat-budget: $(FLAT_BUDGET_ASM)
 	python3 tests/test_flat_budget.py $(FLAT_BUDGET_ASM)
@@ -1299,6 +1301,9 @@ $(FLAT_ASM_DIR)/emoji.s: render/emoji.c render/emoji.h
 	@mkdir -p $(FLAT_ASM_DIR)
 	$(VC) -dontwarn=153,65 -S -o $@ $<
 $(FLAT_ASM_DIR)/flat_core.s: render/flat_core.c render/flat_core.h
+	@mkdir -p $(FLAT_ASM_DIR)
+	$(VC) -dontwarn=153,65 -S -o $@ $<
+$(FLAT_ASM_DIR)/gthemes_core.s: render/gthemes_core.c render/gthemes_core.h
 	@mkdir -p $(FLAT_ASM_DIR)
 	$(VC) -dontwarn=153,65 -S -o $@ $<
 

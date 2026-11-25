@@ -1990,10 +1990,11 @@ static void icl_write(struct RastPort *rp, const int *b, int depth, uint32_t fg,
 }
 
 /* Under icl_ss: stock Text in box b, the pixels before and after, the ink mask and coverage, then icl_write */
-static void icl_run(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count, const int *b, int depth, icl_cx *icx)
+/* 1 = the caller runs icl_write with *fg (kept out of this frame: FLAT-BUDGET-MAIN, the tx_c chain) */
+static int icl_run(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count, const int *b, int depth, icl_cx *icx,
+                   uint32_t *fg)
 {
     int n = b[2] * b[3], rtg = depth > 8, jam2 = (rp->DrawMode & JAM2) != 0;
-    uint32_t fg;
     if (!rtg) {
         icl_trp = *rp;
         icl_trp.Layer = 0;
@@ -2008,12 +2009,11 @@ static void icl_run(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG 
         icl_mask(jam2, 0, icl_before, icl_after, icl_rgb(icx->cm, rp->FgPen), icl_rgb(icx->cm, rp->BgPen), n, icl_mk);
     else
         icl_mask(jam2, 1, icl_before, icl_after, rp->FgPen, rp->BgPen, n, icl_mk);
-    if (!icl_fg(icl_mk, icl_after, n, &fg) || !icl_coverage(icl_mk, b[2], b[3], icl_cv)) {
+    if (!icl_fg(icl_mk, icl_after, n, fg) || !icl_coverage(icl_mk, b[2], b[3], icl_cv)) {
         r->lskip++;
-        return;
+        return 0;
     }
-    icl_write(rp, b, depth, fg, icx);
-    r->labels++;
+    return 1;
 }
 
 /* 1 = the label was drawn here (stock Text inside, edges blended or not); 0 = the caller draws stock */
@@ -2022,6 +2022,7 @@ static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG
     struct Window *w;
     icl_cx icx;
     int b[4], depth;
+    uint32_t fg;
     if (!icl_ready || !rp->Layer || !rp->Layer->Window || !rp->Font || !rp->BitMap || count == 0)
         return 0;
     w = (struct Window *)rp->Layer->Window;
@@ -2051,7 +2052,10 @@ static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG
                 ReleasePen(icx.cm, (ULONG)icl_rel[j]);
         }
     }
-    icl_run(r, rp, str, count, b, depth, &icx);
+    if (icl_run(r, rp, str, count, b, depth, &icx, &fg)) {
+        icl_write(rp, b, depth, fg, &icx);
+        r->labels++;
+    }
     ReleaseSemaphore(&icl_ss);
     return 1;
 }
@@ -2659,13 +2663,24 @@ static void scroller_thin_fill(flatshared *r, struct RastPort *rp, const LONG *b
     ((rectfn)r->rsw.saved)(rp, x0, b[1], x1, b[3], (struct Library *)GfxBase);
 }
 
+/* MODERN-SLIDER: row y of the knob disc of k, clipped to fill b, in xs[0..1]; 0 = no span. A pure helper in its own frame, so vbcc
+ * does not hoist the k and b element addresses into stack temporaries of the slider_disc loop (flat budget, like scroller_cut). */
+static int slider_disc_clip(int side, const LONG *b, const int *k, int y, int *xs)
+{
+    if (!flat_slider_disc_row(side, k[0], k[1], k[2], k[3], y, &xs[0], &xs[1]) || xs[1] < b[0] || xs[0] > b[2])
+        return 0;
+    if (xs[0] < b[0]) xs[0] = (int)b[0];
+    if (xs[1] > b[2]) xs[1] = (int)b[2];
+    return 1;
+}
+
 /* MODERN-SLIDER: the knob disc rows of k inside fill b in the pen set */
 static void slider_disc(flatshared *r, struct RastPort *rp, const LONG *b, const int *k)
 {
-    int y, x0, x1;
+    int y, xs[2];
     for (y = (int)b[1]; y <= (int)b[3]; y++)
-        if (flat_slider_disc_row(r->knob_side, k[0], k[1], k[2], k[3], y, &x0, &x1) && x1 >= b[0] && x0 <= b[2])
-            ((rectfn)r->rsw.saved)(rp, x0 > b[0] ? x0 : b[0], y, x1 < b[2] ? x1 : b[2], y, (struct Library *)GfxBase);
+        if (slider_disc_clip(r->knob_side, b, k, y, xs))
+            ((rectfn)r->rsw.saved)(rp, xs[0], y, xs[1], y, (struct Library *)GfxBase);
 }
 
 /* MODERN-SLIDER: fill b of a slider: window ground, the part of the thin track line inside b, the round knob over it. No outline. */
@@ -2677,8 +2692,7 @@ static void slider_paint(flatshared *r, struct RastPort *rp, const LONG *b, cons
     SetAPen(rp, (UBYTE)r->slider_pen[0]);
     if (flat_slider_track(r->slider, r->knob_side, r->slider_c[0], r->slider_c[1], r->slider_c[2], r->slider_c[3], (int)b[0], (int)b[1], (int)b[2], (int)b[3], t))
         ((rectfn)r->rsw.saved)(rp, t[0], t[1], t[2], t[3], (struct Library *)GfxBase);
-    SetAPen(rp, (UBYTE)r->slider_pen[1]);
-    slider_disc(r, rp, b, k);
+    SetAPen(rp, (UBYTE)r->slider_pen[1]);   /* the caller draws slider_disc next (kept out of this frame: the rf_c chain) */
 }
 
 /* FLAT-SCROLLER: a solid fill in the scroller pen sp (the stock track is a dither); FLAT-SLIDER-ROUND: the knob corners take the
@@ -2691,9 +2705,10 @@ static int scroller_paint(flatshared *r, struct RastPort *rp, const LONG *b, con
     r->shits++;
     rp->AreaPtrn = 0; rp->AreaPtSz = 0;
     SetDrMd(rp, JAM2);
-    if (r->slider)
+    if (r->slider) {
         slider_paint(r, rp, b, k);
-    else if (sp != r->st.pen_back && (b[0] < k[0] || b[2] >= k[0] + k[2]))
+        slider_disc(r, rp, b, k);
+    } else if (sp != r->st.pen_back && (b[0] < k[0] || b[2] >= k[0] + k[2]))
         scroller_thin_fill(r, rp, b, k, sp);        /* S69-KNOB-ASPECT: Intuition's wider knob fill: ground, then the thinner knob */
     else {
         SetAPen(rp, (UBYTE)sp);
