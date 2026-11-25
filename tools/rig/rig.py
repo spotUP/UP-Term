@@ -2875,8 +2875,10 @@ def retry_wb_reset():
 
 def stop(emu=None):
     """Safe stop: killing FS-UAE while the Amiga writes to its disk corrupts the filesystem (rig 2, 2026-10-13).
-    Wait until wasabid takes a command (nothing else is running), lock the volumes (the OS flushes them), stay
-    quiet for 8 s, ask FS-UAE to quit (TERM), and kill it only if it ignores that."""
+    Wait until wasabid takes a command (nothing else is running), stay quiet for 8 s (FFS writes its delayed buffers),
+    lock the volumes (the OS flushes them; a later write is refused, not half done), ask FS-UAE to quit (TERM) at
+    once, and kill it only if it ignores that. The lock comes last: during the old 8 s after it, any Amiga writer
+    raised "Volume System is write protected" in the emulator (RIG-STOP-WRITEPROTECT-REQ, 2026-11-25)."""
     if mine(emu) and status(quiet=True):
         try:
             sys.path.insert(0, str(ROOT / "tools/rig"))
@@ -2887,12 +2889,12 @@ def stop(emu=None):
                     break
                 except BaseException:
                     time.sleep(5)
+            time.sleep(8)
             for vol in ("DH0:", "DH1:"):
                 try:
                     ami.req(0x02, (10).to_bytes(2, "big") + b"C:Lock " + vol.encode() + b" ON", timeout=15)
                 except BaseException:
                     pass
-            time.sleep(8)
         except BaseException:
             pass
     subprocess.run(["pkill", "-TERM", "-f", emu_key(emu or paths.EMU)])
