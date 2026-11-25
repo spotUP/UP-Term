@@ -1204,6 +1204,57 @@ int flat_scroller_pen_box(const flat_state *s, int depth, int active, int cx, in
     return s->pen_back;
 }
 
+int flat_prop_slider(unsigned activation, unsigned propflags, int kw, int kh, int side)
+{
+    int sd = side > 1 ? side : 1, horiz = (propflags & 0x0002u) != 0, vert = (propflags & 0x0004u) != 0;
+    if ((activation & 0x00F0u) || horiz == vert || kw < 1 || kh < 1)
+        return 0;
+    if (horiz)
+        return kw / sd <= kh ? 1 : 0;
+    return kh <= kw / sd ? 2 : 0;
+}
+
+int flat_slider_track(int dir, int side, int cx, int cy, int cw, int ch, int x0, int y0, int x1, int y1, int out[4])
+{
+    int sd = side > 1 ? side : 1;
+    if (dir == 1) {
+        out[0] = cx; out[2] = cx + cw - 1; out[1] = out[3] = cy + (ch - 1) / 2;
+    } else {
+        out[0] = cx + (cw - sd) / 2; out[2] = out[0] + sd - 1; out[1] = cy; out[3] = cy + ch - 1;
+    }
+    if (out[0] < x0) out[0] = x0;
+    if (out[1] < y0) out[1] = y0;
+    if (out[2] > x1) out[2] = x1;
+    if (out[3] > y1) out[3] = y1;
+    return out[0] <= out[2] && out[1] <= out[3];
+}
+
+int flat_slider_disc_row(int side, int kx, int ky, int kw, int kh, int y, int *x0, int *x1)
+{
+    int sd = side > 1 ? side : 1, d = kw / sd < kh ? kw / sd : kh, D, top, left, i, j, Y, X, lo = -1, hi = -1;
+    if (d < 1)
+        d = 1;
+    D = d * sd;
+    top = ky + (kh - d) / 2;
+    left = kx + (kw - D) / 2;
+    i = y - top;
+    if (i < 0 || i >= d)
+        return 0;
+    Y = (2 * i + 1 - d) * sd;                       /* row centre in half-columns from the disc centre */
+    for (j = 0; j < D; j++) {
+        X = 2 * j + 1 - D;
+        if (X * X + Y * Y <= D * D) {
+            if (lo < 0) lo = j;
+            hi = j;
+        }
+    }
+    if (lo < 0)
+        return 0;
+    *x0 = left + lo;
+    *x1 = left + hi;
+    return 1;
+}
+
 int flat_inactive_pen(const flat_state *s, int depth)
 {
     if (depth >= 4 && depth <= 8 && s->pen_inbar && s->pen_inbar < (1 << depth))

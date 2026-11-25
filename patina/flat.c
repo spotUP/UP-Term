@@ -1120,6 +1120,16 @@ static int dopus_push_claim(struct RastPort *rp, int x0, int y0, int x1, int y1,
  * pure, host tested), drawn without a coloured outline. TRACK, CELL and DISPLAY become a rounded ground box and are recorded so the
  * pen-0 content the app draws after the frame lands on it (flat_rf_c, flat_tx_c); GROUP draws nothing. 1 = handled, 0 = stock draw
  * (a frame bordering another gadget type, or no pen on this screen). Any frame draw first drops the records it overlaps. */
+static int prop_knob(struct Gadget *g, struct PropInfo *pi, int cx, int cy, int *k);
+/* MODERN-SLIDER: 1 when prop gadget g (resolved box gb) of win draws as a slider (flat_prop_slider on its knob box) */
+static int prop_slider_of(flatshared *r, struct Window *win, struct Gadget *g, const flat_gadbox *gb)
+{
+    struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
+    int k[4];
+    return st_scr(r, win->WScreen)->pen_line && prop_knob(g, pi, gb->x + pi->LeftBorder, gb->y + pi->TopBorder, k) &&
+           flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, win->WScreen)) != 0;
+}
+
 static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int w, int h)
 {
     struct Layer *lay = rp->Layer;
@@ -1127,7 +1137,7 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
     const void *surf = flat_tx_surface(lay, rp->BitMap);
     struct Gadget *g;
     flat_fc fc;
-    int n, cls, pen, depth = rp->BitMap ? rp->BitMap->Depth : 0, centre = -1;
+    int n, cls, pen, depth = rp->BitMap ? rp->BitMap->Depth : 0, centre = -1, slider = 0;
     flat_gr_drop(&r->gr, surf, ox, oy, ox + w - 1, oy + h - 1);
     if (!win)
         return 0;
@@ -1143,8 +1153,11 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
         if (flat_string_ext(gt, g->Flags, g->Activation, si != NULL, si && si->Extension != NULL,
                             gt == GTYP_CUSTOMGADGET && gadget_class_has(g, "strgclass", 8)))
             gb.kind = FLAT_GK_STRING;
-        else if (gt == GTYP_PROPGADGET && gadget_has_propinfo(g))
+        else if (gt == GTYP_PROPGADGET && gadget_has_propinfo(g)) {
             gb.kind = FLAT_GK_PROP;
+            if (!slider && flat_string_frame(ox, oy, w, h, gb.x, gb.y, gb.w, gb.h))
+                slider = prop_slider_of(r, win, g, &gb);
+        }
         else if (flat_display_gadget(g->Flags, g->Activation))
             gb.kind = FLAT_GK_DISPLAY;      /* S74-TEXT-BOX: GadTools TEXT_KIND / NUMBER_KIND with its own bevel */
         else
@@ -1152,6 +1165,10 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
         flat_fc_add(&fc, ox, oy, w, h, &gb);
     }
     cls = flat_fc_class(&fc);
+    if (cls == FLAT_FC_TRACK && slider) {       /* MODERN-SLIDER: no box around a slider, the window ground stays */
+        r->gbhits++;
+        return 1;
+    }
     if (cls == FLAT_FC_GROUP) {
         r->gbhits++;
         return 1;
@@ -2207,11 +2224,24 @@ static int scroller_pen_at(flatshared *r, struct RastPort *rp, struct Window *w,
                                                         c[0], c[1], pi->CWidth, pi->CHeight, k[0], k[1], k[2], k[3], (int)box[0], (int)box[1], (int)box[2], (int)box[3]));
 }
 
+/* MODERN-SLIDER: r->slider and its container and pens for the fill about to be painted (flat_prop_slider on Intuition's knob box k);
+ * the track takes the grey scroller knob pen, the knob the theme accent pen_line. */
+static void slider_note(flatshared *r, struct RastPort *rp, struct Window *w, struct Gadget *g, const int *c, const int *k)
+{
+    struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
+    const flat_state *ss = st_scr(r, w->WScreen);
+    r->slider = ss->pen_line ? flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, w->WScreen)) : 0;
+    r->slider_c[0] = c[0]; r->slider_c[1] = c[1]; r->slider_c[2] = pi->CWidth; r->slider_c[3] = pi->CHeight;
+    r->slider_pen[0] = flat_knob_state_pen(ss, rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0);
+    r->slider_pen[1] = ss->pen_line;
+}
+
 static int scroller_pen_of(flatshared *r, struct RastPort *rp, struct Window *w, struct Gadget *g, const LONG *box, int *k)
 {
     int c[2];
     if (!scroller_hit(w, g, box, c) || !prop_knob(g, (struct PropInfo *)g->SpecialInfo, c[0], c[1], k))
         return -1;
+    slider_note(r, rp, w, g, c, k);
     return scroller_pen_at(r, rp, w, (struct PropInfo *)g->SpecialInfo, c, box, k);
 }
 
@@ -2556,17 +2586,41 @@ static void scroller_thin_fill(flatshared *r, struct RastPort *rp, const LONG *b
     ((rectfn)r->rsw.saved)(rp, x0, b[1], x1, b[3], (struct Library *)GfxBase);
 }
 
+/* MODERN-SLIDER: the knob disc rows of k inside fill b in the pen set */
+static void slider_disc(flatshared *r, struct RastPort *rp, const LONG *b, const int *k)
+{
+    int y, x0, x1;
+    for (y = (int)b[1]; y <= (int)b[3]; y++)
+        if (flat_slider_disc_row(r->knob_side, k[0], k[1], k[2], k[3], y, &x0, &x1) && x1 >= b[0] && x0 <= b[2])
+            ((rectfn)r->rsw.saved)(rp, x0 > b[0] ? x0 : b[0], y, x1 < b[2] ? x1 : b[2], y, (struct Library *)GfxBase);
+}
+
+/* MODERN-SLIDER: fill b of a slider: window ground, the part of the thin track line inside b, the round knob over it. No outline. */
+static void slider_paint(flatshared *r, struct RastPort *rp, const LONG *b, const int *k)
+{
+    int t[4];
+    SetAPen(rp, (UBYTE)r->st.pen_back);
+    ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+    SetAPen(rp, (UBYTE)r->slider_pen[0]);
+    if (flat_slider_track(r->slider, r->knob_side, r->slider_c[0], r->slider_c[1], r->slider_c[2], r->slider_c[3], (int)b[0], (int)b[1], (int)b[2], (int)b[3], t))
+        ((rectfn)r->rsw.saved)(rp, t[0], t[1], t[2], t[3], (struct Library *)GfxBase);
+    SetAPen(rp, (UBYTE)r->slider_pen[1]);
+    slider_disc(r, rp, b, k);
+}
+
 /* FLAT-SCROLLER: a solid fill in the scroller pen sp (the stock track is a dither); FLAT-SLIDER-ROUND: the knob corners take the
  * track pen. Returns the knob corner cut count for the RL6 note. */
 static int scroller_paint(flatshared *r, struct RastPort *rp, const LONG *b, const int *k, int sp)
 {
-    int ncuts = scroller_cuts(r, rp, k, b, -1);
+    int ncuts = r->slider ? 0 : scroller_cuts(r, rp, k, b, -1);
     UBYTE fg = rp->FgPen, dm = rp->DrawMode, pt = rp->AreaPtSz;
     UWORD *pa = (UWORD *)rp->AreaPtrn;
     r->shits++;
     rp->AreaPtrn = 0; rp->AreaPtSz = 0;
     SetDrMd(rp, JAM2);
-    if (sp != r->st.pen_back && (b[0] < k[0] || b[2] >= k[0] + k[2]))
+    if (r->slider)
+        slider_paint(r, rp, b, k);
+    else if (sp != r->st.pen_back && (b[0] < k[0] || b[2] >= k[0] + k[2]))
         scroller_thin_fill(r, rp, b, k, sp);        /* S69-KNOB-ASPECT: Intuition's wider knob fill: ground, then the thinner knob */
     else {
         SetAPen(rp, (UBYTE)sp);

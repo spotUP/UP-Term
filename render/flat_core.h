@@ -704,6 +704,19 @@ int flat_knob_state_pen(const flat_state *s, int depth, int active);
  * Plain GTYP_PROPGADGET (0x0003) with SpecialInfo: yes. GTYP_CUSTOMGADGET (0x0005, a boopsi object such as XCON's propgclass gadget) with
  * SpecialInfo: yes only when is_propgclass (the object's class is propgclass or a subclass); a strgclass SpecialInfo is a StringInfo. */
 int flat_gadget_is_prop(unsigned gadgettype, int is_propgclass, int has_specialinfo);
+/* MODERN-SLIDER (owner 2026-11-25: "make them look modern a grey line with a blue circle knob"): a prop gadget draws as a slider
+ * (thin grey track line, round accent knob, no outline box) when it is not a window border gadget (activation & 0xF0: GACT_*BORDER),
+ * moves on one axis (propflags FREEHORIZ 2 xor FREEVERT 4) and its knob (kw x kh, Intuition's box) is no longer than it is thick in
+ * visual units (side = flat_side_px). Returns 1 horizontal, 2 vertical, 0 not a slider.
+ * shortcut: an in-window scroller whose knob is shorter than its thickness (a very long list) takes the slider look too; add a
+ * GadTools kind test if one shows up. */
+int flat_prop_slider(unsigned activation, unsigned propflags, int kw, int kh, int side);
+/* MODERN-SLIDER: the track line of a dir (1 horizontal, 2 vertical) slider with container cx,cy,cw,ch clipped to the fill x0..y1 into
+ * out (x0, y0, x1, y1): one row thick across a horizontal container, side columns wide down a vertical one, centred. 0 = outside. */
+int flat_slider_track(int dir, int side, int cx, int cy, int cw, int ch, int x0, int y0, int x1, int y1, int out[4]);
+/* MODERN-SLIDER: the knob disc's columns *x0..*x1 on row y: a circle of min(kw / side, kh) rows (side columns per row, so it is round
+ * on non-square pixels) centred in the knob box kx,ky,kw,kh. 0 = the row misses the disc. */
+int flat_slider_disc_row(int side, int kx, int ky, int kw, int kh, int y, int *x0, int *x1);
 /* S56-XCON-KNOB-BOX: flat_scroller_pen with the knob rectangle given (kx,ky,kw,kh, absolute) instead of computed from pots and bodies. */
 int flat_scroller_pen_box(const flat_state *s, int depth, int active, int cx, int cy, int cw, int ch, int kx, int ky, int kw, int kh,
                           int x0, int y0, int x1, int y1);

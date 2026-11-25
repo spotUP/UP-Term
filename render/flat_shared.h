@@ -127,6 +127,8 @@ typedef struct flatshared {
     struct Library *muibase;    /* muimaster.library, open while the patches are in place */
     ULONG munew, mumake, muiredir; /* sentinels: patched NewObject calls, MakeObject calls, objects handed the UP twin */
     /* the icon pens are no longer here: the shared holder record IPD_SEM_NAME owns them (iconpen_dos.h, F14) */
+    int slider, slider_c[4], slider_pen[2]; /* MODERN-SLIDER: the scroller fill being painted is a slider (flat_prop_slider dir), its
+                                             * container x,y,w,h and track / knob pens (set by slider_note, read by slider_paint) */
 } flatshared;
 
 #endif

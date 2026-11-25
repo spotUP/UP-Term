@@ -2287,6 +2287,34 @@ static void test_gadget_is_prop(void)
 
 /* FLAT-SCROLLER: knob = the lighter pen (pen_button), track = the frame pen (pen_back), nothing outside the container, nothing
  * when flat is off or held. Same rule for every state: the function takes no active flag. */
+/* MODERN-SLIDER: slider pick, track line and round knob rows */
+static void test_slider(void)
+{
+    int x0, x1, i, w[8], t[4];
+    CHECK_INT(flat_prop_slider(0, 2, 6, 7, 1), 1);
+    CHECK_INT(flat_prop_slider(0x10, 2, 6, 7, 1), 0);
+    CHECK_INT(flat_prop_slider(0, 2, 40, 7, 1), 0);
+    CHECK_INT(flat_prop_slider(0, 6, 6, 7, 1), 0);
+    CHECK_INT(flat_prop_slider(0, 4, 14, 7, 2), 2);
+    CHECK_INT(flat_prop_slider(0, 4, 14, 30, 2), 0);
+    for (i = 0; i < 8; i++)
+        w[i] = flat_slider_disc_row(1, 10, 20, 6, 7, 20 + i, &x0, &x1) ? x1 - x0 + 1 : 0;
+    CHECK_INT(w[0], 4); CHECK_INT(w[1], 6); CHECK_INT(w[4], 6);
+    CHECK_INT(w[5], 4); CHECK_INT(w[6], 0);
+    CHECK_INT(flat_slider_disc_row(1, 10, 20, 6, 7, 25, &x0, &x1) ? x0 : -1, 11);
+    for (i = 0; i < 8; i++)
+        w[i] = flat_slider_disc_row(2, 10, 20, 6, 7, 20 + i, &x0, &x1) ? x1 - x0 + 1 : 0;
+    CHECK_INT((w[0] == 0) + (w[1] == 0) + (w[5] == 0) + (w[6] == 0), 3);
+    CHECK_INT(w[3], 6);
+    CHECK_INT(flat_slider_track(1, 1, 100, 50, 149, 7, 0, 0, 999, 999, t), 1);
+    CHECK_INT(t[1], 53); CHECK_INT(t[3], 53);
+    CHECK_INT(t[0], 100); CHECK_INT(t[2], 248);
+    CHECK_INT(flat_slider_track(1, 1, 100, 50, 149, 7, 0, 50, 999, 52, t), 0);
+    CHECK_INT(flat_slider_track(1, 1, 100, 50, 149, 7, 120, 0, 130, 999, t) ? t[2] - t[0] : -1, 10);
+    CHECK_INT(flat_slider_track(2, 2, 10, 0, 16, 90, 0, 0, 999, 999, t), 1);
+    CHECK_INT(t[0], 17); CHECK_INT(t[2] - t[0] + 1, 2);
+}
+
 static void test_scroller(void)
 {
     flat_state s;
@@ -4491,6 +4519,7 @@ void suite_flat_core(void)
     test_dopus_late_start_rescans();
     test_title_accent();
     test_scroller();
+    test_slider();
     test_gadget_is_prop();
     test_knob_pen();
     test_desk_flat_state();
