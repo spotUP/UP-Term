@@ -1034,7 +1034,9 @@ def sys_hdf_upterm_bin(image):
     entries (sys_hdf_kit_upterm, KIT_SHADOWS never see them), so every build/amiga file the drawer holds is made current
     (ensure_built), written where it differs, and read back; the start is refused on a mismatch."""
     place = clone_upterm_place(image)
-    built = ROOT / "build/amiga"
+    # a worktree's build/amiga holds only what it built: without the main checkout's files (merge_build) the master's
+    # old patina-flat stayed and held the boot CLI, no screen on 6/6 boots (NEWSHELL4, 2026-11-26)
+    built = merge_build()
     if not place or not built.is_dir():
         return []
     part, base = place
