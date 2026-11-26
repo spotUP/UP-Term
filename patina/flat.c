@@ -1190,14 +1190,13 @@ static int dopus_push_claim(struct RastPort *rp, int x0, int y0, int x1, int y1,
  * pen-0 content the app draws after the frame lands on it (flat_rf_c, flat_tx_c); GROUP draws nothing. 1 = handled, 0 = stock draw
  * (a frame bordering another gadget type, or no pen on this screen). Any frame draw first drops the records it overlaps. */
 static int prop_knob(struct Gadget *g, struct PropInfo *pi, int cx, int cy, int *k);
-/* C8-SCROLLER: the window-relative box x, y, w, h of gadget g in o (GRELRIGHT/BOTTOM/WIDTH/HEIGHT resolved as noline_frame does) */
-static void gad_xywh(struct Window *w, struct Gadget *g, int *o)
-{
-    o[0] = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? w->Width - 1 : 0);
-    o[1] = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? w->Height - 1 : 0);
-    o[2] = g->Width + ((g->Flags & GFLG_RELWIDTH) ? w->Width : 0);
-    o[3] = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? w->Height : 0);
-}
+/* C8-SCROLLER: the window-relative box x, y, w, h of gadget g in w (GRELRIGHT/BOTTOM/WIDTH/HEIGHT resolved as noline_frame does).
+ * Macros, not a helper: prop_arrows sits at the deep end of flat_rf_c's chain, and a call plus two box arrays cost it 112 bytes of
+ * the flat budget (C8-FLAT-BUDGET). */
+#define GAD_X(w, g) ((g)->LeftEdge + (((g)->Flags & GFLG_RELRIGHT) ? (w)->Width - 1 : 0))
+#define GAD_Y(w, g) ((g)->TopEdge + (((g)->Flags & GFLG_RELBOTTOM) ? (w)->Height - 1 : 0))
+#define GAD_W(w, g) ((g)->Width + (((g)->Flags & GFLG_RELWIDTH) ? (w)->Width : 0))
+#define GAD_H(w, g) ((g)->Height + (((g)->Flags & GFLG_RELHEIGHT) ? (w)->Height : 0))
 
 /* C8-SCROLLER: 1 when one-axis prop g of w has a scroller arrow (flat_prop_arrow) in the window's gadget list: a list scroller, never
  * a slider, however short its knob. Walks the list only (no Intuition call: this also runs inside graphics.library). */
@@ -1206,17 +1205,12 @@ static int prop_arrows(struct Window *w, struct Gadget *g)
     struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
     struct Gadget *o;
     int n, dir = (pi->Flags & (FREEHORIZ | FREEVERT)) == FREEHORIZ ? 1 : (pi->Flags & (FREEHORIZ | FREEVERT)) == FREEVERT ? 2 : 0;
-    int p[4], b[4];
     if (!dir)
         return 0;
-    gad_xywh(w, g, p);
-    for (o = w->FirstGadget, n = 0; o && n < 64; o = o->NextGadget, n++) {
-        if (o == g)
-            continue;
-        gad_xywh(w, o, b);
-        if (flat_prop_arrow(dir, p[0], p[1], p[2], p[3], o->GadgetType, o->Activation, b[0], b[1], b[2], b[3]))
+    for (o = w->FirstGadget, n = 0; o && n < 64; o = o->NextGadget, n++)
+        if (o != g && flat_prop_arrow(dir, GAD_X(w, g), GAD_Y(w, g), GAD_W(w, g), GAD_H(w, g), o->GadgetType, o->Activation,
+                                      GAD_X(w, o), GAD_Y(w, o), GAD_W(w, o), GAD_H(w, o)))
             return 1;
-    }
     return 0;
 }
 
