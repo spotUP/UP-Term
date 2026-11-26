@@ -8,6 +8,9 @@
   python3 tools/pkgs.py index <dir>        upkg's index of the archives in <dir>
   python3 tools/pkgs.py ipk <build>        one .ipk per package and variant into <build>/ipk (from build/dist/<archive> = 020, build/dist/fpu/<archive> = fpu)
   python3 tools/pkgs.py feed <build>       <build>/ipk/Packages and Packages.gz of those .ipk files
+  python3 tools/pkgs.py build-ipk --stage <dir> --control <file> --out <dir> [--postinst <f>] [--prerm <f>]
+                                           a third-party .ipk (docs/upkg-publish.md) into <dir>; prints its path
+  python3 tools/pkgs.py feed-index <dir>   <dir>/Packages and Packages.gz of the third-party .ipk files in <dir>
 """
 import gzip, hashlib, io, os, pathlib, re, sys, tarfile
 
@@ -315,17 +318,23 @@ def _targz(entries):
 def _data_entries(kit, archive):
     """Every entry of the staged tree build/dist/<archive>, sorted, under ./T/upkg-stage/<archive>/."""
     top = '%s/%s' % (STAGE, archive)
-    ents, size = [], 0
     parts = top.split('/')
     # From ./T/upkg-stage down, never ./T itself: /T is the T: assign, which always exists, and an
     # entry for it makes opkg try to create /T and warn "Can't create '/T' (errno=5)" on every install.
-    for i in range(2, len(parts) + 1):
-        ents.append((_tinfo('./' + '/'.join(parts[:i]), mode=0o755, kind=tarfile.DIRTYPE), None))
+    ents = [(_tinfo('./' + '/'.join(parts[:i]), mode=0o755, kind=tarfile.DIRTYPE), None) for i in range(2, len(parts) + 1)]
+    more, size = _walk(kit, top)
+    return ents + more, size
+
+
+def _walk(kit, top):
+    """Entries of every drawer and file below kit, sorted, named ./<top>/<path>, and the file bytes in all. top '' is a
+    bare tree (build-ipk): its top drawers are assigns (Libs, UP-Term) and get no entry, as ./T gets none above."""
+    ents, size = [], 0
     for dirpath, dirs, files in os.walk(kit):
         dirs.sort()
         rel = os.path.relpath(dirpath, kit)
-        base = top if rel == '.' else top + '/' + rel
-        if rel != '.':
+        base = top if rel == '.' else '/'.join(p for p in (top, rel) if p)
+        if rel != '.' and (top or '/' in rel):
             ents.append((_tinfo('./' + base, mode=0o755, kind=tarfile.DIRTYPE), None))
         for fn in sorted(files):
             fp = os.path.join(dirpath, fn)
@@ -419,11 +428,16 @@ def build_ipk(r, build, variant='020'):
              'Description: ' + summary(r['id'])]
     lines[2:2] = _rename_fields(r) + _depends_fields(r)
     lines += _interactive_fields(kit) + _launch_fields(r)
+    scripts = {'preinst': need} if need else {}
+    scripts.update(postinst=post, prerm=pre)
+    return _pack(lines, scripts, data_ents)
+
+
+def _pack(lines, scripts, data_ents):
+    """The .ipk bytes of control lines, {name: script text} (in the order given) and data.tar entries."""
     ctl = ('\n'.join(lines) + '\n').encode()
     ents = [(_tinfo('./', mode=0o755, kind=tarfile.DIRTYPE), None), (_tinfo('./control', len(ctl)), ctl)]
-    if need:
-        ents.append((_tinfo('./preinst', len(need), 0o755), need.encode()))
-    ents += [(_tinfo('./postinst', len(post), 0o755), post.encode()), (_tinfo('./prerm', len(pre), 0o755), pre.encode())]
+    ents += [(_tinfo('./' + n, len(t.encode()), 0o755), t.encode()) for n, t in scripts.items()]
     control = _targz(ents)
     data = _targz([(_tinfo('./', mode=0o755, kind=tarfile.DIRTYPE), None)] + data_ents)
     return _ar([('debian-binary', b'2.0\n'), ('control.tar.gz', control), ('data.tar.gz', data)])
@@ -469,12 +483,119 @@ def feed(build, path=TABLE):
 
 
 def write_feed(build, path=TABLE):
-    text = feed(build, path).encode()
-    out = pathlib.Path(build) / 'ipk'
+    _write_packages(pathlib.Path(build) / 'ipk', feed(build, path))
+
+
+def _write_packages(out, text):
+    text = text.encode()
     (out / 'Packages').write_bytes(text)
     with open(out / 'Packages.gz', 'wb') as f:
         with gzip.GzipFile(filename='', mode='wb', fileobj=f, compresslevel=9, mtime=0) as gz:
             gz.write(text)
+
+
+# A third-party package (docs/upkg-publish.md): a plain stage tree whose top drawers are assigns, a control file, and
+# optional postinst/prerm. build-ipk and feed-index are the one builder and indexer callers use (Release Dropper).
+EXT_REQUIRED = ('Package', 'Version', 'Architecture', 'Maintainer', 'Description')
+EXT_FIELDS = ('Package', 'Version', 'Depends', 'Replaces', 'Conflicts', 'Provides', 'Launch', 'Architecture',
+              'Maintainer', 'Description')
+EXT_ARCHES = tuple(a for _, a in VARIANTS) + ('all',)
+
+
+def split_ar(data):
+    """[(name, bytes)] of an ar archive (the inverse of _ar)."""
+    if data[:8] != b'!<arch>\n':
+        raise SystemExit('pkgs: not an ar archive')
+    out, i = [], 8
+    while i < len(data):
+        h = data[i:i + 60]
+        size = int(h[48:58])
+        out.append((h[:16].decode().strip().rstrip('/'), data[i + 60:i + 60 + size]))
+        i += 60 + size + size % 2
+    return out
+
+
+def ext_control(text, where='control'):
+    """{field: value} of a third-party control text, in file order, after the spec's checks."""
+    c = {}
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        if line[0] in ' \t' or ': ' not in line:
+            raise SystemExit('pkgs: %s: want one "Key: value" a line, got %r' % (where, line))
+        k, v = line.split(': ', 1)
+        c[k] = v.strip()
+    bad = [k for k in c if k not in EXT_FIELDS + ('Installed-Size',)]
+    miss = [k for k in EXT_REQUIRED if not c.get(k)]
+    if bad or miss:
+        raise SystemExit('pkgs: %s: unknown fields %s, missing %s' % (where, bad, miss))
+    if not re.fullmatch(r'[a-z0-9][a-z0-9+.-]{0,19}', c['Package']) or c['Package'].startswith('up-'):
+        raise SystemExit('pkgs: %s: Package %r: want [a-z0-9][a-z0-9+.-]*, at most 20 characters, no up- prefix' % (where, c['Package']))
+    if not re.fullmatch(r'[0-9][0-9A-Za-z.+~]*-r[1-9][0-9]*', c['Version']):
+        raise SystemExit('pkgs: %s: Version %r: want <upstream>-r<revision>, e.g. 1.2-r1' % (where, c['Version']))
+    if c['Architecture'] not in EXT_ARCHES:
+        raise SystemExit('pkgs: %s: Architecture %r: want one of %s' % (where, c['Architecture'], ', '.join(EXT_ARCHES)))
+    return c
+
+
+def ext_ipk_name(c):
+    """<Package>_<upstream>_<Architecture>.ipk, held to 30 characters like ipk_name()."""
+    n = '%s_%s_%s.ipk' % (c['Package'], c['Version'].rsplit('-r', 1)[0], c['Architecture'])
+    if len(n) > 30:
+        raise SystemExit('pkgs: %s is %d characters: the Amiga limit is 30 (shorten Package or the version)' % (n, len(n)))
+    return n
+
+
+def build_ext_ipk(stage, control, out, postinst=None, prerm=None):
+    """Write the .ipk of one third-party stage tree into <out>; return its path. Byte-equal on a rebuild."""
+    stage = pathlib.Path(stage)
+    c = ext_control(pathlib.Path(control).read_text(encoding='utf-8'), str(control))
+    if 'Installed-Size' in c:
+        raise SystemExit('pkgs: %s: Installed-Size is computed, leave it out' % control)
+    if not stage.is_dir() or any(p.is_file() for p in stage.iterdir()) or not any(stage.iterdir()):
+        raise SystemExit('pkgs: %s: want only drawers at the top (assign names: Libs, C, UP-Term, ...)' % stage)
+    long = [str(p.relative_to(stage)) for p in stage.rglob('*') if len(p.name) > 30]
+    if long:
+        raise SystemExit('pkgs: %s: names over 30 characters: %s' % (stage, ', '.join(long)))
+    data_ents, size = _walk(stage, '')
+    lines = ['%s: %s' % (k, c[k]) for k in EXT_FIELDS if k in c]
+    lines.insert(lines.index('Maintainer: ' + c['Maintainer']) + 1, 'Installed-Size: %d' % ((size + 1023) // 1024))
+    scripts = {}
+    for key, f in (('postinst', postinst), ('prerm', prerm)):
+        if f:
+            t = pathlib.Path(f).read_text(encoding='latin-1')
+            if not t.startswith('#!/bin/sh\n'):
+                raise SystemExit('pkgs: %s: a vsh script starts with #!/bin/sh' % f)
+            scripts[key] = t
+    out = pathlib.Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    f = out / ext_ipk_name(c)
+    f.write_bytes(_pack(lines, scripts, data_ents))
+    return f
+
+
+def ipk_control(data):
+    """The ./control text of .ipk bytes."""
+    m = dict(split_ar(data))
+    with tarfile.open(fileobj=io.BytesIO(m['control.tar.gz'])) as tf:
+        return tf.extractfile('./control').read().decode()
+
+
+def ext_feed(d):
+    """Packages text of every <d>/*.ipk (third-party feed), sorted by file name; each control is checked again."""
+    blocks = []
+    for f in sorted(pathlib.Path(d).glob('*.ipk')):
+        data = f.read_bytes()
+        c = ext_control(ipk_control(data), f.name)
+        if ext_ipk_name(c) != f.name:
+            raise SystemExit('pkgs feed-index: %s: its control names it %s' % (f, ext_ipk_name(c)))
+        b = ['%s: %s' % (k, v) for k, v in c.items() if k != 'Description']
+        b += ['Filename: ' + f.name, 'Size: %d' % len(data), 'SHA256sum: ' + hashlib.sha256(data).hexdigest(),
+              'Description: ' + c['Description']]
+        blocks.append('\n'.join(b) + '\n')
+    if not blocks:
+        raise SystemExit('pkgs feed-index: no .ipk in %s' % d)
+    return '\n'.join(blocks)
 
 
 def main(argv):
@@ -494,6 +615,17 @@ def main(argv):
             print(n)
     elif argv[:1] == ['feed'] and len(argv) == 2:
         write_feed(argv[1])
+    elif argv[:1] == ['build-ipk']:
+        import argparse
+        a = argparse.ArgumentParser(prog='pkgs.py build-ipk')
+        for o in ('--stage', '--control', '--out'):
+            a.add_argument(o, required=True)
+        a.add_argument('--postinst')
+        a.add_argument('--prerm')
+        o = a.parse_args(argv[1:])
+        print(build_ext_ipk(o.stage, o.control, o.out, o.postinst, o.prerm))
+    elif argv[:1] == ['feed-index'] and len(argv) == 2:
+        _write_packages(pathlib.Path(argv[1]), ext_feed(argv[1]))
     else:
         sys.exit(__doc__)
 

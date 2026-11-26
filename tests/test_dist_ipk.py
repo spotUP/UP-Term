@@ -27,16 +27,7 @@ def stage(build, archive):
     (kit / 'Uninstall').write_bytes(b'; uninstall\n')
 
 
-def split_ar(data):
-    assert data[:8] == b'!<arch>\n'
-    out, i = [], 8
-    while i < len(data):
-        h = data[i:i + 60]
-        assert h[58:60] == b'`\n', h
-        size = int(h[48:58])
-        out.append((h[:16].decode().strip().rstrip('/'), data[i + 60:i + 60 + size]))
-        i += 60 + size + size % 2
-    return out
+split_ar = pkgs.split_ar
 
 
 def stanzas(text):
@@ -415,6 +406,71 @@ class VariantNames(unittest.TestCase):
         self.assertEqual(pkgs.ipk_name(r, 'fpu'), 'up-nvim_2.1_m68k-amigaos-fpu.ipk')
         self.assertEqual(pkgs.stage_dir('b', 'up-nvim'), pathlib.Path('b/dist/up-nvim'))
         self.assertEqual(pkgs.stage_dir('b', 'up-nvim', 'fpu'), pathlib.Path('b/dist/fpu/up-nvim'))
+
+class ThirdPartyFeed(unittest.TestCase):
+    """pkgs.py build-ipk and feed-index (docs/upkg-publish.md), through the CLI the Release Dropper calls."""
+    CONTROL = ('Package: foo\nVersion: 1.2-r1\nArchitecture: m68k-amigaos\nMaintainer: Someone <https://example.org>\n'
+               'Depends: bar\nDescription: Foo for the Amiga\n')
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.stage = self.tmp / 'stage'
+        (self.stage / 'Libs').mkdir(parents=True)
+        (self.stage / 'Libs/foo.library').write_bytes(b'L' * 3000)
+        (self.stage / 'UP-Term/pkg/foo').mkdir(parents=True)
+        (self.stage / 'UP-Term/pkg/foo/foo').write_bytes(b'F' * 10)
+        self.feed = self.tmp / 'feed'
+
+    def cli(self, *args, ok=True):
+        p = subprocess.run([sys.executable, str(ROOT / 'tools/pkgs.py'), *args], capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(p.returncode == 0, ok, p.stdout + p.stderr)
+        return p.stdout + p.stderr
+
+    def build(self, control=CONTROL, *extra, ok=True):
+        (self.tmp / 'control').write_text(control)
+        return self.cli('build-ipk', '--stage', str(self.stage), '--control', str(self.tmp / 'control'),
+                        '--out', str(self.feed), *extra, ok=ok)
+
+    def test_ipk_layout_control_and_index(self):
+        (self.tmp / 'post').write_text('#!/bin/sh\nAssign MUI: SYS:MUI\n')
+        self.assertEqual(self.build(self.CONTROL, '--postinst', str(self.tmp / 'post')).strip(),
+                         str(self.feed / 'foo_1.2_m68k-amigaos.ipk'))
+        f = self.feed / 'foo_1.2_m68k-amigaos.ipk'
+        first = f.read_bytes()
+        self.build(self.CONTROL, '--postinst', str(self.tmp / 'post'))
+        self.assertEqual(f.read_bytes(), first, 'rebuild is byte-equal')
+        m = split_ar(first)
+        self.assertEqual([n for n, _ in m], ['debian-binary', 'control.tar.gz', 'data.tar.gz'])
+        ctl = tarfile.open(fileobj=io.BytesIO(dict(m)['control.tar.gz']))
+        self.assertEqual(sorted(ctl.getnames()), ['.', './control', './postinst'])
+        self.assertIn('Maintainer: Someone <https://example.org>\nInstalled-Size: 3\n', ctl.extractfile('./control').read().decode())
+        names = tarfile.open(fileobj=io.BytesIO(dict(m)['data.tar.gz'])).getnames()
+        self.assertEqual(names, ['.', './Libs/foo.library', './UP-Term/pkg', './UP-Term/pkg/foo', './UP-Term/pkg/foo/foo'])
+        self.cli('feed-index', str(self.feed))
+        s = stanzas(gzip.decompress((self.feed / 'Packages.gz').read_bytes()).decode())
+        self.assertEqual((self.feed / 'Packages').read_text(), gzip.decompress((self.feed / 'Packages.gz').read_bytes()).decode())
+        self.assertEqual(len(s), 1)
+        self.assertEqual((s[0]['Package'], s[0]['Version'], s[0]['Depends'], s[0]['Filename'], s[0]['Size']),
+                         ('foo', '1.2-r1', 'bar', f.name, str(len(first))))
+        self.assertEqual(s[0]['SHA256sum'], hashlib.sha256(first).hexdigest())
+
+    def test_rule_breaks_are_refused(self):
+        for bad in (self.CONTROL.replace('Package: foo', 'Package: up-foo'),
+                    self.CONTROL.replace('1.2-r1', '1.2'),
+                    self.CONTROL.replace('m68k-amigaos', 'i386'),
+                    self.CONTROL + 'Section: x\n',
+                    self.CONTROL + 'Installed-Size: 1\n',
+                    self.CONTROL.replace('Package: foo', 'Package: foo-with-a-longer-name'),
+                    self.CONTROL.replace('1.2-r1', '1.2.3.4.5.6.7-r1')):
+            self.build(bad, ok=False)
+        (self.stage / 'Libs/a-file-name-over-thirty-chars.x').write_bytes(b'')
+        self.assertIn('over 30', self.build(ok=False))
+
+    def test_index_refuses_a_renamed_ipk(self):
+        self.build()
+        (self.feed / 'foo_1.2_m68k-amigaos.ipk').rename(self.feed / 'foo_1.3_m68k-amigaos.ipk')
+        self.cli('feed-index', str(self.feed), ok=False)
 
 
 if __name__ == '__main__':
