@@ -546,6 +546,7 @@ class FakeWasabi:
     """The wasabi client as ami._m() returns it, for the host: ARexx answers like Directory Opus, no connection."""
     class WasabiError(Exception): pass
     class Conn:
+        banner = 'wasabid 1 (simulated)'      # ami._conn passes it to check_identity
         def __init__(self, *a, **k): pass
         def __enter__(self): return self
         def __exit__(self, *a): return False
@@ -562,10 +563,13 @@ class AddonCases(unittest.TestCase):
         sys.path.insert(0, str(ROOT / 'tools'))
         import pkgs, verdicts
         sim = ScriptedAmiga(pkgs, skip)
+        was_verified = ami.PORT in ami.rigwasabi._VERIFIED
         saved = (ir.run, ir.run_long, ir.run_slow, ir.prepare, ir.remote_banner, ir.time.sleep, ami._m)
         ir.run, ir.run_long, ir.run_slow = sim.run, sim.run_long, sim.run_slow
         ir.time.sleep = lambda s: None
-        ami._m = lambda: FakeWasabi    # the add-on checks that ask a program over ARexx (dopus) never open a socket
+        ami._m = lambda: FakeWasabi
+        ami.rigwasabi._VERIFIED.add(ami.PORT)    # the simulated rig has no UDP discovery: its port counts as already identity-checked
+        # the add-on checks that ask a program over ARexx (dopus) never open a socket
         ir.prepare = lambda dest, addons=(): sim.log.append('prepare %s' % ','.join(addons))
         ir.remote_banner = lambda ck: sim.log.append('banner')
         ck = verdicts.Checks()
@@ -577,6 +581,7 @@ class AddonCases(unittest.TestCase):
                 case(ck)
         finally:
             ir.run, ir.run_long, ir.run_slow, ir.prepare, ir.remote_banner, ir.time.sleep, ami._m = saved
+            if not was_verified: ami.rigwasabi._VERIFIED.discard(ami.PORT)
         return ck, sim
 
     def ids(self):
@@ -743,12 +748,15 @@ class InstallerCases(unittest.TestCase):
             ir.run, ir.run_long, ir.run_slow, ir.prepare = sim.run, sim.run_long, sim.run_slow, lambda dest, addons=(): None
             saved_io = (ir.time.sleep, ami._m)
             ir.time.sleep, ami._m = (lambda s: None), (lambda: FakeWasabi)   # dopus asks its program over ARexx: no socket
+            was_verified = ami.PORT in ami.rigwasabi._VERIFIED
+            ami.rigwasabi._VERIFIED.add(ami.PORT)    # no UDP discovery in the simulation: the port counts as identity-checked
             self.ir2.installer_run, self.ir2.read_installer = installer_run, lambda: ('Installer', set())
             try:
                 ok, detail = self.ir2.run_addon_case(pkg)
             finally:
                 ir.run, ir.run_long, ir.run_slow, ir.prepare, self.ir2.installer_run, self.ir2.read_installer = saved
                 ir.time.sleep, ami._m = saved_io
+                if not was_verified: ami.rigwasabi._VERIFIED.discard(ami.PORT)
             self.assertTrue(ok, (pkg, detail))
             self.assertEqual(started, [('distkit', 'UP-Term'), ('kit-' + pkg, ir.archive(pkg))], 'base first, then its own icon')
 
