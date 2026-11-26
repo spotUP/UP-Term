@@ -35,8 +35,8 @@ class KitShadowKeymap(unittest.TestCase):
         self.assertLess(out.index("Execute BOOTX:shadows-up"), out.index(";BEGIN UP-Term Patina"))
         self.assertEqual(rig.user_startup_with_shadows_block(out.encode("latin-1")).decode("latin-1"), out)   # once
         self.assertEqual(rig.user_startup_with_shadows_block(b"; no kit\n"), b"; no kit\n" + rig.SHADOWS_UP_BLOCK_TEXT.encode())   # never go (RIG-GO-EARLY)
-        script = rig.SHADOWS_UP_SCRIPT
-        self.assertIn("Copy >NIL: VTC:patina-flat UP-Term:bin/patina-flat CLONE", script)
+        # Patina programs are the up-patina add-on, not kit entries: rig.sys_hdf_upterm_bin syncs them (tests/test_rig_upterm_bin)
+        self.assertNotIn("patina-flat", rig.SHADOWS_UP_SCRIPT)
         self.assertNotIn("patina-flat", rig.GO)   # go no longer runs any shadow pass
 
     def test_early_block_assigns_libs_ixp6_before_patina_and_go_skips_then(self):
@@ -103,18 +103,6 @@ class KitShadowKeymap(unittest.TestCase):
             self.assertEqual(rig.main(["rig.py", "install"]), 0)
         self.assertEqual((vtc / "UPTerm").read_bytes(), b"upterm-new")
         self.assertFalse((vtc / paths.UPTERM_DRAWER / "bin" / "UPTerm").exists())   # only VTC: is required
-
-    def test_boot_shadows_every_patina_program_the_kit_installs(self):
-        # RIG-KIT-SHADOWS: no rows for them left stale kit copies that the boot's User-Startup Run line started.
-        # The set is the one dist/install.dos copies into UP-Term:bin, read from that file.
-        dos = (ROOT / "dist/install.dos").read_text()
-        names = next(l.split()[1:-2] for l in dos.splitlines() if l.startswith("Copy Patina "))
-        self.assertEqual(sorted(names), sorted(["AmTile", "Patina", "patina-flat", "patina-gui", "patina-icons", "patina-index", "patina-menu", "amnotify"]))
-        up = rig.kit_shadow_lines(True)
-        for n in names:
-            self.assertIn("Copy >NIL: VTC:%s UP-Term:bin/%s CLONE" % (n, n), up)
-            self.assertIn("Copy >NIL: VTC:kit-orig/UP-Term-bin-%s UP-Term:bin/%s CLONE" % (n, n), up)
-            self.assertEqual(rig.kit_shadow_src(n), rig.build_amiga() / n)
 
     def test_install_stages_patina_themes_and_font_and_boot_places_them(self):
         # RIG-NO-THEMES: install through rig.main stages them in VTC:, the boot script copies them to the kit places
