@@ -150,7 +150,7 @@ class SysHdfDopus(unittest.TestCase):
 
     def test_start_calls_the_edit_unless_no_dopus(self):
         body = (ROOT / "tools/rig/rig.py").read_text()
-        self.assertIn('else:\n            sys_hdf_dopus(RIG / "sys.hdf")', body)
+        self.assertIn('else:\n            with phase("sys_hdf_dopus"):\n                sys_hdf_dopus(RIG / "sys.hdf")', body)
 
 
 if __name__ == "__main__":

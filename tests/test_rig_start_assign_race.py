@@ -4,6 +4,7 @@ BOOTX:go runs beside the Startup-Sequence (Run >NIL: C:Execute BOOTX:go), and th
 (BOOTX:wasabid-up) starts wasabid on its own. wasabid could answer before go reached its assigns: start took that
 first answer as "up", read Assign LIST, and failed "the boot lacks the assigns ETC" on a fresh rig 68 whose
 boot.log said "assigns done" a moment later."""
+import time
 import pathlib, sys, tempfile, unittest
 from unittest import mock
 
@@ -38,6 +39,7 @@ class StartWaitsForAssigns(unittest.TestCase):
 
             class Clock:
                 now, polls = 0.0, 0
+                strftime = staticmethod(time.strftime)
 
                 @classmethod
                 def sleep(cls, _):
