@@ -2430,13 +2430,14 @@ static int scroller_pen_at(flatshared *r, struct RastPort *rp, struct Window *w,
                                                         c[0], c[1], pi->CWidth, pi->CHeight, k[0], k[1], k[2], k[3], (int)box[0], (int)box[1], (int)box[2], (int)box[3]));
 }
 
-/* MODERN-SLIDER: r->slider and its container and pens for the fill about to be painted (flat_prop_slider on Intuition's knob box k);
+/* MODERN-SLIDER: r->slider and its container and pens for the fill about to be painted (flat_prop_slider on Intuition's knob box k;
+ * scroller_pen clears it afterwards for a scroller with arrows);
  * the track takes the grey scroller knob pen, the knob the theme accent pen_line. */
 static void slider_note(flatshared *r, struct RastPort *rp, struct Window *w, struct Gadget *g, const int *c, const int *k)
 {
     struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
     const flat_state *ss = st_scr(r, w->WScreen);
-    r->slider = ss->pen_line ? flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, w->WScreen), prop_arrows(w, g)) : 0;
+    r->slider = ss->pen_line ? flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, w->WScreen), 0) : 0;
     r->slider_c[0] = c[0]; r->slider_c[1] = c[1]; r->slider_c[2] = pi->CWidth; r->slider_c[3] = pi->CHeight;
     r->slider_pen[0] = flat_knob_state_pen(ss, rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0);
     r->slider_pen[1] = ss->pen_line;
@@ -2456,8 +2457,11 @@ static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, co
     struct Gadget *g;
     int pen, n;
     for (g = w->FirstGadget, n = 0; g && n < 64; g = g->NextGadget, n++)
-        if (gadget_has_propinfo(g) && (pen = scroller_pen_of(r, rp, w, g, box, k)) >= 0)
+        if (gadget_has_propinfo(g) && (pen = scroller_pen_of(r, rp, w, g, box, k)) >= 0) {
+            if (r->slider && prop_arrows(w, g))
+                r->slider = 0;          /* C8-SCROLLER here, not in slider_note: two frames shallower on flat_rf_c's chain (flat budget) */
             return pen;
+        }
     return -1;
 }
 
