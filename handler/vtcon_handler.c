@@ -1850,6 +1850,10 @@ static void parse_spec(con *c, const char *s)
     int fno = 0, k, colours = 0;
     c->wx = 0;
     c->wy = 0;
+    /* a re-parse after a failed open (FIRST-NEWSHELL) must not keep the old spec's options */
+    c->wait_close = c->auto_open = c->font_spec = c->pane_serial = 0;
+    c->foreign = 0;
+    c->tab_host[0] = 0;
     memset(&c->wopt, 0, sizeof(c->wopt));
     c->ww = 640;
     c->wh = 200;
@@ -8790,14 +8794,10 @@ static void packet(con *c, struct DosPacket *p)
             if (!c->auto_open && !open_window(c)) {
                 DBG("open failed", c->w.win, c->w.t);
                 close_window(c);
-                /* FIRST-NEWSHELL: give dn_Task back and end once idle, like the ROM CON:. Kept, the process
-                 * lived on (ever_opened 0) and took the next Open of CON: with this failed spec: the boot
-                 * Echo's 480x30 "UP-Term rig" window instead of the first NewShell's own. */
-                Forbid();
-                if (c->node && c->node->dn_Task == c->port)
-                    c->node->dn_Task = 0;
-                Permit();
-                c->ever_opened = 1;
+                /* FIRST-NEWSHELL: this process stays CON:'s dn_Task (ending it here deadlocked the boot:
+                 * IPrefs waited on its screennotify), so the next Open must parse its own spec, not
+                 * take this failed one (the boot Echo's 480x30 "UP-Term rig" window). */
+                c->spec_parsed = 0;
                 reply(p, DOSFALSE, ERROR_NO_FREE_STORE);
                 return;
             }
