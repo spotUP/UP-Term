@@ -1026,6 +1026,56 @@ def sys_hdf_kit_upterm(image):
         shutil.rmtree(back, ignore_errors=True)
         shutil.rmtree(snaps, ignore_errors=True)
 
+def sys_hdf_upterm_bin(image):
+    """RIG-BLACK-SCREEN / RIG-START-SYNC: upterm_sync for the clone, on the host, before it boots. The master image's
+    UP-Term:bin holds an old patina-flat (242884 bytes, before PENS, 93ebc21a), and the PENS block (KIT_PENS_BLOCK_TEXT)
+    runs it without Run: an old binary took PENS for a resident start and held the boot CLI, C:LoadWB never ran, and on
+    RTG rigs IPrefs' switch left no screen open ("screens: 00", rig 21, 2026-11-25). The Patina programs are not kit
+    entries (sys_hdf_kit_upterm, KIT_SHADOWS never see them), so every build/amiga file the drawer holds is made current
+    (ensure_built), written where it differs, and read back; the start is refused on a mismatch."""
+    place = clone_upterm_place(image)
+    built = ROOT / "build/amiga"
+    if not place or not built.is_dir():
+        return []
+    part, base = place
+    d = "/".join(x for x in (base, "bin") if x)
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    def run(*a, check=True):
+        return subprocess.run([xdf, str(image), "open", "part=" + part, "+", *a], check=check, capture_output=True, text=True)
+    r = run("list", d, check=False)
+    if r.returncode != 0:
+        return []
+    listed = {l.split()[0].lower() for l in r.stdout.splitlines() if l.split()}
+    held = [f.name for f in sorted(built.iterdir()) if f.is_file() and f.name.lower() in listed]
+    if not held:
+        return []
+    ensure_built([built / n for n in held])   # before the compare: a rebuild after it would leave the drawer stale again
+    tmp = RIG / "upterm-bin.tmp"
+    def read_back(names):
+        shutil.rmtree(tmp, ignore_errors=True)
+        tmp.mkdir(parents=True)
+        ops = []
+        for n in names:
+            ops += ["+", "read", d + "/" + n, str(tmp / n)]
+        run(*ops[1:], check=False)
+        return lambda n: (tmp / n).read_bytes() if n in names and (tmp / n).is_file() else None
+    try:
+        stale = stale_names(built, read_back(held))
+        if not stale:
+            return []
+        ops = []
+        for n in stale:
+            ops += ["+", "delete", d + "/" + n, "+", "write", str(built / n), d + "/" + n]
+        run(*ops[1:])
+        back = read_back(stale)
+        bad = [n for n in stale if back(n) != (built / n).read_bytes()]
+        if bad:
+            sys.exit("rig: the clone's %s/%s differs from build/amiga after the write (RIG-BLACK-SCREEN)" % (d, ", ".join(bad)))
+        print("[OK] put %d into the clone's %s: %s" % (len(stale), d, ", ".join(stale)))
+        return stale
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
 def user_startup_with_block_before_kit(data, name, text):
     """data (S:User-Startup bytes) with the rig block <name> (text) before the first kit ';BEGIN UP-Term' block, or at
     the end when no kit block is there (a kit installed later appends its blocks after it); an earlier copy is removed
@@ -2510,6 +2560,7 @@ def _start(retries):
         sys_hdf_no_wasabid(RIG / "sys.hdf")
         if A500:
             sys_hdf_a500(RIG / "sys.hdf")
+        sys_hdf_upterm_bin(RIG / "sys.hdf")   # before the boot runs the PENS block (RIG-BLACK-SCREEN)
         sys_hdf_shadows_block(RIG / "sys.hdf")
         sys_hdf_skip_blocks(RIG / "sys.hdf")
     elif not OS and not OS32:
@@ -2524,6 +2575,7 @@ def _start(retries):
         sys_hdf_kit(RIG / "sys.hdf")
         if A500:
             sys_hdf_a500(RIG / "sys.hdf")
+        sys_hdf_upterm_bin(RIG / "sys.hdf")   # before the boot runs the PENS block (RIG-BLACK-SCREEN)
         sys_hdf_shadows_block(RIG / "sys.hdf")
         sys_hdf_skip_blocks(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
@@ -2584,7 +2636,7 @@ def _start(retries):
                 sys.exit("rig: the boot printed %d error line(s) (see boot.console in the rig's boot drawer)" % len(bad))
             guard_shell_startup()
             guard_upterm_assign()
-            warn_upterm_stale()
+            require_upterm_current()
             rigwasabi.warn_guru()
             start_watchdog()
             if M060:
@@ -2696,11 +2748,18 @@ def upterm_sync(check=False):
         sys.exit(1)
     return stale
 
-def warn_upterm_stale():
+def require_upterm_current():
+    """RIG-START-SYNC: a stale UP-Term:bin fails the start (it was a [WARN]: rig 21 booted an old patina-flat that held
+    the boot CLI at the PENS line, black screen). sys_hdf_upterm_bin makes a clone current before it boots; a drawer
+    this still finds stale (an --os host tree, a copy the boot wrote) needs `rig.py upterm-sync` and a reboot."""
     try:
-        upterm_sync(check=True)
-    except BaseException as e:   # warn only: a failed look never fails the start
+        stale = upterm_sync(check=True)
+    except BaseException as e:   # a failed look (no answer, no build/amiga) still never fails the start
         print("[WARN] rig: UP-Term:bin staleness check failed: %s" % e)
+        return
+    if stale:
+        sys.exit("rig: UP-Term:bin is older than build/amiga (%s); run `rig.py upterm-sync`, then `rig.py reboot` "
+                 "(RIG-START-SYNC)" % ", ".join(stale))
 
 def upterm_sync_command():
     upterm_sync(check="--check" in sys.argv[2:])
