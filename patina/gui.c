@@ -1869,11 +1869,18 @@ static void theme_live(gui *g, const char *name)
     list_rebuild_keep(g, keep);
 }
 
+/* WELCOME-BORDER: the window draws its own border on all four edges (draw_border). Intuition gives a borderless window
+ * a title bar strip (BorderTop > 0) when it opens with a title, and repaints that strip, title text and band, on every
+ * activation change; since the welcome and Help windows stay open across focus changes (f676b03a) that paint covered
+ * the top edge. So the window opens untitled (BorderTop 0, no strip) and takes its name afterwards: the window lists,
+ * the rig tools and the demo still find it by title. */
 static struct Window *window_open(gui *g)
 {
+    static const char *const title_of[] = { "Patina", "Welcome to Patina", "Patina Help" };
+    struct Window *w;
     struct TagItem tags[] = {
         { WA_Left, g->g.x }, { WA_Top, g->g.y }, { WA_Width, g->g.w }, { WA_Height, g->g.h },
-        { WA_PubScreen, (ULONG)g->scr }, { WA_Title, (ULONG) (g->welcome == 1 ? "Welcome to Patina" : g->welcome == 2 ? "Patina Help" : "Patina") },
+        { WA_PubScreen, (ULONG)g->scr },
         { WA_Borderless, TRUE }, { WA_Activate, TRUE }, { WA_RMBTrap, TRUE },
         { WA_WBenchWindow, TRUE },                 /* WBRESET-EXT: IPrefs counts windows lacking this flag and refuses to reset */
         { WA_SmartRefresh, TRUE }, { WA_ReportMouse, TRUE },
@@ -1882,7 +1889,10 @@ static struct Window *window_open(gui *g)
                     IDCMP_INACTIVEWINDOW | IDCMP_ACTIVEWINDOW | IDCMP_CHANGEWINDOW },
         { TAG_DONE, 0 }
     };
-    return OpenWindowTagList(0, tags);
+    w = OpenWindowTagList(0, tags);
+    if (w)
+        w->Title = (UBYTE *)title_of[g->welcome >= 1 && g->welcome <= 2 ? g->welcome : 0];
+    return w;
 }
 
 /* ---- viewer and message lines ------------------------------------------------------------------------ */
