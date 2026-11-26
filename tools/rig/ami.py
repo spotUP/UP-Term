@@ -230,7 +230,7 @@ class _RequesterWatch:
     def _look(self):
         try:
             return {r['addr']: r for r in requesters()}
-        except SystemExit:   # the daemon is busy or gone: the EXEC itself will say so
+        except (SystemExit, OSError):   # the daemon is busy or gone (ECONNRESET/REFUSED at a reset): the EXEC itself will say so
             return None
 
     def _watch(self):

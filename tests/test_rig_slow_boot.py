@@ -87,7 +87,7 @@ class StartWaitsForProgress(unittest.TestCase):
     """rig.start: a boot.log that keeps changing for far longer than the old 180 s wait is not killed."""
 
     def test_start_keeps_waiting_while_boot_log_advances_and_comes_up(self):
-        names = ("RIG", "OS", "mine", "START_ARGS", "setup_config_only", "status", "stop", "time", "subprocess", "guard_stale_base", "gc", "refuse_port_clash",
+        names = ("guard_upterm_assign", "require_upterm_current", "session_pid", "OWNER_FILE", "RIG", "OS", "mine", "START_ARGS", "setup_config_only", "status", "stop", "time", "subprocess", "guard_stale_base", "gc", "refuse_port_clash",
                  "boot_assigns_missing", "guard_shell_startup", "start_watchdog", "M060")
         saved = {n: getattr(rig, n) for n in names}
         saved_paths = (rig.paths.cap_fsuae_log, rig.paths.FSUAE)
@@ -130,6 +130,9 @@ class StartWaitsForProgress(unittest.TestCase):
                 rig.stop = lambda: stops.append(1)
                 rig.time = Clock
                 rig.subprocess = Proc
+                rig.session_pid = lambda: None   # walks the real ps tree
+                rig.guard_upterm_assign = rig.require_upterm_current = lambda: None   # talk to wasabid
+                rig.OWNER_FILE = rig.RIG / "owner.json"   # never the real rig's owner file
                 rig.boot_assigns_missing = lambda: []
                 rig.guard_shell_startup = lambda: None
                 rig.start_watchdog = lambda: None

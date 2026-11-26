@@ -173,6 +173,7 @@ PATINA_TESTS := tests/harness.c tests/test_main_patina.c tests/test_clips.c test
 # ONLY=rig_shell_path SHELL-PATH-RC10 (2026-11-03) (tests/test_rig_shell_path.py)
 # ONLY=rig_slow_boot A slow rig boot is not a dead one (RIG-SLOW-BOOT, 2026-10-28) (tests/test_rig_slow_boot.py)
 # ONLY=rig_start_assign_race rig.py start waits for BOOTX:go's assigns before it calls the rig up (RIG-START-ASSIGN-RACE, 2026-11-03) (tests/test_rig_start_assign_race.py)
+# ONLY=rig_start_lost a lost Amiga after 'up' goes to the boot retry (RIG19-START-FAIL) (tests/test_rig_start_lost.py)
 # ONLY=rig_start_exit rig.py start fails (non-zero exit) when every boot attempt fails (tests/test_rig_start_exit.py)
 # ONLY=rig_start_race Two `rig.py start` calls begun together launch one FS-UAE, not two (tests/test_rig_start_race.py)
 # ONLY=rig_sys_hdf_wasabid Every rig start strips the kit's wasabi block from its fresh sys.hdf clone (tests/test_rig_sys_hdf_wasabid.py)
@@ -408,6 +409,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS)) | $(VENV_FONTTOOLS)
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_shell_path ]; then python3 tests/test_rig_shell_path.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_slow_boot ]; then python3 tests/test_rig_slow_boot.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_start_assign_race ]; then python3 tests/test_rig_start_assign_race.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_start_lost ]; then python3 tests/test_rig_start_lost.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_start_exit ]; then python3 tests/test_rig_start_exit.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_start_race ]; then python3 tests/test_rig_start_race.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_sys_hdf_wasabid ]; then python3 tests/test_rig_sys_hdf_wasabid.py; fi

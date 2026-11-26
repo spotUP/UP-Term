@@ -26,7 +26,7 @@ class GoAssignsDone(unittest.TestCase):
 
 class StartWaitsForAssigns(unittest.TestCase):
     def test_an_early_wasabid_answer_does_not_end_the_wait_before_go_assigns(self):
-        names = ("RIG", "OS", "mine", "START_ARGS", "setup_config_only", "status", "stop", "time", "subprocess",
+        names = ("guard_upterm_assign", "require_upterm_current", "session_pid", "OWNER_FILE", "RIG", "OS", "mine", "START_ARGS", "setup_config_only", "status", "stop", "time", "subprocess",
                  "guard_stale_base", "gc", "refuse_port_clash", "boot_assigns_missing", "guard_shell_startup",
                  "start_watchdog", "retry_wb_reset", "boot_device_check")
         saved = {n: getattr(rig, n) for n in names}
@@ -77,6 +77,9 @@ class StartWaitsForAssigns(unittest.TestCase):
                 rig.stop = lambda: stops.append(1)
                 rig.time = Clock
                 rig.subprocess = Proc
+                rig.session_pid = lambda: None   # walks the real ps tree
+                rig.guard_upterm_assign = rig.require_upterm_current = lambda: None   # talk to wasabid
+                rig.OWNER_FILE = rig.RIG / "owner.json"   # never the real rig's owner file
                 rig.boot_assigns_missing = assigns_missing
                 rig.guard_shell_startup = lambda: None
                 rig.start_watchdog = lambda: None

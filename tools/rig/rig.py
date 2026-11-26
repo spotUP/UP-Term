@@ -2544,6 +2544,19 @@ def emu_exit_error(proc, was_up, running=None):
     return "[ERROR] fs-uae exited (rc %s) during boot, rig %s; log %s" % (
         "?" if rc is None else rc, os.environ.get("UPTERM_RIG", "1"), paths.FSUAE_LOG_DIR)
 
+def boot_lost_after_up(reset0, reset_now, alive):
+    """None when the rig is still up after 'up', else why the boot was lost.
+
+    Rigs 16, 17 and 19 (2026-11-25/26) answered the 'up' ping, then the guest gurued and ColdRebooted seconds
+    later (on a 68060 into the RIG-RESET-LOOP). The post-up checks then died on ECONNRESET/ECONNREFUSED or an
+    auth hang, and _start returned rc 1 with no retry and no watchdog. A new CPU reset in the fs-uae log or a
+    failed ping means the boot is lost and goes to the boot retry."""
+    if reset_now > reset0:
+        return "the Amiga reset (%d CPU reset(s))" % (reset_now - reset0)
+    if not alive:
+        return "wasabid stopped answering"
+    return None
+
 def _start(retries):
     # before anything is written: a start while the rig runs (or boots, when
     # status still says down) must not rewrite BOOTX:go, BOOTX:s/startup-sequence
@@ -2634,14 +2647,25 @@ def _start(retries):
                 for l in bad:
                     print("[ERROR] rig: boot console: %s" % l)
                 sys.exit("rig: the boot printed %d error line(s) (see boot.console in the rig's boot drawer)" % len(bad))
-            guard_shell_startup()
-            guard_upterm_assign()
-            require_upterm_current()
-            rigwasabi.warn_guru()
-            start_watchdog()
-            if M060:
-                retry_wb_reset()
-            return
+            reset0 = paths.fsuae_reset_count()
+            err = None
+            try:
+                guard_shell_startup()
+                guard_upterm_assign()
+                require_upterm_current()
+                rigwasabi.warn_guru()
+                start_watchdog()
+                if M060:
+                    retry_wb_reset()
+            except (SystemExit, OSError) as e:
+                err = e
+            lost = boot_lost_after_up(reset0, paths.fsuae_reset_count(), status(quiet=True))
+            if not lost:
+                if err is not None:
+                    raise err
+                return
+            print("[ERROR] rig: %s after 'up' (RIG-RESET-LOOP / guest guru; %s)" % (lost, err or "no error raised"))
+            break
         now = time.time()
         if text != seen:
             seen, changed = text, now

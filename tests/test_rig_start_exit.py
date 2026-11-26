@@ -20,7 +20,7 @@ import emuwin
 class StartExit(unittest.TestCase):
     def failed_start(self, events, screen):
         """rig.start() with a boot that never answers; events records each stop and each screen capture in order."""
-        names = ("RIG", "OS", "mine", "START_ARGS", "setup_config_only", "status", "stop", "time", "subprocess", "guard_stale_base", "gc", "refuse_port_clash")
+        names = ("session_pid", "OWNER_FILE", "RIG", "OS", "mine", "START_ARGS", "setup_config_only", "status", "stop", "time", "subprocess", "guard_stale_base", "gc", "refuse_port_clash")
         saved = {n: getattr(rig, n) for n in names}
         saved_paths = (rig.paths.cap_fsuae_log, rig.paths.FSUAE, rig.paths.reports_dir)
         saved_window_text = emuwin.window_text
@@ -57,6 +57,8 @@ class StartExit(unittest.TestCase):
                 rig.stop = lambda: events.append("stop")
                 rig.time = Clock
                 rig.subprocess = Proc
+                rig.session_pid = lambda: None   # walks the real ps tree
+                rig.OWNER_FILE = rig.RIG / "owner.json"   # never the real rig's owner file
                 rig.paths.cap_fsuae_log = lambda **k: None
                 rig.paths.FSUAE = pathlib.Path("fs-uae")
                 rig.paths.reports_dir = lambda *p: pathlib.Path(d)
