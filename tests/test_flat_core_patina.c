@@ -1544,12 +1544,25 @@ static void test_which_from_gtype(void)
 static void test_slider(void)
 {
     int x0, x1, i, w[8], t[4];
-    CHECK_INT(flat_prop_slider(0, 2, 6, 7, 1), 1);
-    CHECK_INT(flat_prop_slider(0x10, 2, 6, 7, 1), 0);
-    CHECK_INT(flat_prop_slider(0, 2, 40, 7, 1), 0);
-    CHECK_INT(flat_prop_slider(0, 6, 6, 7, 1), 0);
-    CHECK_INT(flat_prop_slider(0, 4, 14, 7, 2), 2);
-    CHECK_INT(flat_prop_slider(0, 4, 14, 30, 2), 0);
+    CHECK_INT(flat_prop_slider(0, 2, 6, 7, 1, 0), 1);
+    CHECK_INT(flat_prop_slider(0x10, 2, 6, 7, 1, 0), 0);
+    CHECK_INT(flat_prop_slider(0, 2, 40, 7, 1, 0), 0);
+    CHECK_INT(flat_prop_slider(0, 6, 6, 7, 1, 0), 0);
+    CHECK_INT(flat_prop_slider(0, 4, 14, 7, 2, 0), 2);
+    CHECK_INT(flat_prop_slider(0, 4, 14, 30, 2, 0), 0);
+    /* C8-SCROLLER: ScreenMode Display Mode list (rig 6): short knob but arrows -> scroller; arrow geometry */
+    CHECK_INT(flat_prop_slider(0, 4, 6, 6, 1, 1), 0);
+    CHECK_INT(flat_prop_slider(0, 4, 6, 6, 1, 0), 2);
+    CHECK_INT(flat_prop_arrow(2, 294, 48, 10, 54, 0x1001u, 0x0003u, 290, 104, 18, 9), 1);
+    CHECK_INT(flat_prop_arrow(2, 294, 48, 10, 54, 0x1001u, 0x0003u, 290, 113, 18, 9), 0);   /* second arrow: past the 6 px gap */
+    CHECK_INT(flat_prop_arrow(2, 294, 48, 10, 54, 0x1001u, 0x0001u, 290, 104, 18, 9), 0);   /* no GACT_IMMEDIATE */
+    CHECK_INT(flat_prop_arrow(2, 294, 48, 10, 54, 0x1003u, 0x0003u, 290, 104, 18, 9), 0);   /* not boolean */
+    CHECK_INT(flat_prop_arrow(2, 294, 48, 10, 54, 0x1001u, 0x0003u, 290, 46, 18, 76), 0);   /* the list frame around it */
+    CHECK_INT(flat_prop_arrow(2, 294, 48, 10, 54, 0x1001u, 0x0003u, 320, 104, 18, 9), 0);   /* beside, not under */
+    CHECK_INT(flat_prop_arrow(2, 294, 48, 10, 54, 0x1001u, 0x0003u, 290, 30, 18, 9), 1);    /* above the near end */
+    CHECK_INT(flat_prop_arrow(1, 146, 159, 158, 7, 0x1001u, 0x0003u, 306, 157, 16, 11), 1); /* horizontal: right of the far end */
+    CHECK_INT(flat_prop_arrow(1, 146, 159, 158, 7, 0x1001u, 0x0003u, 142, 157, 166, 11), 0);/* Colors slider frame */
+    CHECK_INT(flat_prop_arrow(0, 146, 159, 158, 7, 0x1001u, 0x0003u, 306, 157, 16, 11), 0);
     for (i = 0; i < 8; i++)
         w[i] = flat_slider_disc_row(1, 10, 20, 6, 7, 20 + i, &x0, &x1) ? x1 - x0 + 1 : 0;
     CHECK_INT(w[0], 4); CHECK_INT(w[1], 6); CHECK_INT(w[4], 6);

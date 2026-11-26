@@ -749,9 +749,15 @@ int flat_gadget_is_prop(unsigned gadgettype, int is_propgclass, int has_speciali
  * (thin grey track line, round accent knob, no outline box) when it is not a window border gadget (activation & 0xF0: GACT_*BORDER),
  * moves on one axis (propflags FREEHORIZ 2 xor FREEVERT 4) and its knob (kw x kh, Intuition's box) is no longer than it is thick in
  * visual units (side = flat_side_px). Returns 1 horizontal, 2 vertical, 0 not a slider.
- * shortcut: an in-window scroller whose knob is shorter than its thickness (a very long list) takes the slider look too; add a
- * GadTools kind test if one shows up. */
-int flat_prop_slider(unsigned activation, unsigned propflags, int kw, int kh, int side);
+ * C8-SCROLLER (owner 2026-11-26, ScreenMode Display Mode list "looks like a slider"): a prop with scroller arrows (arrows != 0, see
+ * flat_prop_arrow) is a scroller whatever its knob size: a long list makes its knob as short as it is thick. */
+int flat_prop_slider(unsigned activation, unsigned propflags, int kw, int kh, int side, int arrows);
+/* C8-SCROLLER: is gadget g (type, activation, box gx,gy,gw,gh) a scroller arrow of the prop container px,py,pw,ph moving on dir
+ * (1 horizontal, 2 vertical)? GadTools 3.1 LISTVIEW_KIND / SCROLLER_KIND place two GTYP_BOOLGADGET arrows with GACT_IMMEDIATE
+ * just past the prop along its axis (measured rig 6 ScreenMode: prop 294,48 10x54, arrows 290,104 and 290,113 18x9). 1 when g is
+ * such a boolean gadget, overlaps the prop's cross span, starts within 6 px past the prop's far end or ends within 6 px before its
+ * near end, and is shorter along the axis than the prop. A GadTools slider has no such gadget. */
+int flat_prop_arrow(int dir, int px, int py, int pw, int ph, unsigned gadget_type, unsigned activation, int gx, int gy, int gw, int gh);
 /* MODERN-SLIDER: the track line of a dir (1 horizontal, 2 vertical) slider with container cx,cy,cw,ch clipped to the fill x0..y1 into
  * out (x0, y0, x1, y1): one row thick across a horizontal container, side columns wide down a vertical one, centred. 0 = outside. */
 int flat_slider_track(int dir, int side, int cx, int cy, int cw, int ch, int x0, int y0, int x1, int y1, int out[4]);

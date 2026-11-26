@@ -1190,13 +1190,43 @@ static int dopus_push_claim(struct RastPort *rp, int x0, int y0, int x1, int y1,
  * pen-0 content the app draws after the frame lands on it (flat_rf_c, flat_tx_c); GROUP draws nothing. 1 = handled, 0 = stock draw
  * (a frame bordering another gadget type, or no pen on this screen). Any frame draw first drops the records it overlaps. */
 static int prop_knob(struct Gadget *g, struct PropInfo *pi, int cx, int cy, int *k);
+/* C8-SCROLLER: the window-relative box x, y, w, h of gadget g in o (GRELRIGHT/BOTTOM/WIDTH/HEIGHT resolved as noline_frame does) */
+static void gad_xywh(struct Window *w, struct Gadget *g, int *o)
+{
+    o[0] = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? w->Width - 1 : 0);
+    o[1] = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? w->Height - 1 : 0);
+    o[2] = g->Width + ((g->Flags & GFLG_RELWIDTH) ? w->Width : 0);
+    o[3] = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? w->Height : 0);
+}
+
+/* C8-SCROLLER: 1 when one-axis prop g of w has a scroller arrow (flat_prop_arrow) in the window's gadget list: a list scroller, never
+ * a slider, however short its knob. Walks the list only (no Intuition call: this also runs inside graphics.library). */
+static int prop_arrows(struct Window *w, struct Gadget *g)
+{
+    struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
+    struct Gadget *o;
+    int n, dir = (pi->Flags & (FREEHORIZ | FREEVERT)) == FREEHORIZ ? 1 : (pi->Flags & (FREEHORIZ | FREEVERT)) == FREEVERT ? 2 : 0;
+    int p[4], b[4];
+    if (!dir)
+        return 0;
+    gad_xywh(w, g, p);
+    for (o = w->FirstGadget, n = 0; o && n < 64; o = o->NextGadget, n++) {
+        if (o == g)
+            continue;
+        gad_xywh(w, o, b);
+        if (flat_prop_arrow(dir, p[0], p[1], p[2], p[3], o->GadgetType, o->Activation, b[0], b[1], b[2], b[3]))
+            return 1;
+    }
+    return 0;
+}
+
 /* MODERN-SLIDER: 1 when prop gadget g (resolved box gb) of win draws as a slider (flat_prop_slider on its knob box) */
 static int prop_slider_of(flatshared *r, struct Window *win, struct Gadget *g, const flat_gadbox *gb)
 {
     struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
     int k[4];
     return st_scr(r, win->WScreen)->pen_line && prop_knob(g, pi, gb->x + pi->LeftBorder, gb->y + pi->TopBorder, k) &&
-           flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, win->WScreen)) != 0;
+           flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, win->WScreen), prop_arrows(win, g)) != 0;
 }
 
 /* The rounded ground box of a frame in pen (no outline) and its record, so content drawn after the frame (erases in the window
@@ -2406,7 +2436,7 @@ static void slider_note(flatshared *r, struct RastPort *rp, struct Window *w, st
 {
     struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
     const flat_state *ss = st_scr(r, w->WScreen);
-    r->slider = ss->pen_line ? flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, w->WScreen)) : 0;
+    r->slider = ss->pen_line ? flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, w->WScreen), prop_arrows(w, g)) : 0;
     r->slider_c[0] = c[0]; r->slider_c[1] = c[1]; r->slider_c[2] = pi->CWidth; r->slider_c[3] = pi->CHeight;
     r->slider_pen[0] = flat_knob_state_pen(ss, rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0);
     r->slider_pen[1] = ss->pen_line;
