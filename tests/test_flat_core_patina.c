@@ -1566,7 +1566,7 @@ static void test_slider(void)
     CHECK_INT(flat_prop_arrow(2, 294, 48, 10, 54, 0x1003u, 0x0003u, 290, 104, 18, 9), 0);   /* not boolean */
     CHECK_INT(flat_prop_arrow(2, 294, 48, 10, 54, 0x1001u, 0x0003u, 290, 46, 18, 76), 0);   /* the list frame around it */
     CHECK_INT(flat_prop_arrow(2, 294, 48, 10, 54, 0x1001u, 0x0003u, 320, 104, 18, 9), 0);   /* beside, not under */
-    CHECK_INT(flat_prop_arrow(2, 294, 48, 10, 54, 0x1001u, 0x0003u, 290, 30, 18, 9), 1);    /* above the near end */
+    CHECK_INT(flat_prop_arrow(2, 294, 48, 10, 54, 0x1001u, 0x0003u, 290, 37, 18, 9), 1);    /* above the near end, inside the 6 px gap */
     CHECK_INT(flat_prop_arrow(1, 146, 159, 158, 7, 0x1001u, 0x0003u, 306, 157, 16, 11), 1); /* horizontal: right of the far end */
     CHECK_INT(flat_prop_arrow(1, 146, 159, 158, 7, 0x1001u, 0x0003u, 142, 157, 166, 11), 0);/* Colors slider frame */
     CHECK_INT(flat_prop_arrow(0, 146, 159, 158, 7, 0x1001u, 0x0003u, 306, 157, 16, 11), 0);
