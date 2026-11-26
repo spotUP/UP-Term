@@ -95,7 +95,7 @@ class SysHdfKit(unittest.TestCase):
         real = subprocess.run
         def racing(cmd, *a, **k):
             r = real(cmd, *a, **k)
-            if "write" in cmd and "vtcon-handler" in str(cmd[-2]) or "write" in cmd and str(cmd[-2]).endswith("kit-snap.tmp") and cmd[-1] == "L/vtcon-handler":
+            if "write" in cmd and "L/vtcon-handler" in cmd:   # the batched write (xdf_put)
                 src.write_bytes(b"rebuilt by make" * 9)
             return r
         rig.subprocess.run = racing

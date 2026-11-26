@@ -889,6 +889,62 @@ def kit_snapshot(src, dest):
     pathlib.Path(dest).write_bytes(data)
     return hashlib.md5(data).hexdigest()
 
+def xdf_put(run, items, tag):
+    """Make each (amiga path, host src, check or None) of items hold a snapshot of src (kit_snapshot) in the image run()
+    opens, in batched xdftool calls (RIG-START-HOST-SLOW: one call per write, delete and read-back cost sys_hdf_kit
+    48-163 s per start). Every target is read first and only the ones whose md5 differs from the snapshot are written;
+    those are read back and compared, and check() runs on each snapshot and each read-back; any mismatch refuses the
+    start."""
+    snaps, back = RIG / "kit-snap.tmp", RIG / "kit-check.tmp"
+    for t in (snaps, back):
+        shutil.rmtree(t, ignore_errors=True)
+        t.mkdir(parents=True)
+    try:
+        want = []
+        for i, (_, src, check) in enumerate(items):
+            want.append(kit_snapshot(src, snaps / str(i)))
+            if check:
+                check(snaps / str(i))
+        def differing(idx):
+            ops = []
+            for i in idx:
+                (back / str(i)).unlink(missing_ok=True)
+                ops += ["+", "read", items[i][0], str(back / str(i))]
+            if ops:
+                run(*ops[1:], check=False)   # a missing file aborts the chain: it and every later one count as differing
+            return [i for i in idx if not (back / str(i)).is_file()
+                    or hashlib.md5((back / str(i)).read_bytes()).hexdigest() != want[i]]
+        stale = differing(range(len(items)))
+        if not stale:
+            return
+        listed, ops = {}, []
+        for i in stale:
+            if (back / str(i)).is_file():   # read above: it exists, so no listing is needed
+                ops += ["+", "delete", items[i][0], "+", "write", str(snaps / str(i)), items[i][0]]
+                continue
+            parent, leaf = items[i][0].rsplit("/", 1)
+            parts = parent.split("/")
+            for depth in range(1, len(parts) + 1):
+                d = "/".join(parts[:depth])
+                if d not in listed:
+                    r = run("list", d, check=False)
+                    if r.returncode != 0:
+                        run("makedir", d)
+                    listed[d] = {l.split()[0] for l in r.stdout.splitlines() if l.split()} if r.returncode == 0 else set()
+            if leaf in listed[parent]:
+                ops += ["+", "delete", items[i][0]]
+            ops += ["+", "write", str(snaps / str(i)), items[i][0]]
+        run(*ops[1:])
+        bad = differing(stale)
+        for i in stale:
+            if items[i][2] and i not in bad:
+                items[i][2](back / str(i))
+        if bad:
+            sys.exit("rig: the clone's %s differs from %s after the write (%s)" % (items[bad[0]][0], items[bad[0]][1], tag))
+    finally:
+        shutil.rmtree(back, ignore_errors=True)
+        shutil.rmtree(snaps, ignore_errors=True)
+
 def sys_hdf_kit(image):
     """Every file the kit installs on the system disk equals what the current build would install (RIG-KIT-DERIVE;
     supersedes sys_hdf_ixnet, RIG-SYSHDF-EARLY). The master image holds older copies of files that load before
@@ -903,33 +959,9 @@ def sys_hdf_kit(image):
     def run(*a, check=True):
         return subprocess.run([xdf, str(image), *a], check=check, capture_output=True, text=True)
     for e in kit_entries(NOFPU, M060):
-        if not e.clone:
-            continue
-        paths.require_input(e.src, "UPTERM_ROOT", e.src.name)
-        snap = RIG / "kit-snap.tmp"
-        want = kit_snapshot(e.src, snap)
-        if e.check:
-            e.check(snap)
-        parts = e.clone.split("/")
-        for i in range(1, len(parts)):
-            d = "/".join(parts[:i])
-            if run("list", d, check=False).returncode != 0:
-                run("makedir", d)
-        parent, leaf = e.clone.rsplit("/", 1)
-        if leaf in {l.split()[0] for l in run("list", parent).stdout.splitlines() if l.split()}:
-            run("delete", e.clone)
-        run("write", str(snap), e.clone)
-        back = RIG / "kit-check.tmp"
-        back.unlink(missing_ok=True)
-        run("read", e.clone, str(back))
-        try:
-            if e.check:
-                e.check(back)
-            if hashlib.md5(back.read_bytes()).hexdigest() != want:
-                sys.exit("rig: the clone's %s differs from %s after the write (RIG-KIT-DERIVE)" % (e.clone, e.src))
-        finally:
-            back.unlink(missing_ok=True)
-            snap.unlink(missing_ok=True)
+        if e.clone:
+            paths.require_input(e.src, "UPTERM_ROOT", e.src.name)
+    xdf_put(run, [(e.clone, e.src, e.check) for e in kit_entries(NOFPU, M060) if e.clone], "RIG-KIT-DERIVE")
     sys_hdf_kit_upterm(image)
 
 def system_user_startup(image):
@@ -987,44 +1019,8 @@ def sys_hdf_kit_upterm(image):
         return subprocess.run([xdf, str(image), "open", "part=" + part, "+", *a], check=check, capture_output=True, text=True)
     def amiga(dest):
         return "/".join(x for x in (base, dest[len("UP-Term:"):]) if x)
-    entries = [e for e in kit_entries(NOFPU, M060) if e.dest.startswith("UP-Term:")]
-    if not entries:
-        return
-    snaps = RIG / "kit-upterm-snap.tmp"
-    shutil.rmtree(snaps, ignore_errors=True)
-    snaps.mkdir()
-    want = [kit_snapshot(e.src, snaps / str(i)) for i, e in enumerate(entries)]
-    listed = {}
-    ops = []
-    for i, e in enumerate(entries):
-        parent, leaf = amiga(e.dest).rsplit("/", 1)
-        if parent not in listed:
-            parts = parent.split("/")
-            for depth in range(1, len(parts) + 1):
-                d = "/".join(parts[:depth])
-                if d not in listed:
-                    r = run("list", d, check=False)
-                    if r.returncode != 0:
-                        run("makedir", d)
-                    listed[d] = {l.split()[0] for l in r.stdout.splitlines() if l.split()} if r.returncode == 0 else set()
-        if leaf in listed[parent]:
-            ops += ["+", "delete", amiga(e.dest)]
-        ops += ["+", "write", str(snaps / str(i)), amiga(e.dest)]
-    run(*ops[1:])
-    back = RIG / "kit-upterm.tmp"
-    shutil.rmtree(back, ignore_errors=True)
-    back.mkdir()
-    try:
-        reads = []
-        for i, e in enumerate(entries):
-            reads += ["+", "read", amiga(e.dest), str(back / str(i))]
-        run(*reads[1:])
-        for i, e in enumerate(entries):
-            if hashlib.md5((back / str(i)).read_bytes()).hexdigest() != want[i]:
-                sys.exit("rig: the clone's %s differs from %s after the write (RIG-WARM-SRV-RACE)" % (e.dest, e.src))
-    finally:
-        shutil.rmtree(back, ignore_errors=True)
-        shutil.rmtree(snaps, ignore_errors=True)
+    xdf_put(run, [(amiga(e.dest), e.src, None) for e in kit_entries(NOFPU, M060) if e.dest.startswith("UP-Term:")],
+            "RIG-WARM-SRV-RACE")
 
 def sys_hdf_upterm_bin(image):
     """RIG-BLACK-SCREEN / RIG-START-SYNC: upterm_sync for the clone, on the host, before it boots. The master image's
