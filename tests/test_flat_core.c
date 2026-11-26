@@ -1255,6 +1255,15 @@ static void test_round_aa(void)
     CHECK_INT(cv->pix[10][10] != 2, 1);                             /* corner pixel is cut */
     CHECK_INT(ground_px > 30 * 14 - 16, 1);
     CHECK_INT(other_px, 0);
+    /* C8-LOOK: the 3.1 cycle and listview boxes are this ground box (flat.c ground_frame). Non-square pixels (side 2), backdrop 0:
+     * fill and edge centres are the ground pen 2, no pen_line (3) anywhere, the corner pixels are cut on both ends */
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
+    CHECK_INT(raa_ground_frame_draw(&fs, 2, 2, 5, 5, 44, 14, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    other_px = 0;
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) if (cv->pix[y][x] == 3) other_px++;
+    CHECK_INT(other_px, 0);
+    CHECK_INT(cv->pix[12][27] == 2 && cv->pix[6][27] == 2 && cv->pix[17][27] == 2 && cv->pix[12][7] == 2 && cv->pix[12][46] == 2, 1);
+    CHECK_INT(cv->pix[6][7] != 2 && cv->pix[6][46] != 2 && cv->pix[17][7] != 2 && cv->pix[17][46] != 2, 1);
     free(cv);
 }
 
@@ -4278,7 +4287,8 @@ static void test_no_outlines(void)
         CHECK_INT(st.pen_button, look.pen_line);                                    /* 4 colours: the accent line pen */
     }
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_GROUP, 4, 0), -1);                        /* group: nothing is drawn */
-    CHECK_INT(flat_noline_pen(&s, FLAT_FC_BORDERED, 4, 0), -1);
+    CHECK_INT(flat_noline_pen(&s, FLAT_FC_BORDERED, 4, 0), 5);                      /* C8-LOOK: the listview box takes the input ground, no pen_line outline */
+    CHECK_INT(flat_noline_pen(&s, FLAT_FC_BORDERED, 2, 0), -1);                     /* 4 colours: no ground pen, the stock outline stays */
     s.pen_sel = 0;
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_TRACK, 4, 0), -1);                        /* no input pen on the screen */
     s.pen_sel = 5;

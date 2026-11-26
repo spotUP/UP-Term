@@ -1199,6 +1199,14 @@ static int prop_slider_of(flatshared *r, struct Window *win, struct Gadget *g, c
            flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, win->WScreen)) != 0;
 }
 
+/* The rounded ground box of a frame in pen (no outline) and its record, so content drawn after the frame (erases in the window
+ * ground, JAM2 text) stays on that ground. */
+static void ground_frame(flatshared *r, struct RastPort *rp, struct Window *win, int ox, int oy, int w, int h, int pen)
+{
+    ground_box(r, rp, ox, oy, ox + w - 1, oy + h - 1, pen);
+    flat_gr_add(&r->gr, flat_tx_surface(rp->Layer, rp->BitMap), side_px(r, win->WScreen), ox, oy, ox + w - 1, oy + h - 1, pen);   /* FLAT-SPACING: inset clip */
+}
+
 static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int w, int h, int fill)
 {
     struct Layer *lay = rp->Layer;
@@ -1245,15 +1253,14 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
         r->gbhits++;
         return 1;
     }
-    if (cls != FLAT_FC_TRACK && cls != FLAT_FC_CELL && cls != FLAT_FC_DISPLAY)
+    if (cls != FLAT_FC_TRACK && cls != FLAT_FC_CELL && cls != FLAT_FC_DISPLAY && cls != FLAT_FC_BORDERED)   /* C8-LOOK: BORDERED = the listview box */
         return 0;
     if (cls == FLAT_FC_CELL)
         centre = (int)ReadPixel(rp, ox + w / 2, oy + h / 2);
     pen = flat_noline_pen(st_scr(r, win->WScreen), cls, depth, centre);
     if (pen < 0)
         return 0;
-    ground_box(r, rp, ox, oy, ox + w - 1, oy + h - 1, pen);
-    flat_gr_add(&r->gr, surf, side_px(r, win->WScreen), ox, oy, ox + w - 1, oy + h - 1, pen);   /* FLAT-SPACING: inset clip */
+    ground_frame(r, rp, win, ox, oy, w, h, pen);
     r->gbhits++;
     return 1;
 }
@@ -1315,8 +1322,13 @@ static int c8_draw(Object *obj, Msg msg)
         if (role < 0)
             role = role_of(d->imp_RPort, obj);
         {
-            /* PALETTE-CYCLE-PAPER: accent outline, surface inside. C8-RING: not raa_frame_draw (see flat_cycle_frame_draw) */
-            if (cyc ? !flat_cycle_frame_draw(&st, ox, oy, w, h, c2_fill, c2_read, d->imp_RPort)
+            /* C8-LOOK (owner 2026-11-26): the 3.1 cycle is the rounded input ground box, no outline, as the listview and inputs */
+            struct Window *cw = cyc && d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
+            int gp = cw ? flat_input_pen(st_scr(r, cw->WScreen), d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0) : -1;
+            if (gp >= 0)
+                ground_frame(r, d->imp_RPort, cw, ox, oy, w, h, gp);
+            /* PALETTE-CYCLE-PAPER: no input pen on the screen: accent outline, surface inside. C8-RING: not raa_frame_draw (see flat_cycle_frame_draw) */
+            else if (cyc ? !flat_cycle_frame_draw(&st, ox, oy, w, h, c2_fill, c2_read, d->imp_RPort)
                     : !raa_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role, c2_fill, c2_read, c2_rgb,
                                       fill ? raa_load(d->imp_RPort) : 0, d->imp_RPort, NULL))
                 return 0;

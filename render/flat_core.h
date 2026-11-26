@@ -619,7 +619,7 @@ typedef struct flat_fc {
 } flat_fc;
 void flat_fc_add(flat_fc *a, int fx, int fy, int fw, int fh, const flat_gadbox *g);
 int flat_fc_class(const flat_fc *a);
-/* The fill pen of a class at depth: TRACK and DISPLAY the input ground pen (flat_input_pen), CELL the push button face (flat_button_pen:
+/* The fill pen of a class at depth: TRACK, DISPLAY and BORDERED (C8-LOOK, owner 2026-11-26: the listview box, was a pen_line outline) the input ground pen (flat_input_pen), CELL the push button face (flat_button_pen:
  * the held pen, else pen_back) or, when centre_pen (the pixel at the box centre, the app's selected fill drawn before the frame) is pen_line, the
  * accent; -1 for any other class (nothing to fill) and when the screen holds no such pen. */
 int flat_noline_pen(const flat_state *s, int cls, int depth, int centre_pen);
@@ -681,7 +681,8 @@ int flat_cycle_frame(unsigned gadget_type, unsigned activation, int gx, int gy, 
 /* C8-RING: is an unanswered frame a 3.1 cycle's? box_match = flat_cycle_frame on some window gadget. On 3.1 the cycle's frame is
  * its gadget's render == select image (button_image), as a push button's; push (flat_push_button) keeps the push button out. */
 int flat_cycle_of(int button_image, int push, int box_match);
-/* PALETTE-CYCLE-PAPER (owner 2026-11-25): a 3.1 cycle gadget looks like a Patina window: the rounded face is drawn in the accent
+/* PALETTE-CYCLE-PAPER (owner 2026-11-25; C8-LOOK owner 2026-11-26: only where the screen holds no input ground pen, else the
+ * cycle is the rounded input ground box, no outline): a 3.1 cycle gadget looks like a Patina window: the rounded face is drawn in the accent
  * (st->pen_button = st->pen_line), then in[] (the box inside the side-wide outline) is filled with the returned surface pen st->pen_back */
 int flat_cycle_paper(flat_state *st, int ox, int oy, int w, int h, int in[4]);
 

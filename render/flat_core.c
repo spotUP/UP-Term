@@ -987,7 +987,7 @@ int flat_noline_pen(const flat_state *s, int cls, int depth, int centre_pen)
 {
     if (!s)
         return -1;
-    if (cls == FLAT_FC_TRACK || cls == FLAT_FC_DISPLAY)
+    if (cls == FLAT_FC_TRACK || cls == FLAT_FC_DISPLAY || cls == FLAT_FC_BORDERED)   /* C8-LOOK: the listview box is a ground box too */
         return flat_input_pen(s, depth);
     if (cls == FLAT_FC_CELL)
         return s->pen_line && centre_pen == s->pen_line ? s->pen_line : flat_button_pen(s, depth);   /* FLAT-GREEN-FACES: the held pen, never the bare role number pen_button */
