@@ -204,7 +204,10 @@ def drawer():
 
 
 def alive():
-    r = subprocess.run(client_cmd("ping"), capture_output=True, text=True, timeout=20)
+    try:
+        r = subprocess.run(client_cmd("ping"), capture_output=True, text=True, timeout=20)
+    except subprocess.TimeoutExpired:   # a frozen guest: not alive, never a crash of rig start (2026-11-26 rig 13)
+        return False
     return r.returncode == 0
 
 
