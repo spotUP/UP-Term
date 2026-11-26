@@ -116,6 +116,11 @@ typedef struct flatshared {
     struct Library *gtbase;     /* gadtools.library, open while the patch is in place; closed only after it is removed */
     flat_trow_tab trow;         /* per creating task sequence state (flat_core.h); trow.rows is the sentinel, trow.why the last reason */
     ULONG cgcalls;              /* every patched CreateGadgetA call (the stub runs) */
+    /* PREFSFLAT2-DRAWBORDER: the intuition.library DrawBorder patch (LVO -108) that flattens the 3.1 cycle glyph separator */
+    flat_swap dbsw;
+    uintptr_t *dbslot;
+    struct flat_gate *dbgate;   /* FLAT-UNLOAD-INFLIGHT: never freed (gate_make) */
+    ULONG dbhits;               /* Border lists drawn through flat_cycle_border_pen */
     char cgname[8];             /* scratch for the calling CLI command name, used only under Forbid (flat.c cg_feed) */
     WORD trow_raw[2][5];        /* rig evidence: the last INTEGER [0] / CYCLE [1] NewGadget of a program named Time, as given: left top width height id */
     char scrname[MAXPUBSCREENNAME + 1]; /* the default public screen's name for cg_feed, used only under ss (no 140-byte name in that frame: the flat budget) */

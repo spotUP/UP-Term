@@ -1131,6 +1131,13 @@ int flat_cycle_of(int button_image, int push, int box_match)
     return box_match && !(button_image && push);
 }
 
+int flat_cycle_border_pen(int in_cycle, int role, int front, int edge_pen)
+{
+    if (!in_cycle || (role != 1 && role != 2))
+        return front;
+    return role == 2 ? -1 : edge_pen;
+}
+
 int flat_cycle_paper(flat_state *st, int ox, int oy, int w, int h, int in[4])
 {
     int sw = flat_button_side(st->side, w);

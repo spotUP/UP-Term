@@ -3434,6 +3434,107 @@ static int cg_install(flatshared *r)
     return rc;
 }
 
+/* ---- PREFSFLAT2-DRAWBORDER: intuition.library DrawBorder (LVO -108, rp a0, border a1, left d0, top d1). 3.1 GadTools draws the
+ * cycle glyph separator as a shine/shadow Border pair (flat_cycle_border_pen); inside a 3.1 cycle box on a flat screen the shadow
+ * half is skipped and the shine half takes the edge pen. Any other Border list goes to the original untouched. */
+#define FLAT_LVO_DRAWBORDER (-108)
+typedef void (*dbfn)(__reg("a0") struct RastPort *, __reg("a1") struct Border *, __reg("d0") LONG, __reg("d1") LONG,
+                     __reg("a6") struct Library *);
+extern void flat_db_tpl(void), flat_db_tpl_end(void);
+
+/* 1 when window point x,y lies in an image-drawn bool gadget that is not a scroller arrow (the 3.1 cycle: flat_cycle_frame) */
+static int cycle_point_at(struct Window *win, int x, int y)
+{
+    struct Gadget *g;
+    int n;
+    for (g = win->FirstGadget, n = 0; g && n < 64; g = g->NextGadget, n++)
+        if ((g->Flags & GFLG_GADGIMAGE) && flat_cycle_frame(g->GadgetType, g->Activation, g->LeftEdge, g->TopEdge, g->Width, g->Height,
+                                                             g->LeftEdge, g->TopEdge, g->Width, g->Height)
+            && x >= g->LeftEdge && x < g->LeftEdge + g->Width && y >= g->TopEdge && y < g->TopEdge + g->Height)
+            return 1;
+    return 0;
+}
+
+static int db_in_cycle(struct Window *w, const struct Border *b, LONG l, LONG t)
+{
+    return b->Count && b->XY && (b->BackPen == 1 || b->BackPen == 2)
+           && cycle_point_at(w, (int)(l + b->LeftEdge + b->XY[0]), (int)(t + b->TopEdge + b->XY[1]));
+}
+
+void flat_db_c(struct RastPort *rp, struct Border *b, LONG l, LONG t)
+{
+    flatshared *r = g_r;
+    dbfn orig = (dbfn)r->dbsw.saved;
+    struct Window *w = rp && rp->Layer ? (struct Window *)rp->Layer->Window : NULL;
+    const flat_state *s = w ? st_scr(r, w->WScreen) : NULL;
+    struct Border *p;
+    int n, hit = 0, edge;
+    if (s && s->enabled && !s->held)
+        for (p = b, n = 0; p && n < 64 && !hit; p = p->NextBorder, n++)
+            hit = db_in_cycle(w, p, l, t);
+    if (!hit) {
+        orig(rp, b, l, t, (struct Library *)IntuitionBase);
+        return;
+    }
+    edge = flat_edge_pen(s, rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0);
+    r->dbhits++;
+    for (n = 0; b; b = b->NextBorder, n++) {
+        struct Border *next = b->NextBorder;
+        UBYTE fp = b->FrontPen;
+        int pen = flat_cycle_border_pen(n < 64 && db_in_cycle(w, b, l, t), b->BackPen, fp, edge);
+        if (pen < 0)
+            continue;
+        b->FrontPen = (UBYTE)pen;          /* one segment at a time: GadTools sets FrontPen again before every draw */
+        b->NextBorder = NULL;
+        orig(rp, b, l, t, (struct Library *)IntuitionBase);
+        b->NextBorder = next;
+        b->FrontPen = fp;
+    }
+}
+
+static int db_install(flatshared *r)
+{
+    unsigned char *entry = (unsigned char *)IntuitionBase + FLAT_LVO_DRAWBORDER;
+    int rc = -100;
+    if (!flat_jmp_target(entry))
+        return rc;
+    flat_swap_init(&r->dbsw);
+    if (!r->dbgate)
+        r->dbgate = gate_make((void *)flat_db_tpl, (void *)flat_db_tpl_end, 0);
+    if (!r->dbgate)
+        return -101;
+    g_r = r;
+    Forbid();
+    rc = flat_swap_install(&r->dbsw, (uintptr_t *)(entry + 2), (uintptr_t)r->dbgate->code);
+    if (rc == FLAT_OK) {
+        gate_open(r->dbgate, r->dbsw.saved);
+        r->dbslot = (uintptr_t *)(entry + 2);
+        libpatch_done((struct Library *)IntuitionBase);
+    }
+    Permit();
+    return rc;
+}
+
+static int db_remove(flatshared *r)
+{
+    int rc = FLAT_NOT_INSTALLED;
+    if (!r->dbsw.installed)
+        return rc;
+    gate_close(r->dbgate);
+    Forbid();
+    rc = flat_swap_remove(&r->dbsw, r->dbslot, &r->st);
+    if (rc == FLAT_REMOVED)
+        libpatch_done((struct Library *)IntuitionBase);
+    Permit();
+    if (rc != FLAT_REMOVED)
+        gate_reopen(r->dbgate);
+    if (rc == FLAT_REMOVED) {
+        gate_wait(r->dbgate);
+        r->dbslot = 0;
+    }
+    return rc;
+}
+
 static int cg_remove(flatshared *r)
 {
     int rc = FLAT_NOT_INSTALLED;
@@ -4687,6 +4788,8 @@ static int install_all(flatshared *r, poll_timer *tm, int *marker_live)
         PutStr((STRPTR)"patina-flat: CreateGadgetA patch not installed\n");
     if (mu_install(r) != FLAT_OK)
         PutStr((STRPTR)"patina-flat: MUI class patch not installed\n");
+    if (db_install(r) != FLAT_OK)
+        PutStr((STRPTR)"patina-flat: DrawBorder patch not installed\n");
     pt_start(tm, (unsigned long)FLAT_MARKER_SECS * 1000000UL);
     return rc;
 }
@@ -4901,6 +5004,11 @@ int main(void)
             continue;
         }
         STG(FLAT_STG_CG_REMOVE);
+        if (db_remove(r) == FLAT_STILL_CHAINED) {
+            refused(r, FLAT_REF_GADTOOLS);  /* shortcut: shares the gadtools refusal; add a FLAT_REF if the status row must tell them apart */
+            PutStr((STRPTR)"patina-flat: a patch is still chained on intuition DrawBorder, not unloading\n");
+            continue;
+        }
         if (cg_remove(r) == FLAT_STILL_CHAINED) {
             refused(r, FLAT_REF_GADTOOLS);
             PutStr((STRPTR)"patina-flat: a patch is still chained on gadtools CreateGadgetA, not unloading\n");
