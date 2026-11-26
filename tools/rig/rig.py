@@ -42,10 +42,12 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   paths.LONG_RUN (ami.py long, install) or within 5 s of a command; never rig 1
                   also cold-restarts (stop + start --keep-sys) a rig whose FS-UAE log gains 10+ "CPU reset"
                   lines in a minute: the 060 post-Guru Kickstart reset loop (RIG-RESET-LOOP)
-  rig.py stop [--keep]   kill THIS rig only (matched by its config path, at kill time), then, for rig N > 1, remove its
+  rig.py stop [--keep] [--force]   kill THIS rig only (matched by its config path, at kill time), then, for rig N > 1, remove its
                   build/rig<N> folder (as `clear`, files written on the rig saved first as for `gc`; never rig 1; not while the
                   emulator still runs). --keep leaves the folder: a script
                   that stops and starts again mid-run passes it, the folder holds its resumable verdict files
+                  A rig whose owner.json names another --purpose and a live owner session is refused
+                  ("[ERROR] rig N owned by <purpose>", rc 1) unless --force; `start` on such a running rig is refused the same way
   rig.py gc       sweep: remove every build/rig<N> (N > 1, not this rig's) with no emulator on it, no start.lock held and no command
                   for 2 hours, and every leftover build/rig*.del; each removal is printed and appended to build/rig-gc.log.
                   Before removing, it copies every file written on the rig (in the drive folders vtc, boot, work, os32,
@@ -2143,6 +2145,25 @@ def owns_rig(vtc):
     except (OSError, ValueError, KeyError, TypeError):
         return False
 
+def foreign_owner(rec, purpose, gone=None):
+    """The purpose text of the live owner in owner.json record `rec` when it is not the caller (--purpose `purpose`),
+    else None. No record, no recorded purpose, the same purpose, or an owner session pid that no longer runs (owner_gone)
+    count as the caller's own (RIG16-SHARED, 2026-11-26: two chains on rig 16 stopped each other's runs). The pid alone
+    does not decide: one session runs several chains."""
+    if not isinstance(rec, dict) or not rec.get("purpose") or rec["purpose"] == purpose:
+        return None
+    return None if (gone or owner_gone)(rec.get("pid")) else rec["purpose"]
+
+def refuse_foreign_owner():
+    """Exit rc 1 with `[ERROR] rig N owned by <purpose>` when a running rig belongs to another live owner (foreign_owner)."""
+    try:
+        rec = json.loads(OWNER_FILE.read_text())
+    except (OSError, ValueError):
+        return
+    who = foreign_owner(rec, PURPOSE)
+    if who:
+        sys.exit("[ERROR] rig %d owned by %s" % (paths.RIG_N, who))
+
 def ensure_current(vtc=None):
     """The one gate before every command to a rig: VTC: is hashed against the build (build_drift) and a drifted file is
     refreshed (refresh_programs) before the command runs, so no check tests a stale binary (owner 2026-10-29: "we have lost a
@@ -2593,6 +2614,7 @@ def _start(retries):
     # status still says down) must not rewrite BOOTX:go, BOOTX:s/startup-sequence
     # and BOOTX:Mountlist, or delete BOOTX:boot.log, under the running system
     if mine():
+        refuse_foreign_owner()
         print("already running")
         return
     with phase("refuse_port_clash"):
@@ -3373,7 +3395,10 @@ def stop_command():
     """`rig.py stop`: stop() (emulator exit), then, for rig N > 1, clear() the folder so it does not pile up. Not for rig 1
     (the owner's), not with --keep (a script that stops and starts again mid-run: the folder holds its verdict files),
     not while the emulator still runs. The internal stop() of reboot, the start retries and the watchdog never clears.
-    An eye-check hold (`rig.py hold`) ends first."""
+    An eye-check hold (`rig.py hold`) ends first. A running rig of another live owner is refused unless --force
+    (refuse_foreign_owner)."""
+    if mine() and "--force" not in sys.argv[2:]:
+        refuse_foreign_owner()
     hold_release()
     stop()
     rigwasabi.stop_stream("debug")   # the Guru capture reconnects forever; a stopped rig ends it (start restarts it)
