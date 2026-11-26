@@ -2974,6 +2974,26 @@ static int pal_fill(flatshared *r, struct RastPort *rp, struct Window *w, const 
         SetAPen(rp, fg);
         return 1;
     }
+    if (site == FLAT_PAL_HILITE) {  /* RESTAURANT-GLYPH-THEME-PENS: stock XOR, then the Amiga key box (x 573..595) back to theme pens */
+        const flat_state *st = st_scr(r, w->WScreen);
+        UBYTE mask = rp->Mask, dm = rp->DrawMode;
+        LONG x, y, x1 = b[2] < 595 ? b[2] : 595;
+        int pen;
+        ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+        fg = rp->FgPen;
+        rp->Mask = 0xff;
+        SetDrMd(rp, JAM1);
+        for (y = b[1]; y <= b[3]; y++)
+            for (x = b[0] > 573 ? b[0] : 573; x <= x1; x++)
+                if ((pen = flat_pal_hilite_pen(st, mask, (int)ReadPixel(rp, x, y))) >= 0) {
+                    SetAPen(rp, (UBYTE)pen);
+                    WritePixel(rp, x, y);
+                }
+        SetAPen(rp, fg);
+        SetDrMd(rp, dm);
+        rp->Mask = mask;
+        return 1;
+    }
     if (site == FLAT_PAL_GROOVE) {  /* PALETTE-GROOVE: the separator rows above the samples become window ground */
         fg = rp->FgPen;
         SetAPen(rp, (UBYTE)st_scr(r, w->WScreen)->pen_back);

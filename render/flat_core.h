@@ -372,6 +372,11 @@ int flat_img_record(flat_img_rec *t, int n, const void *obj, unsigned long which
 int flat_img_record_pal(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size);
 /* PALETTE-AMIGAKEY-FLAT: the box and glyph pens of a Palette sample image. 1 when which is one (pens set), else 0 (unchanged). */
 int flat_pal_glyph_pens(const flat_state *st, unsigned long which, int *frame, int *text);
+/* RESTAURANT-GLYPH-THEME-PENS: Palette highlights a sample menu row like Intuition (COMPLEMENT RectFill, rp->Mask =
+ * BARDETAILPEN ^ BARBLOCKPEN). The flat Amiga key is drawn in theme pens, not bar pens, so the XOR leaves non-theme pens.
+ * The theme pen for a pixel read back after that fill: box -> pen_text, key -> pen_back (the selected roles of
+ * flat_glyph_roles). -1 = not a glyph pixel, leave it. */
+int flat_pal_hilite_pen(const flat_state *st, int mask, int read);
 void flat_img_forget(flat_img_rec *t, int n, const void *obj);
 /* The recorded Which of obj, -1 when none; *size (if non-NULL) gets its SYSIA_Size. */
 int flat_img_which(const flat_img_rec *t, int n, const void *obj, unsigned long *size);
@@ -993,7 +998,7 @@ const char *flat_trow_why_name(int why);
  * 0x5df6 the scroller-container dither of the Active/Inactive samples.
  * PALETTE-GROOVE: 0x34e8 / 0x353a are the two 1-row fills (SHADOWPEN, SHINEPEN of Palette's own pens) of the groove above the
  * samples: GROOVE = paint the ground instead. Text, checkmarks and arrows are other calls: stock. */
-enum { FLAT_PAL_STOCK, FLAT_PAL_EDGE, FLAT_PAL_DITHER, FLAT_PAL_KNOB, FLAT_PAL_GROOVE };    /* PALETTE-SAMPLE-SCROLLER: KNOB = a sample scroller's knob fill */
+enum { FLAT_PAL_STOCK, FLAT_PAL_EDGE, FLAT_PAL_DITHER, FLAT_PAL_KNOB, FLAT_PAL_GROOVE, FLAT_PAL_HILITE };    /* PALETTE-SAMPLE-SCROLLER: KNOB = a sample scroller's knob fill */
 #define FLAT_PAL_CODE_LEN 0x6704UL
 /* 1 when code (len bytes, the first hunk of the caller's seglist) is Palette 40.2: size, the bevel routine's FNV-1a and the
  * jsr RectFill opcode before every site. Relocation-free bytes only (the hunk is relocated in memory). */

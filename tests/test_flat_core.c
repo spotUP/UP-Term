@@ -4093,6 +4093,17 @@ static void test_palette_preview_sites(void)
     CHECK_INT(flat_palette_site(0x5418), FLAT_PAL_DITHER);
     CHECK_INT(flat_palette_site(0x5bf2), FLAT_PAL_DITHER);
     CHECK_INT(flat_palette_site(0x5dfa), FLAT_PAL_DITHER);
+    {   /* RESTAURANT-GLYPH-THEME-PENS: the row highlight XOR is undone on the flat Amiga key: box = text pen, key = ground */
+        flat_state hs;
+        memset(&hs, 0, sizeof hs);
+        hs.pen_text = 1; hs.pen_back = 2; hs.pen_line = 3;
+        CHECK_INT(flat_palette_site(0x5978), FLAT_PAL_HILITE);
+        CHECK_INT(flat_pal_hilite_pen(&hs, 5, 2 ^ 5), 1);
+        CHECK_INT(flat_pal_hilite_pen(&hs, 5, 3 ^ 5), 2);
+        CHECK_INT(flat_pal_hilite_pen(&hs, 5, 4), -1);
+        CHECK_INT(flat_pal_hilite_pen(&hs, 0, 2), -1);
+        CHECK_INT(flat_pal_hilite_pen(0, 5, 7), -1);
+    }
     CHECK_INT(flat_palette_site(0x5c88), FLAT_PAL_KNOB);       /* PALETTE-SAMPLE-SCROLLER: Active knob fill */
     CHECK_INT(flat_palette_site(0x5e68), FLAT_PAL_KNOB);       /* Inactive knob fill */
     CHECK_INT(flat_palette_site(0x34ec), FLAT_PAL_GROOVE);     /* PALETTE-GROOVE: SHADOWPEN row above the samples */

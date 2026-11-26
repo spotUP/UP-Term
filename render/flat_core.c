@@ -2012,9 +2012,24 @@ int flat_palette_button(unsigned long off)
     return 0;
 }
 
+/* RESTAURANT-GLYPH-THEME-PENS: the COMPLEMENT fill that highlights one sample menu row */
+#define PAL_HILITE 0x5978UL
+int flat_pal_hilite_pen(const flat_state *st, int mask, int read)
+{
+    if (!st || !(mask & 0xff))
+        return -1;
+    if (read == ((st->pen_back ^ mask) & 0xff))
+        return st->pen_text;
+    if (read == ((st->pen_line ^ mask) & 0xff))
+        return st->pen_back;
+    return -1;
+}
+
 int flat_palette_site(unsigned long off)
 {
     unsigned i;
+    if (off == PAL_HILITE)
+        return FLAT_PAL_HILITE;
     for (i = 0; i < sizeof pal_edge / sizeof pal_edge[0]; i++)
         if (off == pal_edge[i])
             return FLAT_PAL_EDGE;
@@ -2053,6 +2068,8 @@ int flat_palette_id(const unsigned char *code, unsigned long len)
     for (i = 0; i < sizeof pal_groove / sizeof pal_groove[0]; i++)
         if (!pal_jsr_rf(code, pal_groove[i]))
             return 0;
+    if (!pal_jsr_rf(code, PAL_HILITE))
+        return 0;
     for (i = 0x5428; i < 0x5568; i++)
         h = ((h ^ code[i]) * 0x01000193UL) & 0xffffffffUL;
     return h == 0x99a5f5e6UL;
