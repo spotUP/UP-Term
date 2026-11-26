@@ -1294,14 +1294,27 @@ int flat_scroller_pen_box(const flat_state *s, int depth, int active, int cx, in
     return s->pen_back;
 }
 
-int flat_prop_slider(unsigned activation, unsigned propflags, int kw, int kh, int side)
+int flat_prop_slider(unsigned activation, unsigned propflags, int kw, int kh, int side, int arrows)
 {
     int sd = side > 1 ? side : 1, horiz = (propflags & 0x0002u) != 0, vert = (propflags & 0x0004u) != 0;
-    if ((activation & 0x00F0u) || horiz == vert || kw < 1 || kh < 1)
+    if (arrows || (activation & 0x00F0u) || horiz == vert || kw < 1 || kh < 1)
         return 0;
     if (horiz)
         return kw / sd <= kh ? 1 : 0;
     return kh <= kw / sd ? 2 : 0;
+}
+
+int flat_prop_arrow(int dir, int px, int py, int pw, int ph, unsigned gadget_type, unsigned activation, int gx, int gy, int gw, int gh)
+{
+    int a0, alen, c0, clen, g0, glen, h0, hlen;
+    if ((gadget_type & 0x8000u) || (gadget_type & 0x0007u) != 0x0001u || !(activation & 0x0002u) || gw < 1 || gh < 1)
+        return 0;                                   /* GTYP_BOOLGADGET with GACT_IMMEDIATE only (not a system gadget) */
+    if (dir == 1) { a0 = px; alen = pw; c0 = py; clen = ph; g0 = gx; glen = gw; h0 = gy; hlen = gh; }
+    else if (dir == 2) { a0 = py; alen = ph; c0 = px; clen = pw; g0 = gy; glen = gh; h0 = gx; hlen = gw; }
+    else return 0;
+    if (glen >= alen || h0 >= c0 + clen || h0 + hlen <= c0)
+        return 0;                                   /* longer than the track, or beside it on the cross axis */
+    return (g0 >= a0 + alen && g0 <= a0 + alen + 6) || (g0 + glen <= a0 && g0 + glen >= a0 - 6);
 }
 
 int flat_slider_track(int dir, int side, int cx, int cy, int cw, int ch, int x0, int y0, int x1, int y1, int out[4])
