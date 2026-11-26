@@ -2434,6 +2434,11 @@ static void test_palette_preview_sites(void)
     CHECK_INT(flat_palette_site(0x54e4), FLAT_PAL_EDGE);
     CHECK_INT(flat_palette_site(0x5526), FLAT_PAL_EDGE);
     CHECK_INT(flat_palette_site(0x5556), FLAT_PAL_EDGE);
+    CHECK_INT(flat_palette_site(0x573e), FLAT_PAL_EDGE);        /* PALETTE-MENU-OUTLINE: Restaurant sample frame takes the outline pen */
+    CHECK_INT(flat_palette_site(0x575c), FLAT_PAL_EDGE);
+    CHECK_INT(flat_palette_site(0x5770), FLAT_PAL_EDGE);
+    CHECK_INT(flat_palette_site(0x5786), FLAT_PAL_EDGE);
+    CHECK_INT(flat_palette_site(0x5844), FLAT_PAL_STOCK);       /* the panel fill inside stays the sample's own pen */
     CHECK_INT(flat_palette_site(0x5418), FLAT_PAL_DITHER);
     CHECK_INT(flat_palette_site(0x5bf2), FLAT_PAL_DITHER);
     CHECK_INT(flat_palette_site(0x5dfa), FLAT_PAL_DITHER);
