@@ -2334,10 +2334,7 @@ def reboot(given=None):
     # a new process: the machine flags are read from sys.argv when rig.py is loaded
     subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve()), "start", "--keep-sys"] + args, check=True)
 
-def port_listeners(port):
-    """PIDs listening on TCP `port` on this machine (lsof; none: [])."""
-    out = subprocess.run(["lsof", "-nP", "-iTCP:%d" % port, "-sTCP:LISTEN", "-t"], capture_output=True, text=True).stdout
-    return sorted(set(out.split()))
+port_listeners = paths.port_listeners   # module attribute: the start tests stub it
 
 def refuse_port_clash(port=None):
     """RIG-PORT-CLASH: this rig's wasabid port (paths.wasabi_port) is held by another process (another rig's
@@ -3223,7 +3220,9 @@ def status(quiet=False):
             if h:
                 print("hold: until %s (pid %d), the idle watchdog stays off" % (time.strftime("%F %T", time.localtime(h[1])), h[0]))
         return True
-    except BaseException:
+    except BaseException as e:
+        if not quiet and "rig identity" in str(e):
+            print(e)   # up, but not this rig's daemon: say whose port it is, not just "down"
         if not quiet:
             crash = paths.fsuae_crash() if mine() else None
             if crash:

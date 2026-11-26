@@ -73,6 +73,7 @@ def _conn(timeout=None, touch=True):
     except m.WasabiError as e:
         raise SystemExit('auth failed: %s' % e)
     try:
+        if not os.environ.get('AMI_HOST'): rigwasabi.check_identity(HOST, PORT, c.banner)   # a real Amiga has no rig name
         yield c
     finally:
         c.close()

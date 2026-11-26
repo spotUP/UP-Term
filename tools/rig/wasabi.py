@@ -22,6 +22,7 @@ import pathlib
 import re
 import shutil
 import signal
+import socket
 import struct
 import subprocess
 import sys
@@ -129,6 +130,41 @@ def daemon_cmd(rig_n=None):
     """The AmigaDOS command line that starts wasabid in the rig (detached; its name tells discovery which rig)."""
     n = paths.RIG_N if rig_n is None else rig_n
     return "C:Run >NIL: <NIL: VTC:%s/wasabid %d name rig%d" % (DRAWER, port(n), n)
+
+
+_VERIFIED = set()   # ports whose daemon proved its name in this process
+
+
+def check_identity(host, port_, banner="", tries=3, timeout=0.5):
+    """WASABI-NO-SCREENS: the daemon on a rig's port must be that rig's wasabid. A stale emulator or a kit wasabid
+    (no `name`, so "amiga") on the port answers every command for the wrong Amiga ("there are no screens open").
+    The TCP WELCOME carries only the version, so ask the same port's UDP discovery (WASABI?1 -> WASABI!1 <name>
+    <port> ...; wasabid binds it right after the TCP listen) and compare <name> with rig<N> for the port
+    (paths.wasabi_port). Checked once per port per process; a mismatch or no name is a SystemExit naming both."""
+    if port_ in _VERIFIED:
+        return
+    m = load_client()
+    want = "rig%d" % (port_ - BASE_PORT + 1)
+    found = {}
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        for _ in range(tries):
+            s.sendto(m.DISCOVERY_PROBE, (host, port_))
+            m._collect(s, found, time.time() + timeout)
+            if found:
+                break
+    finally:
+        s.close()
+    names = sorted({v[0] for k, v in found.items() if k[1] == port_})
+    if names == [want]:
+        _VERIFIED.add(port_)
+        return
+    pids = paths.port_listeners(port_)
+    raise SystemExit("[ERROR] rig identity: expected %s on %s:%d, but the daemon there (%s) %s; listening pid %s. "
+                     "Another rig's emulator or a second wasabid holds this port: check UPTERM_RIG and `lsof -nP "
+                     "-iTCP:%d`." % (want, host, port_, banner or "no banner",
+                                     "calls itself %s" % "/".join(names) if names else "gave no discovery name",
+                                     " ".join(pids) or "unknown", port_))
 
 
 _CALL = re.compile(r"^(?:\S+ \S+ \w+ \| )?(?P<task>.+?)\s{2,}(?P<call>\w+)\((?P<args>.*)\)\s*=\s*(?P<result>.+?)\s*$")

@@ -205,6 +205,12 @@ def wasabi_port(rig_n=None):
 WASABI_PORT = wasabi_port()
 
 
+def port_listeners(port):
+    """PIDs listening on TCP `port` on this machine (lsof; none: [])."""
+    out = subprocess.run(["lsof", "-nP", "-iTCP:%d" % port, "-sTCP:LISTEN", "-t"], capture_output=True, text=True).stdout
+    return sorted(set(out.split()))
+
+
 def serial_tcp_port(rig_n=None):
     """The TCP port Amiberry listens on for this rig's serial line (serial_port=TCP://127.0.0.1:<port>): Amiberry
     cannot write the serial line to a file the way FS-UAE does, so rig.py connects to this port and appends the stream
