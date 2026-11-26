@@ -32,6 +32,9 @@ class StartExit(unittest.TestCase):
             @staticmethod
             def sleep(_): pass
 
+            @staticmethod
+            def strftime(fmt): return "00:00:00"   # phase_note stamps start-timing.log
+
             @classmethod
             def time(cls):
                 cls.now += rig.BOOT_POLL

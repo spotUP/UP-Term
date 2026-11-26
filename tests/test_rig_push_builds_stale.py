@@ -38,7 +38,7 @@ class Push(unittest.TestCase):
         with mock.patch.object(rig.subprocess, "run", self.fake()):
             rig.refresh_programs(self.vtc, self.t / "build/amiga")
         self.assertEqual((self.vtc / "foo").read_bytes(), b"NEW")
-        self.assertIn(["make", "build/amiga/foo"], self.calls)
+        self.assertEqual([c[-3:] for c in self.calls if c[1] != "-n"], [["--", "make", "build/amiga/foo"]])   # via buildq
 
     def test_current_program_runs_no_build(self):
         with mock.patch.object(rig.subprocess, "run", self.fake(stale=False)):
