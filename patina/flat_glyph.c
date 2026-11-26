@@ -818,6 +818,15 @@ int flat_knob_frame_draw(const flat_state *s, int depth, int active, int ox, int
     return flat_frame_draw_round(&st, 0, ox, oy, w, h, 1, FLAT_ROLE_PLAIN, fn, rd, ctx);
 }
 
+int flat_cycle_frame_draw(flat_state *st, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd, void *ctx)
+{
+    int in[4], paper = flat_cycle_paper(st, ox, oy, w, h, in);
+    if (!flat_frame_draw_round(st, 0, ox, oy, w, h, 1, FLAT_ROLE_PLAIN, fn, rd, ctx))
+        return 0;
+    fn(ctx, in[0], in[1], in[2], in[3], paper);
+    return 1;
+}
+
 int flat_smart_knob(int is_prop, unsigned prop_flags, const void *knob_next, const void *image)
 {
     return is_prop && image && knob_next == image && (prop_flags & 0x21u) == 0x21u;    /* AUTOKNOB | SMARTKNOBIMAGE */

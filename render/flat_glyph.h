@@ -137,6 +137,10 @@ int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, i
  * window knob: a box in flat_knob_state_pen (inactive bar tone in both states) with the rounded corners of flat_frame_draw_round. */
 int flat_smart_knob(int is_prop, unsigned prop_flags, const void *knob_next, const void *image);
 int flat_knob_frame_draw(const flat_state *s, int depth, int active, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd, void *ctx);
+/* PALETTE-CYCLE-PAPER draw: the accent box on the program box ox,oy w x h (corners as flat_frame_draw_round), then flat_cycle_paper's
+ * in[] in the surface pen; st->pen_button becomes st->pen_line. C8-RING (rig 6, Palette 40.2): the box is not drawn through
+ * raa_frame_draw, whose FLAT-SPACING inset of a filled box is exactly in[]: the paper fill then erased the whole accent box. */
+int flat_cycle_frame_draw(flat_state *st, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd, void *ctx);
 
 /* FLAT-OUTER-EDGE: the four 1 px strips of the outer edge of a window of size w x h, as fill(ctx, x0, y0, x1, y1, pen)
  * calls in pen_outline: top row y = 0, bottom y = h - 1, left x = 0, right x = w - 1 (window-relative; nothing inside).

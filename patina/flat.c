@@ -1315,12 +1315,11 @@ static int c8_draw(Object *obj, Msg msg)
         if (role < 0)
             role = role_of(d->imp_RPort, obj);
         {
-            int in[4], paper = cyc ? flat_cycle_paper(&st, ox, oy, w, h, in) : -1;
-            if (!raa_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role, c2_fill, c2_read, c2_rgb,
-                                fill ? raa_load(d->imp_RPort) : 0, d->imp_RPort, NULL))
+            /* PALETTE-CYCLE-PAPER: accent outline, surface inside. C8-RING: not raa_frame_draw (see flat_cycle_frame_draw) */
+            if (cyc ? !flat_cycle_frame_draw(&st, ox, oy, w, h, c2_fill, c2_read, d->imp_RPort)
+                    : !raa_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role, c2_fill, c2_read, c2_rgb,
+                                      fill ? raa_load(d->imp_RPort) : 0, d->imp_RPort, NULL))
                 return 0;
-            if (paper >= 0)              /* PALETTE-CYCLE-PAPER: accent outline, surface inside */
-                c2_fill(d->imp_RPort, in[0], in[1], in[2], in[3], paper);
         }
         flat_gh_frame(&r->gh, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL), d->imp_State == 1, fill,
                       ox, oy, ox + w - 1, oy + h - 1);

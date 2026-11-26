@@ -4380,6 +4380,14 @@ static void test_flat_spacing(void)
     for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 3;
     CHECK_INT(raa_frame_draw(&fs, 0, 5, 5, 22, 16, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
     CHECK_INT(cv->pix[12][5] == 0 && cv->pix[12][6] == 0 && cv->pix[12][7] != 0 && cv->pix[12][26] == 0 && cv->pix[12][25] == 0, 1);
+    {   /* C8-RING: the cycle ring is on the program box 5..48 x 5..18 (accent 1), paper (0) inside, corners left as the backdrop (3) */
+        flat_state cs = fs;
+        for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 3;
+        CHECK_INT(flat_cycle_frame_draw(&cs, 5, 5, 44, 14, round_fill, round_read, cv), 1);
+        CHECK_INT(cv->pix[5][27] == 1 && cv->pix[18][27] == 1 && cv->pix[12][5] == 1 && cv->pix[12][6] == 1 && cv->pix[12][48] == 1, 1);
+        CHECK_INT(cv->pix[12][27] == 0 && cv->pix[6][27] == 0 && cv->pix[12][7] == 0, 1);
+        CHECK_INT(cv->pix[5][5] == 3 && cv->pix[4][27] == 3 && cv->pix[19][27] == 3, 1);
+    }
     free(cv);
     /* ground record: the program-box erase matches, its fill is clipped to the inset box, the band part is ground */
     memset(&gr, 0, sizeof gr);
