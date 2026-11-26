@@ -2586,11 +2586,31 @@ def boot_lost_after_up(reset0, reset_now, alive):
         return "wasabid stopped answering"
     return None
 
+def owner_clash(owner_text, purpose):
+    """The refusal text when this rig runs for another --purpose, else None (RIG16-SHARED, 2026-11-26).
+
+    Two chains were given rig 16: one's `start` found the other's running rig, printed "already running" with rc 0,
+    measured that rig for 60 s and then `stop`ped it under the blink chain. A start with a --purpose that differs
+    from the running rig's owner.json purpose now exits non-zero instead of taking the rig over. A start without
+    --purpose, or a rig whose purpose was never recorded, keeps the old answer (reboot paths pass the last
+    start's arguments, so they carry the same purpose)."""
+    try:
+        owner = json.loads(owner_text).get("purpose") if owner_text else None
+    except ValueError:
+        owner = None
+    if not purpose or not owner or " ".join(owner.split()) == purpose:
+        return None
+    return ("[ERROR] rig %d is already running for another purpose (%r); this start is for %r. Not taking it over: "
+            "use another UPTERM_RIG, or stop that rig with its owner's OK." % (paths.RIG_N, owner, purpose))
+
 def _start(retries):
     # before anything is written: a start while the rig runs (or boots, when
     # status still says down) must not rewrite BOOTX:go, BOOTX:s/startup-sequence
     # and BOOTX:Mountlist, or delete BOOTX:boot.log, under the running system
     if mine():
+        clash = owner_clash(OWNER_FILE.read_text() if OWNER_FILE.exists() else "", PURPOSE)
+        if clash:
+            sys.exit(clash)
         print("already running")
         return
     with phase("refuse_port_clash"):
