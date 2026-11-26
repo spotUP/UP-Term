@@ -7,8 +7,8 @@
 #ifndef MENU_THEME_H
 #define MENU_THEME_H
 
-#include "../config/upconf.h"
-#include "../render/gthemes_core.h"
+#include "config/upconf.h"
+#include "render/gthemes_core.h"
 
 enum {
     MT_BG,           /* the menu's background (GR_SURFACE) */

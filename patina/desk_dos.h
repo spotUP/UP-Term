@@ -4,7 +4,7 @@
 #ifndef DESK_DOS_H
 #define DESK_DOS_H
 
-#include "../render/gthemes_core.h"
+#include "render/gthemes_core.h"
 
 struct Screen;
 

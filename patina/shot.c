@@ -16,9 +16,9 @@
 #include "shot.h"
 #include "shot_core.h"
 #include "win.h"
-#include "../config/amconf_core.h"
-#include "../config/amconf_dos.h"
-#include "../handler/clip.h"
+#include "config/amconf_core.h"
+#include "config/amconf_dos.h"
+#include "handler/clip.h"
 
 extern struct IntuitionBase *IntuitionBase;
 

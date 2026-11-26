@@ -10,8 +10,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <exec/semaphores.h>
-#include "../render/iconpen_core.h"
-#include "../handler/pubscr.h"
+#include "render/iconpen_core.h"
+#include "handler/pubscr.h"
 
 /* The name carries the record layout: ".6" adds the per-slot role colours (TE-10.6c); ".5" adds screen_applies; ".4" was the record before it; ".3" adds the plan pens to the holder (TE-10.5b); ".2" was the per-screen table (TE-10.4). A binary still running from before an update looks
  * for the old name and never reads this layout. 18 characters, fits ipd_rec.name[20]. */

@@ -15,11 +15,11 @@
 #include <proto/intuition.h>
 #include <proto/graphics.h>
 #include "iconpen_dos.h"
-#include "../handler/pubscr.h"
-#include "../config/amconf_core.h"
-#include "../config/amconf_dos.h"
-#include "../render/gthemes_core.h"
-#include "../render/desk_core.h"
+#include "handler/pubscr.h"
+#include "config/amconf_core.h"
+#include "config/amconf_dos.h"
+#include "render/gthemes_core.h"
+#include "render/desk_core.h"
 #include "flat_role_core.h"
 
 /* the record holds IPD_ROLE_COUNT colours per slot: a different FLAT_ROLE_COUNT makes this array size negative */

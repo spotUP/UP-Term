@@ -1,5 +1,5 @@
 #include "status_core.h"
-#include "../claude/util.h"
+#include "claude/util.h"
 #include <string.h>
 
 static const char *const status_key[STATUS_NVALS] = { "hits=", " rows=", " enabled=", " active=", " wins=", " snaps=",

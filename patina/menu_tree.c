@@ -5,7 +5,7 @@
 #include <string.h>
 #include "menu_core.h"
 #include "bar_core.h"
-#include "../prefs/settings_def.h"
+#include "prefs/settings_def.h"
 
 static void cpy(char *d, const char *s, int n)
 {

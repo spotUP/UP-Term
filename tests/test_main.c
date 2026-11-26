@@ -36,8 +36,6 @@ void suite_closeeof(void);
 void suite_upassign(void);
 void suite_bigvol(void);
 void suite_fssm(void);
-void suite_clips(void);
-void suite_shot_core(void);
 void suite_pi_llm(void);
 void suite_upcon(void);
 void suite_upconf(void);
@@ -48,33 +46,8 @@ void suite_settings_def(void);
 void suite_gthemes(void);
 void suite_desk(void);
 void suite_desk_start_apply(void);
-void suite_pkgs(void);
-void suite_job(void);
-void suite_bar(void);
-void suite_tick(void);
-void suite_demo_core(void);
-void suite_wbmode(void);
-void suite_status_core(void);
-void suite_barconf(void);
-void suite_note_core(void);
 void suite_flat_core(void);
-void suite_flat_role_core(void);
-void suite_iclabel(void);
-void suite_richaa(void);
-void suite_iconfile(void);
-void suite_iconapply(void);
-void suite_dopusenv(void);
-void suite_dopustb_bank(void);
 void suite_iconpen(void);
-void suite_dopustb(void);
-void suite_menu_fontspec(void);
-void suite_wbreset(void);
-void suite_borderblank(void);
-void suite_inst(void);
-void suite_help_core(void);
-void suite_themeprev(void);
-void suite_menusrv(void);
-void suite_menu_text(void);
 void suite_iconspec(void);
 void suite_updiff(void);
 void suite_zmodem(void);
@@ -89,7 +62,6 @@ void suite_screenreq(void);
 void suite_wbpark(void);
 void suite_cmdline(void);
 void suite_win(void);
-void suite_tile(void);
 void suite_fontpair(void);
 void suite_updemo(void);
 void suite_tabprog(void);
@@ -159,8 +131,6 @@ static const h_suite suites[] = {
     { "upassign", suite_upassign },
     { "bigvol", suite_bigvol },
     { "fssm", suite_fssm },
-    { "clips", suite_clips },
-    { "shot_core", suite_shot_core },
     { "upcon", suite_upcon },
     { "upconf", suite_upconf },
     { "keymap", suite_keymap },
@@ -170,33 +140,8 @@ static const h_suite suites[] = {
     { "gthemes", suite_gthemes },
     { "desk", suite_desk },
     { "desk_start_apply", suite_desk_start_apply },
-    { "pkgs", suite_pkgs },
-    { "job", suite_job },
-    { "bar", suite_bar },
-    { "tick", suite_tick },
-    { "demo_core", suite_demo_core },
-    { "wbmode", suite_wbmode },
-    { "status_core", suite_status_core },
-    { "barconf", suite_barconf },
-    { "note_core", suite_note_core },
     { "flat_core", suite_flat_core },
-    { "flat_role_core", suite_flat_role_core },
-    { "iclabel", suite_iclabel },
-    { "richaa", suite_richaa },
-    { "iconfile", suite_iconfile },
-    { "iconapply", suite_iconapply },
-    { "dopusenv", suite_dopusenv },
-    { "dopustb_bank", suite_dopustb_bank },
     { "iconpen", suite_iconpen },
-    { "dopustb", suite_dopustb },
-    { "menu_fontspec", suite_menu_fontspec },
-    { "wbreset", suite_wbreset },
-    { "borderblank", suite_borderblank },
-    { "inst", suite_inst },
-    { "help_core", suite_help_core },
-    { "themeprev", suite_themeprev },
-    { "menusrv", suite_menusrv },
-    { "menu_text", suite_menu_text },
     { "iconspec", suite_iconspec },
     { "updiff", suite_updiff },
     { "zmodem", suite_zmodem },
@@ -211,7 +156,6 @@ static const h_suite suites[] = {
     { "wbpark", suite_wbpark },
     { "cmdline", suite_cmdline },
     { "win", suite_win },
-    { "tile", suite_tile },
     { "fontpair", suite_fontpair },
     { "updemo", suite_updemo },
     { "tabprog", suite_tabprog },

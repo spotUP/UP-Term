@@ -11,7 +11,7 @@
 #include "leaf.h"
 #include "proclaunch.h"
 #define UPASSIGN_DOS
-#include "../config/upassign.h"
+#include "config/upassign.h"
 
 #define PK_CMD "upkg list --tsv"
 #define PK_TEXT_MAX (1536L * 1024L)   /* about 4000 rows of up to 380 bytes (PK_ROWS_MAX) */

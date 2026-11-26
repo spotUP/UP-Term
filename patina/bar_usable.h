@@ -4,7 +4,7 @@
 #ifndef PATINA_BAR_USABLE_H
 #define PATINA_BAR_USABLE_H
 
-#include "../config/win_core.h"
+#include "config/win_core.h"
 
 struct Screen;
 

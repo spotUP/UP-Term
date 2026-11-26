@@ -8,9 +8,9 @@
 #include <proto/dos.h>
 #include "proclaunch.h"
 #define CMDPATH_DOS
-#include "../config/cmdpath.h"
+#include "config/cmdpath.h"
 #define SEGSTACK_DOS
-#include "../config/segstack.h"
+#include "config/segstack.h"
 
 BPTR pl_dup_path(void)
 {

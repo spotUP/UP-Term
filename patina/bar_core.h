@@ -6,7 +6,7 @@
  * workspace segments of the roadmap add ids and a bar_add call; nothing else here changes. */
 #ifndef PATINA_BAR_CORE_H
 #define PATINA_BAR_CORE_H
-#include "../render/desk_core.h"
+#include "render/desk_core.h"
 
 #define BAR_MAX_SEGS 32                 /* screens list (up to 10), marker, clock, CPU, RAM, network, Agents, system, tray */
 #define BAR_TEXT 32

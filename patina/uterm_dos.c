@@ -4,9 +4,9 @@
 #include <proto/dos.h>
 #include <string.h>
 #include "uterm_dos.h"
-#include "../handler/tabprog.h"
+#include "handler/tabprog.h"
 #define UPASSIGN_DOS
-#include "../config/upassign.h"
+#include "config/upassign.h"
 
 /* scripts of their own (T:Patina-uterm.00 .. 15): a name a shell still
  * reads refuses MODE_NEWFILE, so two windows opened close together never

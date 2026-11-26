@@ -5,7 +5,7 @@
 #ifndef PATINA_MENU_CORE_H
 #define PATINA_MENU_CORE_H
 
-#include "../config/keymap.h"
+#include "config/keymap.h"
 
 #define MN_MAX_ITEMS 64
 

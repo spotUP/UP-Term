@@ -8,7 +8,7 @@
 #define PATINA_IPATCH_H
 
 #include <stdint.h>
-#include "../render/flat_core.h"
+#include "render/flat_core.h"
 
 typedef struct ipatch {
     unsigned char *gate;    /* the gate stub: hook word, saved target */

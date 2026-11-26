@@ -1,6 +1,6 @@
 /* patina-flat glyph geometry: see flat_glyph.h. */
 #include <string.h>
-#include "../render/flat_glyph.h"
+#include "render/flat_glyph.h"
 
 typedef struct plan {
     flat_prim *p;               /* store the rectangles here (flat_glyph_plan), or NULL to stream them to fill */

@@ -9,7 +9,7 @@
 #ifndef ROUNDAA_CORE_H
 #define ROUNDAA_CORE_H
 
-#include "../render/flat_glyph.h"
+#include "render/flat_glyph.h"
 
 #define RAA_MAX_RADIUS 4
 #define RAA_MAX_PENS 256

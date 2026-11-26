@@ -6,7 +6,7 @@
 #define PATINA_THEMEWIN_H
 
 #include "menu_theme.h"
-#include "../render/gthemes_core.h"
+#include "render/gthemes_core.h"
 
 struct Screen;
 struct Window;

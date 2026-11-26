@@ -5,7 +5,7 @@
 #include <dos/dos.h>
 #include <proto/dos.h>
 #include "gthemes_dos.h"
-#include "../config/amconf_dos.h"
+#include "config/amconf_dos.h"
 
 long gt_dos_read(void *ctx, const char *path, char *buf, long cap)
 {

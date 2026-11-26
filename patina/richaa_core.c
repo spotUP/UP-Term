@@ -1,6 +1,6 @@
 /* richaa_core -- see richaa_core.h */
 #include "richaa_core.h"
-#include "../render/emoji.h"
+#include "render/emoji.h"
 
 unsigned long rich_aa_calls;
 

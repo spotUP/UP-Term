@@ -24,9 +24,9 @@
 #include <string.h>
 #include "index_core.h"
 #include "ixwatch.h"
-#include "../install/hardvol.h"
-#include "../config/amconf_dos.h"
-#include "../tty/qmark.h"
+#include "install/hardvol.h"
+#include "config/amconf_dos.h"
+#include "tty/qmark.h"
 #include "stkprobe.h"
 
 static const char ver[] = "$VER: patina-index 1.0 (23.10.2026) (UP-Term)";

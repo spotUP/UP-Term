@@ -3,7 +3,7 @@
 #define PATINA_CX_H
 
 #include <exec/types.h>
-#include "../config/keymap.h"
+#include "config/keymap.h"
 
 enum { CXE_NONE = 0, CXE_KEY, CXE_ENABLE, CXE_DISABLE, CXE_KILL, CXE_UNIQUE, CXE_APPEAR, CXE_DISAPPEAR, CXE_BAR_RIGHT };
 

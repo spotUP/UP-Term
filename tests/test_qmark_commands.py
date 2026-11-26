@@ -108,7 +108,7 @@ for n in EXCLUDED:
 for n in sorted(COMMANDS):
     check(n in names, '%s is built by the Makefile' % n)
     src = open(os.path.join(ROOT, COMMANDS[n])).read()
-    check('#include "../tty/qmark.h"' in src, '%s: %s includes tty/qmark.h' % (n, COMMANDS[n]))
+    check('#include "../tty/qmark.h"' in src or '#include "tty/qmark.h"' in src, '%s: %s includes tty/qmark.h' % (n, COMMANDS[n]))
     body = src[src.find('main('):] if 'main(' in src else ''
     call = re.search(r'\bqmark_(line|argv)\(', body)
     if not call:

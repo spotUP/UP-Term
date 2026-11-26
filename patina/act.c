@@ -7,17 +7,17 @@
 #include <proto/dos.h>
 #include <string.h>
 #include "act.h"
-#include "../config/keymap.h"
-#include "../claude/util.h"
-#include "../handler/frontscr.h"
+#include "config/keymap.h"
+#include "claude/util.h"
+#include "handler/frontscr.h"
 #include "leaf.h"
 #include "termenv.h"
 #include "menu_open.h"
 #include "taskalive.h"
-#include "../config/cxdesc.h"
+#include "config/cxdesc.h"
 #include "proclaunch.h"
 #include "uterm_dos.h"
-#include "../handler/tabprog.h"
+#include "handler/tabprog.h"
 
 int act_run(const char *cmd)
 {
