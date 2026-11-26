@@ -619,6 +619,15 @@ static void test_round_aa(void)
     CHECK_INT(cv->pix[10][10] != 2, 1);                             /* corner pixel is cut */
     CHECK_INT(ground_px > 30 * 14 - 16, 1);
     CHECK_INT(other_px, 0);
+    /* C8-LOOK: the 3.1 cycle and listview boxes are this ground box (flat.c ground_frame). Non-square pixels (side 2), backdrop 0:
+     * fill and edge centres are the ground pen 2, no pen_line (3) anywhere, the corner pixels are cut on both ends */
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
+    CHECK_INT(raa_ground_frame_draw(&fs, 2, 2, 5, 5, 44, 14, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    other_px = 0;
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) if (cv->pix[y][x] == 3) other_px++;
+    CHECK_INT(other_px, 0);
+    CHECK_INT(cv->pix[12][27] == 2 && cv->pix[6][27] == 2 && cv->pix[17][27] == 2 && cv->pix[12][7] == 2 && cv->pix[12][46] == 2, 1);
+    CHECK_INT(cv->pix[6][7] != 2 && cv->pix[6][46] != 2 && cv->pix[17][7] != 2 && cv->pix[17][46] != 2, 1);
     free(cv);
 }
 
@@ -1055,6 +1064,14 @@ static void test_which_from_gtype(void)
         memset(&f, 0, sizeof f);
         CHECK_INT(flat_frame_draw(&fs, 1, 10, 20, 8, 6, 1, 0, frame_rec, &f), 1);
         CHECK_INT(f.n == 1 && f.r[0][4] == 2, 1);                              /* pressed: text pen fill (the accent is the unpressed fill), no outline */
+        memset(&f, 0, sizeof f);
+        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, FLAT_ROLE_SECONDARY, frame_rec, &f), 1);
+        CHECK_INT(f.n == 1 && f.r[0][4] == 4, 1);                              /* secondary: the face pen_button */
+        fs.pen_button = 0; fs.pen_ptext = 0;
+        memset(&f, 0, sizeof f);
+        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, FLAT_ROLE_SECONDARY, frame_rec, &f), 1);
+        CHECK_INT(f.n == 1 && f.r[0][4] == 1, 1);                              /* CANCEL-INVISIBLE-FLAT: face = label pen: the accent, never pen_back */
+        fs.pen_button = 4;
         CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 2, 6, 1, 0, frame_rec, &f), 0);   /* too small: stock */
         CHECK_INT(flat_frame_draw(0, 0, 10, 20, 8, 6, 1, 0, frame_rec, &f), 0);
     }
@@ -1205,7 +1222,7 @@ static void test_which_from_gtype(void)
          * secondary is a pen_button fill with the background-pen label (FLAT-SECONDARY-LABEL). Driven through the frame draw and the label arm exactly as flat.c does. */
         struct round_canvas { int pix[40][60]; } *cv = (struct round_canvas *)calloc(1, sizeof *cv);
         flat_state fs; flat_tx t; int surf = 1, task = 2, pressed, role, cases[3][2] = { { 0, FLAT_ROLE_PRIMARY }, { 1, FLAT_ROLE_PRIMARY }, { 0, FLAT_ROLE_SECONDARY } };
-        int body[3] = { 5, 6, 0 }, label[3] = { 0, 0, 0 }, i;
+        int body[3] = { 5, 6, 5 }, label[3] = { 0, 0, 0 }, i;   /* secondary: no pen_button, face = pen_back = pen_ptext: the accent (CANCEL-INVISIBLE-FLAT) */
         memset(&fs, 0, sizeof fs);
         fs.enabled = 1; fs.pen_text = 6; fs.pen_line = 5; fs.pen_back = 0; fs.pen_ptext = 0; fs.pen_sel = 4;
         for (i = 0; i < 3; i++) {
@@ -1341,6 +1358,34 @@ static void test_which_from_gtype(void)
             CHECK_INT(flat_button_gadget(&img, &other, &img), 0);
             CHECK_INT(flat_button_gadget(&other, &other, &img), 0);           /* another gadget's image */
             CHECK_INT(flat_button_gadget(0, 0, 0), 0);
+            /* PALETTE-CYCLE-FLAT: rig 12 Palette 40.2 "Multicolor Settings" cycle, bool gadget 315,17 293x14 */
+            CHECK_INT(flat_cycle_frame(0x0001, 0x0001, 315, 17, 293, 14, 315, 17, 293, 14), 1);
+            CHECK_INT(flat_cycle_frame(0x1001, 0x0001, 315, 17, 293, 14, 315, 17, 293, 14), 1);   /* GTYP_GADTOOLS bit set */
+            CHECK_INT(flat_cycle_frame(0x0001, 0x0001, 315, 17, 293, 14, 316, 18, 291, 12), 0);   /* an inner box (list frame) */
+            CHECK_INT(flat_cycle_frame(0x0001, 0x0003, 589, 123, 19, 12, 589, 123, 19, 12), 0);   /* scroller arrow: IMMEDIATE */
+            CHECK_INT(flat_cycle_frame(0x0003, 0x0001, 149, 137, 149, 7, 149, 137, 149, 7), 0);   /* prop */
+            CHECK_INT(flat_cycle_frame(0x0004, 0x0001, 20, 20, 100, 14, 20, 20, 100, 14), 0);     /* string */
+            {   /* PALETTE-CYCLE-PAPER: the cycle face is the accent, the inside is the surface pen (a Patina window) */
+                flat_state cs; int in[4], sw;
+                memset(&cs, 0, sizeof cs);
+                cs.side = 2; cs.pen_line = 7; cs.pen_back = 0; cs.pen_button = 3;
+                sw = flat_button_side(cs.side, 293);
+                CHECK_INT(flat_cycle_paper(&cs, 315, 17, 293, 14, in), 0);
+                CHECK_INT(cs.pen_button, 7);
+                CHECK_INT(in[0] == 315 + sw && in[1] == 18 && in[2] == 607 - sw && in[3] == 29, 1);
+                CHECK_INT(sw >= 1, 1);
+            }
+            CHECK_INT(flat_cycle_frame(0x0005, 0x0001, 15, 20, 285, 20, 15, 20, 285, 20), 0);     /* custom (Palette's colour wheel) */
+            /* C8-RING: the 3.1 cycle's frame is its render == select image: still a cycle; a push button with the same box is not */
+            CHECK_INT(flat_cycle_of(1, 0, 1), 1);
+            CHECK_INT(flat_cycle_of(0, 0, 1), 1);
+            CHECK_INT(flat_cycle_of(1, 1, 1), 0);
+            CHECK_INT(flat_cycle_of(1, 0, 0), 0);
+            CHECK_INT(flat_cycle_of(0, 0, 0), 0);
+            CHECK_INT(flat_cycle_frame(0x8001, 0x0001, 0, 0, 18, 11, 0, 0, 18, 11), 0);           /* system gadget */
+            CHECK_INT(flat_cycle_frame(0x0001, 0x0001, 0, 0, 0, 0, 0, 0, 0, 0), 0);
+            /* a slider holder also matches, but noline_frame classes its frame TRACK first and draws nothing when filled */
+            CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 0, 1, 5), 1);
         }
         {   /* INSTALLER-BORDER-BUTTON: the 3.2 Installer's buttons (rig 97 gprobe: type 5, flags 0002, render != select, no text, 238x16) */
             int ren = 0, sel = 0;
@@ -1495,6 +1540,47 @@ static void test_which_from_gtype(void)
 
 /* FLAT-SCROLLER: knob = the lighter pen (pen_button), track = the frame pen (pen_back), nothing outside the container, nothing
  * when flat is off or held. Same rule for every state: the function takes no active flag. */
+/* MODERN-SLIDER: slider pick, track line and round knob rows */
+static void test_slider(void)
+{
+    int x0, x1, i, w[8], t[4];
+    CHECK_INT(flat_prop_slider(0, 2, 6, 7, 1), 1);
+    CHECK_INT(flat_prop_slider(0x10, 2, 6, 7, 1), 0);
+    CHECK_INT(flat_prop_slider(0, 2, 40, 7, 1), 0);
+    CHECK_INT(flat_prop_slider(0, 6, 6, 7, 1), 0);
+    CHECK_INT(flat_prop_slider(0, 4, 14, 7, 2), 2);
+    CHECK_INT(flat_prop_slider(0, 4, 14, 30, 2), 0);
+    for (i = 0; i < 8; i++)
+        w[i] = flat_slider_disc_row(1, 10, 20, 6, 7, 20 + i, &x0, &x1) ? x1 - x0 + 1 : 0;
+    CHECK_INT(w[0], 4); CHECK_INT(w[1], 6); CHECK_INT(w[4], 6);
+    CHECK_INT(w[5], 4); CHECK_INT(w[6], 0);
+    CHECK_INT(flat_slider_disc_row(1, 10, 20, 6, 7, 25, &x0, &x1) ? x0 : -1, 11);
+    for (i = 0; i < 8; i++)
+        w[i] = flat_slider_disc_row(2, 10, 20, 6, 7, 20 + i, &x0, &x1) ? x1 - x0 + 1 : 0;
+    /* side 2: min(6 / 2, 7) = 3 rows (22..24) of 6 columns, 3 x 3 visual units; rows 20, 21, 25, 26 miss it */
+    CHECK_INT((w[0] == 0) + (w[1] == 0) + (w[5] == 0) + (w[6] == 0), 4);
+    CHECK_INT(w[2], 4); CHECK_INT(w[3], 6); CHECK_INT(w[4], 4);
+    CHECK_INT(flat_slider_track(1, 1, 100, 50, 149, 7, 0, 0, 999, 999, t), 1);
+    CHECK_INT(t[1], 53); CHECK_INT(t[3], 53);
+    CHECK_INT(t[0], 100); CHECK_INT(t[2], 248);
+    CHECK_INT(flat_slider_track(1, 1, 100, 50, 149, 7, 0, 50, 999, 52, t), 0);
+    CHECK_INT(flat_slider_track(1, 1, 100, 50, 149, 7, 120, 0, 130, 999, t) ? t[2] - t[0] : -1, 10);
+    CHECK_INT(flat_slider_track(2, 2, 10, 0, 16, 90, 0, 0, 999, 999, t), 1);
+    CHECK_INT(t[0], 17); CHECK_INT(t[2] - t[0] + 1, 2);
+    {   /* GSLIDER-FLAT: ring repaint only after GM_RENDER of an absolute box on a themed screen with flat on */
+        flat_state g;
+        memset(&g, 0, sizeof g);
+        g.enabled = 1;
+        CHECK_INT(flat_gslider_ring(&g, FLAT_GM_RENDER, 1, 0, 18, 91), 1);
+        CHECK_INT(flat_gslider_ring(&g, 0x202, 1, 0, 18, 91), 0);        /* not GM_RENDER */
+        CHECK_INT(flat_gslider_ring(&g, FLAT_GM_RENDER, 0, 0, 18, 91), 0);  /* stock screen */
+        CHECK_INT(flat_gslider_ring(&g, FLAT_GM_RENDER, 1, 0x0010, 18, 91), 0);   /* GFLG_RELRIGHT */
+        CHECK_INT(flat_gslider_ring(&g, FLAT_GM_RENDER, 1, 0, 4, 91), 0);   /* nothing inside the ring */
+        g.held = 1;
+        CHECK_INT(flat_gslider_ring(&g, FLAT_GM_RENDER, 1, 0, 18, 91), 0);
+    }
+}
+
 static void test_scroller(void)
 {
     flat_state s;
@@ -2022,6 +2108,38 @@ static void test_clone_private_slot(void)
     CHECK_INT((1 << FLAT_CLONE_DEPTH) > FLAT_CLONE_MARK(FLAT_CLONE_MARKS - 1), 1);
 }
 
+/* PALETTE-SAMPLE-OUTLINE (FLAT-ARROWS-CORNER): the size box in a Palette sample's corner covers the sample outline with its
+ * last column and row; the saved edge cells put the outline back, the rest of the box keeps the box pen */
+static void test_pal_sample_edge(void)
+{
+    unsigned char saved[32];
+    int i, x, y, n;
+    CHECK_INT(flat_edge_cell(0, 8, 9, &x, &y), 1);
+    CHECK_INT(x, 7); CHECK_INT(y, 0);
+    CHECK_INT(flat_edge_cell(9, 8, 9, &x, &y), 1);
+    CHECK_INT(x, 0); CHECK_INT(y, 8);
+    CHECK_INT(flat_edge_cell(15, 8, 9, &x, &y), 1);
+    CHECK_INT(x, 6); CHECK_INT(y, 8);                              /* the corner cell is the column's, not twice */
+    CHECK_INT(flat_edge_cell(16, 8, 9, &x, &y), 0);
+    cv_clear();
+    cv_fill(0, 10, 0, 10, 20, 'D');                                  /* the sample's right outline */
+    cv_fill(0, 0, 20, 10, 20, 'D');                                  /* and its bottom outline */
+    n = 8 + 9 - 1;
+    for (i = 0; i < n && flat_edge_cell(i, 8, 9, &x, &y); i++)
+        saved[i] = (unsigned char)cv[12 + y][3 + x];
+    cv_fill(0, 3, 12, 10, 20, 'F');                                  /* the box fill, as clone_paint does */
+    CHECK_INT(flat_edge_restore(saved, n, 8, 9, 3, 12, 'F', cv_fill, 0), 9 + 7);
+    for (y = 0; y <= 20; y++)
+        CHECK_INT(cv[y][10], 'D');                                   /* the outline column is whole again */
+    for (x = 0; x <= 10; x++)
+        CHECK_INT(cv[20][x], 'D');                                   /* and the bottom row */
+    CHECK_INT(cv[15][5], 'F');                                       /* the box inside keeps its pen */
+    cv_clear();                                                      /* no outline under the box: nothing repainted */
+    for (i = 0; i < n; i++)
+        saved[i] = 'F';
+    CHECK_INT(flat_edge_restore(saved, n, 8, 9, 3, 12, 'F', cv_fill, 0), 0);
+}
+
 static void test_glyph_clone(void)
 {
     flat_state st;
@@ -2278,6 +2396,102 @@ static void test_clone_no_dividers(void)
 
 /* PREFS-NO-OUTLINES: the class of an edges-only frame from its box and the window's gadget boxes (the five boxes measured in
  * Prefs/Time and Prefs/Font), the pen each class takes, and the ground box records the content fills are matched against. */
+/* PALETTE-FLAT-PREVIEW: the Palette 40.2 example windows' bevel edges and scroller dithers are told apart from its text,
+ * checkmark and arrow calls by call site; an unknown Palette build stays stock */
+static void test_palette_preview_sites(void)
+{
+    static unsigned char code[FLAT_PAL_CODE_LEN];
+    const char *home = getenv("HOME");
+    char path[512];
+    FILE *f;
+    CHECK_INT(flat_palette_site(0x54ac), FLAT_PAL_EDGE);
+    CHECK_INT(flat_palette_button(0x5fb2), 1);                  /* PALETTE-PREVIEW-BUTTONS: the three sample push button bevels */
+    CHECK_INT(flat_palette_button(0x6106), 1);
+    CHECK_INT(flat_palette_button(0x6142), 1);
+    CHECK_INT(flat_palette_button(0x5a56), 0);                  /* the sample window bevel keeps its edge */
+    /* PALETTE-PREVIEW-FRAMES: inner sample-window bevels and the FILLPEN side fills go paper; the outer bevels keep the outline */
+    CHECK_INT(flat_palette_button(0x5a88), 1);
+    CHECK_INT(flat_palette_button(0x5d12), 1);
+    CHECK_INT(flat_palette_button(0x5cde), 0);
+    CHECK_INT(flat_palette_button(0x5c44), 1);                  /* PALETTE-SCROLLER-BEVEL: Active, Inactive sample scroller container */
+    CHECK_INT(flat_palette_button(0x5e36), 1);
+    CHECK_INT(flat_palette_button(0x5c40), 0);                  /* the bsr itself, not its return */
+    CHECK_INT(flat_palette_site(0x5ace), FLAT_PAL_GROOVE);
+    CHECK_INT(flat_palette_site(0x5ae0), FLAT_PAL_GROOVE);
+    CHECK_INT(flat_palette_site(0x5ab8) == FLAT_PAL_GROOVE, 0);  /* the title band keeps its accent */
+    CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 1, 0, 5), 1);     /* SLIDER-SCROLLER-NO-FRAME: slider: no box */
+    CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 0, 1, 5), 1);     /* filled holder of a scroller: no box, the prop stays */
+    CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 0, 0, -1), 1);    /* no input ground: no box either, never the accent ring */
+    CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 0, 0, 5), 2);     /* edges-only track with an input ground: the ground box */
+    CHECK_INT(flat_track_frame(FLAT_FC_CELL, 0, 1, 5), 0);
+    CHECK_INT(flat_palette_site(0x54e4), FLAT_PAL_EDGE);
+    CHECK_INT(flat_palette_site(0x5526), FLAT_PAL_EDGE);
+    CHECK_INT(flat_palette_site(0x5556), FLAT_PAL_EDGE);
+    CHECK_INT(flat_palette_site(0x5418), FLAT_PAL_DITHER);
+    CHECK_INT(flat_palette_site(0x5bf2), FLAT_PAL_DITHER);
+    CHECK_INT(flat_palette_site(0x5dfa), FLAT_PAL_DITHER);
+    {   /* RESTAURANT-GLYPH-THEME-PENS: the row highlight XOR is undone on the flat Amiga key: box = text pen, key = ground */
+        flat_state hs;
+        memset(&hs, 0, sizeof hs);
+        hs.pen_text = 1; hs.pen_back = 2; hs.pen_line = 3;
+        CHECK_INT(flat_palette_site(0x5978), FLAT_PAL_HILITE);
+        CHECK_INT(flat_pal_hilite_pen(&hs, 5, 2 ^ 5), 1);
+        CHECK_INT(flat_pal_hilite_pen(&hs, 5, 3 ^ 5), 2);
+        CHECK_INT(flat_pal_hilite_pen(&hs, 5, 4), -1);
+        CHECK_INT(flat_pal_hilite_pen(&hs, 0, 2), -1);
+        CHECK_INT(flat_pal_hilite_pen(0, 5, 7), -1);
+    }
+    CHECK_INT(flat_palette_site(0x5c88), FLAT_PAL_KNOB);       /* PALETTE-SAMPLE-SCROLLER: Active knob fill */
+    CHECK_INT(flat_palette_site(0x5e68), FLAT_PAL_KNOB);       /* Inactive knob fill */
+    CHECK_INT(flat_palette_site(0x34ec), FLAT_PAL_GROOVE);     /* PALETTE-GROOVE: SHADOWPEN row above the samples */
+    CHECK_INT(flat_palette_site(0x353e), FLAT_PAL_GROOVE);     /* its SHINEPEN row */
+    CHECK_INT(flat_palette_site(0x34e8), FLAT_PAL_STOCK);
+    CHECK_INT(flat_palette_site(0x5c84), FLAT_PAL_STOCK);      /* the jsr itself, not its return */
+    CHECK_INT(flat_palette_site(0x53da), FLAT_PAL_STOCK);      /* the dither box's ground fill */
+    CHECK_INT(flat_palette_site(0x5abc), FLAT_PAL_STOCK);      /* a FILLPEN fill of the sample */
+    CHECK_INT(flat_palette_site(0), FLAT_PAL_STOCK);
+    {   /* PALETTE-SAMPLE-GLYPHS: Palette's title-bar, size, menu images get a Which record; other programs keep the narrow set */
+        static flat_img_rec tab[4];
+        static int objs[5];
+        memset(tab, 0, sizeof tab);
+        CHECK_INT(flat_img_record(tab, 4, &objs[0], FLAT_W_CLOSE, 0), 0);
+        CHECK_INT(flat_img_record_pal(tab, 4, &objs[0], FLAT_W_CLOSE, 0), 1);
+        CHECK_INT(flat_img_record_pal(tab, 4, &objs[1], FLAT_W_SIZE, 0), 1);
+        CHECK_INT(flat_img_record_pal(tab, 4, &objs[2], FLAT_W_AMIGAKEY, 0), 1);
+        CHECK_INT(flat_img_record_pal(tab, 4, &objs[3], FLAT_W_CHECKIMAGE, 0), 1);     /* the narrow set still records */
+        CHECK_INT(flat_img_record_pal(tab, 4, &objs[4], 0x20, 0), 0);                  /* an unknown Which: none */
+        CHECK_INT(flat_img_record_pal(tab, 4, NULL, FLAT_W_DEPTH, 0), 0);
+        CHECK_INT(flat_img_which(tab, 4, &objs[0], NULL), FLAT_W_CLOSE);
+        CHECK_INT(flat_img_which(tab, 4, &objs[2], NULL), FLAT_W_AMIGAKEY);
+        {   /* PALETTE-AMIGAKEY-FLAT: the sample key in pen_line on pen_back; other images keep their pens */
+            flat_state ps; int fr = 7, tx = 8;
+            memset(&ps, 0, sizeof ps); ps.pen_back = 1; ps.pen_line = 5;
+            CHECK_INT(flat_pal_glyph_pens(&ps, FLAT_W_AMIGAKEY, &fr, &tx), 1);
+            CHECK_INT(fr, 1); CHECK_INT(tx, 5);
+            fr = 7; tx = 8;
+            CHECK_INT(flat_pal_glyph_pens(&ps, FLAT_W_MENUCHECK, &fr, &tx), 0);
+            CHECK_INT(fr, 7); CHECK_INT(tx, 8);
+            CHECK_INT(flat_pal_glyph_pens(NULL, FLAT_W_AMIGAKEY, &fr, &tx), 0);
+        }
+    }
+    memset(code, 0, sizeof code);
+    CHECK_INT(flat_palette_id(code, sizeof code), 0);          /* not Palette */
+    CHECK_INT(flat_palette_id(NULL, sizeof code), 0);
+    CHECK_INT(flat_palette_id(code, 0x1000), 0);               /* too short to hold the sites */
+    snprintf(path, sizeof path, "%s/Library/CloudStorage/Dropbox/WB/Prefs/Palette", home ? home : "");
+    f = fopen(path, "rb");
+    if (!f) {
+        printf("note: %s absent, Palette 40.2 accept case not run\n", path);
+        return;
+    }
+    if (fseek(f, 0x24, SEEK_SET) == 0 && fread(code, 1, sizeof code, f) == sizeof code) {
+        CHECK_INT(flat_palette_id(code, sizeof code), 1);      /* the 3.1 editor, hunk 0 (no relocs in the checked bytes) */
+        code[0x5430] ^= 1;
+        CHECK_INT(flat_palette_id(code, sizeof code), 0);      /* another build: stock */
+    }
+    fclose(f);
+}
+
 static void test_no_outlines(void)
 {
     flat_state s;
@@ -2303,6 +2517,16 @@ static void test_no_outlines(void)
         CHECK_INT(flat_display_gadget(0x8007, 0x0001), 0);
         CHECK_INT(flat_frame_class(221, 88, 155, 14, in_g, 2), FLAT_FC_DISPLAY);    /* was BORDERED: the stock outline */
         CHECK_INT(flat_frame_class(386, 30, 166, 130, lv_g, 2), FLAT_FC_BORDERED);  /* a listview border holds its list: unchanged */
+        {   /* PALETTE-SWATCH-FRAME: Palette 40.2 on KS 3.1 (rig 12): the PALETTE_KIND swatch grid is custom gadget 15,20 285x20 */
+            flat_gadbox pal_g[3] = { { 15, 20, 285, 20, FLAT_GK_CUSTOM }, { 315, 17, 293, 14, FLAT_GK_OTHER }, { 317, 37, 270, 108, FLAT_GK_OTHER } };
+            flat_gadbox cyc_g[1] = { { 315, 17, 293, 14, FLAT_GK_OTHER } };
+            CHECK_INT(flat_frame_class(15, 20, 285, 20, pal_g, 3), FLAT_FC_SELFDRAWN);    /* its frame: no box, no accent ring */
+            CHECK_INT(flat_frame_class(315, 17, 293, 14, cyc_g, 1), FLAT_FC_BORDERED);    /* a bool cycle is not touched */
+            CHECK_INT(flat_frame_class(317, 37, 270, 108, pal_g, 3), FLAT_FC_BORDERED);   /* the pen list box is not touched */
+            CHECK_INT(flat_frame_class(10, 10, 300, 40, pal_g, 1), FLAT_FC_GROUP);        /* a group box round the palette: unchanged */
+            CHECK_INT(flat_frame_class(17, 21, 36, 18, pal_g, 1), FLAT_FC_CELL);          /* a frame inside it still counts as inside */
+            CHECK_INT(flat_noline_pen(&s, FLAT_FC_SELFDRAWN, 4, 0), -1);                  /* nothing to fill */
+        }
     }
     {   /* S74-CHECKBOX-GROUND: CHECKIMAGE takes the ground box; the tick only in the selected states, in the given pen, inside the box */
         rect_log tl;
@@ -2314,6 +2538,27 @@ static void test_no_outlines(void)
         CHECK_INT(flat_check_width(26, 11, 0), 11);
         CHECK_INT(flat_check_width(26, 11, 4), 26);     /* never wider than the image */
         CHECK_INT(flat_check_image(FLAT_W_MENUCHECK), 0);
+        {   /* PALETTE-LEFTOVERS2: no input pen on a themed private screen = outlined box, never the stock bevel */
+            flat_state cs;
+            int fill = -9, edge = -9;
+            memset(&cs, 0, sizeof cs);
+            cs.pen_back = 0; cs.pen_outline = 3; cs.pen_sel = 12;
+            CHECK_INT(flat_check_look(&cs, 8, 1, &fill, &edge), FLAT_CHECK_GROUND);
+            CHECK_INT(fill == 12 && edge == -1, 1);
+            CHECK_INT(flat_check_look(&cs, 8, 0, &fill, &edge), FLAT_CHECK_GROUND);     /* a held pen needs no themed flag */
+            cs.pen_sel = 0;                                                             /* the Palette private screen: own pens 0 */
+            CHECK_INT(flat_check_look(&cs, 8, 1, &fill, &edge), FLAT_CHECK_OUTLINE);
+            CHECK_INT(fill == 0 && edge == 3, 1);
+            fill = edge = -9;
+            CHECK_INT(flat_check_look(&cs, 8, 0, &fill, &edge), FLAT_CHECK_STOCK);      /* flat-private-screens off / excluded */
+            CHECK_INT(fill == -9 && edge == -9, 1);
+            cs.pen_sel = 12;
+            CHECK_INT(flat_check_look(&cs, 2, 1, &fill, &edge), FLAT_CHECK_OUTLINE);    /* 4 colours: pen 12 is no pen there */
+            CHECK_INT(flat_check_look(&cs, 1, 1, &fill, &edge), FLAT_CHECK_STOCK);      /* outline pen 3 outside 2 colours */
+            cs.pen_outline = 0;
+            CHECK_INT(flat_check_look(&cs, 2, 1, &fill, &edge), FLAT_CHECK_STOCK);      /* outline == ground: invisible */
+            CHECK_INT(flat_check_look(NULL, 8, 1, &fill, &edge), FLAT_CHECK_STOCK);
+        }
         CHECK_INT(flat_check_ticked(0), 0);
         CHECK_INT(flat_check_ticked(5), 0);
         CHECK_INT(flat_check_ticked(1) && flat_check_ticked(6) && flat_check_ticked(8), 1);
@@ -2364,7 +2609,8 @@ static void test_no_outlines(void)
         CHECK_INT(st.pen_button, look.pen_line);                                    /* 4 colours: the accent line pen */
     }
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_GROUP, 4, 0), -1);                        /* group: nothing is drawn */
-    CHECK_INT(flat_noline_pen(&s, FLAT_FC_BORDERED, 4, 0), -1);
+    CHECK_INT(flat_noline_pen(&s, FLAT_FC_BORDERED, 4, 0), 5);                      /* C8-LOOK: the listview box takes the input ground, no pen_line outline */
+    CHECK_INT(flat_noline_pen(&s, FLAT_FC_BORDERED, 2, 0), -1);                     /* 4 colours: no ground pen, the stock outline stays */
     s.pen_sel = 0;
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_TRACK, 4, 0), -1);                        /* no input pen on the screen */
     s.pen_sel = 5;
@@ -2466,6 +2712,14 @@ static void test_flat_spacing(void)
     for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 3;
     CHECK_INT(raa_frame_draw(&fs, 0, 5, 5, 22, 16, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
     CHECK_INT(cv->pix[12][5] == 0 && cv->pix[12][6] == 0 && cv->pix[12][7] != 0 && cv->pix[12][26] == 0 && cv->pix[12][25] == 0, 1);
+    {   /* C8-RING: the cycle ring is on the program box 5..48 x 5..18 (accent 1), paper (0) inside, corners left as the backdrop (3) */
+        flat_state cs = fs;
+        for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 3;
+        CHECK_INT(flat_cycle_frame_draw(&cs, 5, 5, 44, 14, round_fill, round_read, cv), 1);
+        CHECK_INT(cv->pix[5][27] == 1 && cv->pix[18][27] == 1 && cv->pix[12][5] == 1 && cv->pix[12][6] == 1 && cv->pix[12][48] == 1, 1);
+        CHECK_INT(cv->pix[12][27] == 0 && cv->pix[6][27] == 0 && cv->pix[12][7] == 0, 1);
+        CHECK_INT(cv->pix[5][5] == 3 && cv->pix[4][27] == 3 && cv->pix[19][27] == 3, 1);
+    }
     free(cv);
     /* ground record: the program-box erase matches, its fill is clipped to the inset box, the band part is ground */
     memset(&gr, 0, sizeof gr);
@@ -2498,6 +2752,7 @@ void suite_flat_core_patina(void)
     test_arrow_s69_shape();
     test_clone_arrows();
     test_glyph_clone();
+    test_pal_sample_edge();
     test_clone_private_slot();
     test_clone_arrow_sizes();
     test_clone_no_dividers();
@@ -2505,6 +2760,7 @@ void suite_flat_core_patina(void)
     test_clone_v40_inactive_takes_normal_shape();
     test_clone_band_rows_strip();
     test_scroller();
+    test_slider();
     test_which_from_gtype();
     test_dopus_box_outline();
     test_dopus_no_ring();
@@ -2525,5 +2781,6 @@ void suite_flat_core_patina(void)
     test_round_partial_mask();
     test_round_pen_byte();
     test_no_outlines();
+    test_palette_preview_sites();
     test_flat_spacing();
 }

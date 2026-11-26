@@ -13,7 +13,7 @@ class AddonStage(unittest.TestCase):
     def test_boot_copies_claude_and_amiga_pi_to_c(self):
         go = rig.kit_shadow_lines(False)
         for n in ("Claude", "amiga-pi"):
-            self.assertIn("C:Copy >NIL: VTC:%s C:%s CLONE" % (n, n), go)
+            self.assertIn("Copy >NIL: VTC:%s C:%s CLONE" % (n, n), go)
 
     def test_refresh_stages_current_builds_from_their_repos(self):
         self.assertEqual(rig.kit_shadow_src("Claude"), ROOT / "build/amiga/Claude")

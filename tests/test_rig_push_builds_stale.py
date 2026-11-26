@@ -26,8 +26,8 @@ class Push(unittest.TestCase):
     def fake(self, stale=True, build_rc=0):
         def run(cmd, **kw):
             self.calls.append(cmd)
-            if cmd[1] == "-q":
-                return subprocess.CompletedProcess(cmd, 1 if stale else 0, "", "")
+            if cmd[1] == "-n":   # the one dry-run pass of paths.stale_targets
+                return subprocess.CompletedProcess(cmd, 0, "Must remake target `build/amiga/foo'.\n" if stale else "", "")
             if build_rc == 0:
                 self.bin.write_bytes(b"NEW")
             return subprocess.CompletedProcess(cmd, build_rc, "", "cc: boom")
@@ -42,7 +42,7 @@ class Push(unittest.TestCase):
     def test_current_program_runs_no_build(self):
         with mock.patch.object(rig.subprocess, "run", self.fake(stale=False)):
             rig.refresh_programs(self.vtc, self.t / "build/amiga")
-        self.assertEqual([c for c in self.calls if c[1] != "-q"], [])
+        self.assertEqual([c for c in self.calls if c[1] != "-n"], [])
         self.assertEqual((self.vtc / "foo").read_bytes(), b"OLD")
 
     def test_failed_build_refuses_naming_the_program(self):

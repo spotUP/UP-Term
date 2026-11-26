@@ -35,7 +35,7 @@ BASE_PORT = 1234                        # wasabid's own default; rig N: BASE_POR
 KEY = paths.WASABI_KEY                  # the rig key. Not a secret.
 STREAMS = ("snoop", "debug")
 USAGE = ("usage: rig.py wasabi on | off | snoop start [--task PATTERN] | stop | log [N]"
-         " | debug start | stop | log [N] | guru | ps [PATTERN]")
+         " | debug start | stop | log [N] | guru | ps [PATTERN] | screens")
 
 
 def port(rig_n=None):
@@ -85,7 +85,7 @@ def build_dir():
 def parse_args(argv):
     """(command, options) of `rig.py wasabi ...` (argv after the word wasabi); SystemExit with the usage line for
     anything else. options: sub (start|stop|log), task, n (log lines), pattern (ps)."""
-    if not argv or argv[0] not in ("on", "off", "snoop", "debug", "guru", "ps"):
+    if not argv or argv[0] not in ("on", "off", "snoop", "debug", "guru", "ps", "screens"):
         raise SystemExit(USAGE)
     cmd, rest = argv[0], list(argv[1:])
     opts = {"sub": "", "task": "", "n": 30, "pattern": ""}
@@ -93,7 +93,7 @@ def parse_args(argv):
     def bad(what):
         raise SystemExit("rig.py wasabi %s: %s\n%s" % (cmd, what, USAGE))
 
-    if cmd in ("on", "off", "guru"):
+    if cmd in ("on", "off", "guru", "screens"):
         if rest:
             bad("unknown argument %s" % rest[0])
     elif cmd == "ps":
@@ -278,7 +278,21 @@ def ps(opts):
         raise SystemExit(r.stderr.strip() or "rig wasabi: ps failed (wasabi on first)")
 
 
+def screens():
+    """Every screen and its windows, front first (the client's `windows`); [ERROR] when wasabid does not answer."""
+    try:
+        r = subprocess.run(client_cmd("windows"), capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        raise SystemExit("[ERROR] wasabid on port %d did not answer (rig up? rig.py status)" % port())
+    if r.returncode:
+        raise SystemExit("[ERROR] wasabi screens: %s" % (r.stderr.strip() or r.stdout.strip() or "wasabid not reachable"))
+    sys.stdout.write(r.stdout)
+
+
 def main(argv):
+    if not argv:
+        print(USAGE)   # stdout: a usage on stderr looked like "prints nothing" to agents
+        return
     cmd, opts = parse_args(argv)
     if cmd == "on":
         on()
@@ -288,6 +302,8 @@ def main(argv):
         guru()
     elif cmd == "ps":
         ps(opts)
+    elif cmd == "screens":
+        screens()
     else:
         stream(cmd, opts)
 

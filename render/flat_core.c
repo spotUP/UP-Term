@@ -499,11 +499,39 @@ int flat_zoom_hijacked(unsigned gadget_type, const void *gadget_render, const vo
     return !(gadget_type & 0x8000u) && image && (gadget_render == image || select_render == image) && top >= 0 && top + height <= border_top && !has_sys_zoom && has_sys_depth;
 }
 
+static int img_put(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size);
+
 int flat_img_record(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size)
 {
-    int i, free_i = -1;
     if (!obj || (which != 0x01u && which != FLAT_W_CHECKIMAGE && which != FLAT_W_MXIMAGE && which != FLAT_W_PROPKNOB && (which < 0x0Au || which > 0x0Du)))   /* ZOOMIMAGE, CHECKIMAGE (sysiclass answers no OM_GET: S74-CHECKBOX-GROUND), a prop knob frame or an arrow */
         return 0;
+    return img_put(t, n, obj, which, size);
+}
+
+int flat_img_record_pal(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size)
+{
+    static const unsigned char ext[] = { FLAT_W_DEPTH, FLAT_W_SIZE, FLAT_W_CLOSE, 0x05, FLAT_W_MENUCHECK, FLAT_W_AMIGAKEY };
+    unsigned i;
+    for (i = 0; obj && i < sizeof ext; i++)
+        if (which == ext[i])
+            return img_put(t, n, obj, which, size);
+    return flat_img_record(t, n, obj, which, size);
+}
+
+/* PALETTE-AMIGAKEY-FLAT: Palette's menu sample draws its Amiga-key image with the sample's own DrawInfo, whose pens are the
+ * edited palette (rig 12: a 00ffff box around a 0000ff key). Flat: the key in the accent pen on the paper, no box colour of its own. */
+int flat_pal_glyph_pens(const flat_state *st, unsigned long which, int *frame, int *text)
+{
+    if (!st || which != FLAT_W_AMIGAKEY)
+        return 0;
+    *frame = st->pen_back;
+    *text = st->pen_line;
+    return 1;
+}
+
+static int img_put(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size)
+{
+    int i, free_i = -1;
     for (i = 0; i < n; i++) {
         if (t[i].obj == obj) { free_i = i; break; }
         if (!t[i].obj && free_i < 0)
@@ -730,6 +758,14 @@ void flat_gh_text(flat_gh *g, const void *surf, const void *task, int cx, int cy
     }
 }
 
+int flat_ghost_custom(int ptsz, int custom_disabled, int gx, int gy, int gw, int gh, int x0, int y0, int x1, int y1)
+{
+    if (!ptsz || !custom_disabled || gw <= 0 || gh <= 0)
+        return 0;
+    return x0 >= gx && x0 <= gx + 2 && y0 >= gy && y0 <= gy + 2 && x1 <= gx + gw - 1 && x1 >= gx + gw - 3 && y1 <= gy + gh - 1 &&
+           y1 >= gy + gh - 3;
+}
+
 int flat_dim_pen(const flat_state *s, int depth)
 {
     if (depth >= 3 && depth <= 8 && s->pen_dim && s->pen_dim < (1 << depth))
@@ -851,22 +887,33 @@ static int gad_borders(int fx, int fy, int fw, int fh, const flat_gadbox *g)
 
 void flat_fc_add(flat_fc *a, int fx, int fy, int fw, int fh, const flat_gadbox *g)
 {
+    int other = g->kind == FLAT_GK_OTHER || g->kind == FLAT_GK_CUSTOM;
     if (g->w <= 0 || g->h <= 0)
         return;
     if (g->kind == FLAT_GK_STRING && gad_borders(fx, fy, fw, fh, g))
         a->string = 1;
     else if (g->kind == FLAT_GK_PROP && gad_borders(fx, fy, fw, fh, g))
         a->track = 1;
-    else if (g->kind == FLAT_GK_OTHER && gad_borders(fx, fy, fw, fh, g))
+    else if (other && gad_borders(fx, fy, fw, fh, g)) {
         a->others++;
+        a->custom += g->kind == FLAT_GK_CUSTOM;
+    }
     else if (g->kind == FLAT_GK_DISPLAY && gad_borders(fx, fy, fw, fh, g)) {
         a->display++;
         return;                                 /* the display gadget's own bevel: its box is not a held gadget */
     }
-    else if (g->kind == FLAT_GK_OTHER && fx >= g->x && fy >= g->y && fx + fw <= g->x + g->w && fy + fh <= g->y + g->h && (fw < g->w || fh < g->h))
+    else if (other && fx >= g->x && fy >= g->y && fx + fw <= g->x + g->w && fy + fh <= g->y + g->h && (fw < g->w || fh < g->h))
         a->inside = 1;
     if (g->x >= fx && g->y >= fy && g->x + g->w <= fx + fw && g->y + g->h <= fy + fh)
         a->holds = 1;
+}
+
+int flat_track_frame(int cls, int slider, int fill, int pen)
+{
+    if (cls != FLAT_FC_TRACK)
+        return 0;
+    /* a slider, a filled holder (drawn after the prop: a fill would erase it) or no input ground: the window ground stays */
+    return slider || fill || pen < 0 ? 1 : 2;
 }
 
 int flat_fc_class(const flat_fc *a)
@@ -880,7 +927,7 @@ int flat_fc_class(const flat_fc *a)
     if (a->display && !a->others && !a->holds)
         return FLAT_FC_DISPLAY;                 /* S74-TEXT-BOX: the bevel of a read-only text / number box: the input ground */
     if (a->others + a->display == 1)
-        return FLAT_FC_BORDERED;
+        return a->custom ? FLAT_FC_SELFDRAWN : FLAT_FC_BORDERED;
     return a->holds ? FLAT_FC_GROUP : FLAT_FC_DISPLAY;
 }
 
@@ -897,6 +944,22 @@ int flat_check_image(unsigned long which)
 int flat_mx_image(unsigned long which)
 {
     return which == FLAT_W_MXIMAGE;
+}
+
+int flat_check_look(const flat_state *s, int depth, int themed, int *fill, int *edge)
+{
+    int p = flat_input_pen(s, depth);
+    if (p >= 0) {
+        *fill = p;
+        *edge = -1;
+        return FLAT_CHECK_GROUND;
+    }
+    if (!s || !themed || depth < 1 || depth > 8 || !s->pen_outline || s->pen_outline == s->pen_back || s->pen_outline >= (1 << depth)
+        || s->pen_back >= (1 << depth))
+        return FLAT_CHECK_STOCK;
+    *fill = s->pen_back;
+    *edge = s->pen_outline;
+    return FLAT_CHECK_OUTLINE;
 }
 
 int flat_check_width(int w, int h, int side)
@@ -924,7 +987,7 @@ int flat_noline_pen(const flat_state *s, int cls, int depth, int centre_pen)
 {
     if (!s)
         return -1;
-    if (cls == FLAT_FC_TRACK || cls == FLAT_FC_DISPLAY)
+    if (cls == FLAT_FC_TRACK || cls == FLAT_FC_DISPLAY || cls == FLAT_FC_BORDERED)   /* C8-LOOK: the listview box is a ground box too */
         return flat_input_pen(s, depth);
     if (cls == FLAT_FC_CELL)
         return s->pen_line && centre_pen == s->pen_line ? s->pen_line : flat_button_pen(s, depth);   /* FLAT-GREEN-FACES: the held pen, never the bare role number pen_button */
@@ -1054,6 +1117,26 @@ void flat_frame_size(int draw_frame, int dim_w, int dim_h, int img_w, int img_h,
 int flat_button_gadget(const void *gadget_render, const void *select_render, const void *image)
 {
     return image && gadget_render == image && select_render == image;
+}
+
+int flat_cycle_frame(unsigned gadget_type, unsigned activation, int gx, int gy, int gw, int gh, int fx, int fy, int fw, int fh)
+{
+    if ((gadget_type & 0x8000u) || (gadget_type & 0x0007u) != 0x0001u || (activation & 0x0002u))   /* GTYP_BOOLGADGET, no GACT_IMMEDIATE */
+        return 0;
+    return fw > 0 && fh > 0 && gx == fx && gy == fy && gw == fw && gh == fh;
+}
+
+int flat_cycle_of(int button_image, int push, int box_match)
+{
+    return box_match && !(button_image && push);
+}
+
+int flat_cycle_paper(flat_state *st, int ox, int oy, int w, int h, int in[4])
+{
+    int sw = flat_button_side(st->side, w);
+    st->pen_button = st->pen_line;
+    in[0] = ox + sw; in[1] = oy + 1; in[2] = ox + w - 1 - sw; in[3] = oy + h - 2;
+    return st->pen_back;
 }
 
 int flat_border_button(unsigned gadget_type, unsigned flags, const void *gadget_render, const void *select_render, int has_text, int w, int h)
@@ -1204,6 +1287,62 @@ int flat_scroller_pen_box(const flat_state *s, int depth, int active, int cx, in
     return s->pen_back;
 }
 
+int flat_prop_slider(unsigned activation, unsigned propflags, int kw, int kh, int side)
+{
+    int sd = side > 1 ? side : 1, horiz = (propflags & 0x0002u) != 0, vert = (propflags & 0x0004u) != 0;
+    if ((activation & 0x00F0u) || horiz == vert || kw < 1 || kh < 1)
+        return 0;
+    if (horiz)
+        return kw / sd <= kh ? 1 : 0;
+    return kh <= kw / sd ? 2 : 0;
+}
+
+int flat_slider_track(int dir, int side, int cx, int cy, int cw, int ch, int x0, int y0, int x1, int y1, int out[4])
+{
+    int sd = side > 1 ? side : 1;
+    if (dir == 1) {
+        out[0] = cx; out[2] = cx + cw - 1; out[1] = out[3] = cy + (ch - 1) / 2;
+    } else {
+        out[0] = cx + (cw - sd) / 2; out[2] = out[0] + sd - 1; out[1] = cy; out[3] = cy + ch - 1;
+    }
+    if (out[0] < x0) out[0] = x0;
+    if (out[1] < y0) out[1] = y0;
+    if (out[2] > x1) out[2] = x1;
+    if (out[3] > y1) out[3] = y1;
+    return out[0] <= out[2] && out[1] <= out[3];
+}
+
+int flat_slider_disc_row(int side, int kx, int ky, int kw, int kh, int y, int *x0, int *x1)
+{
+    int sd = side > 1 ? side : 1, d = kw / sd < kh ? kw / sd : kh, D, top, left, i, j, Y, X, lo = -1, hi = -1;
+    if (d < 1)
+        d = 1;
+    D = d * sd;
+    top = ky + (kh - d) / 2;
+    left = kx + (kw - D) / 2;
+    i = y - top;
+    if (i < 0 || i >= d)
+        return 0;
+    Y = (2 * i + 1 - d) * sd;                       /* row centre in half-columns from the disc centre */
+    for (j = 0; j < D; j++) {
+        X = 2 * j + 1 - D;
+        if (X * X + Y * Y <= D * D) {
+            if (lo < 0) lo = j;
+            hi = j;
+        }
+    }
+    if (lo < 0)
+        return 0;
+    *x0 = left + lo;
+    *x1 = left + hi;
+    return 1;
+}
+
+int flat_gslider_ring(const flat_state *s, unsigned long method, int themed, unsigned gflags, int w, int h)
+{
+    return method == FLAT_GM_RENDER && s && s->enabled && !s->held && themed && !(gflags & 0x4078u) && w > 4 && h > 4;
+}
+
 int flat_inactive_pen(const flat_state *s, int depth)
 {
     if (depth >= 4 && depth <= 8 && s->pen_inbar && s->pen_inbar < (1 << depth))
@@ -1233,6 +1372,21 @@ int flat_side_fill_pen(const flat_state *s, int fg, int ww, int wh, int bl, int 
         return -1;
     out[0] = x0; out[1] = y0 > bt ? y0 : bt; out[2] = x1; out[3] = y1;   /* the part below the title bar: the strip's title rows stay accent */
     return s->pen_back;
+}
+
+/* The inner box Intuition 3.1 bevels inside a bordered window (ROM 0xfe5a26 calls the embossed box 0xfe0cec at x bl-1, y bt-1,
+ * size ww-(bl+br-2) x wh-(bt+bb-2)): four 1 px RectFills, top row bt-1, left col bl-1, right col ww-br, bottom row wh-bb.
+ * A line on that box longer than half its side is the bevel, not a border gadget edge; it becomes the ground. */
+int flat_inner_edge_fill(const flat_state *s, int ww, int wh, int bl, int bt, int br, int bb, int x0, int y0, int x1, int y1)
+{
+    int l = bl - 1, t = bt - 1, r = ww - br, b = wh - bb;
+    if (!s->enabled || s->held || l < 0 || t < 0 || r <= l || b <= t)
+        return -1;
+    if (x0 == x1 && (x0 == l || x0 == r) && y0 >= t && y1 <= b && 2 * (y1 - y0 + 1) > b - t + 1)
+        return s->pen_back;
+    if (y0 == y1 && (y0 == t || y0 == b) && x0 >= l && x1 <= r && 2 * (x1 - x0 + 1) > r - l + 1)
+        return s->pen_back;
+    return -1;
 }
 
 int flat_frame_pen(const flat_state *s, int depth, int active)
@@ -1841,4 +1995,87 @@ const char *flat_trow_why_name(int why)
 {
     static const char *const nm[] = { "ok", "nobutton", "order", "id", "geom", "nocycle", "row" };
     return why >= FLAT_TROW_OK && why <= FLAT_TROW_ROW ? nm[why] : "bad";
+}
+
+static const unsigned long pal_edge[] = { 0x54ac, 0x54e4, 0x5526, 0x5556 };
+static const unsigned long pal_dither[] = { 0x5418, 0x5bf2, 0x5dfa };
+static const unsigned long pal_groove[] = { 0x34ec, 0x353e,     /* PALETTE-GROOVE: SHADOWPEN row, SHINEPEN row above the samples */
+                                            0x5ace, 0x5ae0 };   /* PALETTE-PREVIEW-FRAMES: Active sample's FILLPEN left and right border fills */
+static const unsigned long pal_knob[] = { 0x5c88, 0x5e68 };    /* PALETTE-SAMPLE-SCROLLER: Active (FILLPEN), Inactive (BACKGROUNDPEN) knob fills */
+
+/* bevel calls at 0x5fae, 0x6102, 0x613e (sample push buttons); PALETTE-PREVIEW-FRAMES: 0x5a84, 0x5d0e = the inner bevel of the
+ * Active and Inactive sample window (the outer bevel at 0x5a52 / 0x5cda keeps its 1 px accent outline, like a Patina window);
+ * PALETTE-SCROLLER-BEVEL: 0x5c40, 0x5e32 = the Active and Inactive sample scroller container (a flat scroller has no frame) */
+static const unsigned long pal_button[] = { 0x5fb2, 0x6106, 0x6142, 0x5a88, 0x5d12, 0x5c44, 0x5e36 };
+
+int flat_palette_button(unsigned long off)
+{
+    unsigned i;
+    for (i = 0; i < sizeof pal_button / sizeof pal_button[0]; i++)
+        if (off == pal_button[i])
+            return 1;
+    return 0;
+}
+
+/* RESTAURANT-GLYPH-THEME-PENS: the COMPLEMENT fill that highlights one sample menu row */
+#define PAL_HILITE 0x5978UL
+int flat_pal_hilite_pen(const flat_state *st, int mask, int read)
+{
+    if (!st || !(mask & 0xff))
+        return -1;
+    if (read == ((st->pen_back ^ mask) & 0xff))
+        return st->pen_text;
+    if (read == ((st->pen_line ^ mask) & 0xff))
+        return st->pen_back;
+    return -1;
+}
+
+int flat_palette_site(unsigned long off)
+{
+    unsigned i;
+    if (off == PAL_HILITE)
+        return FLAT_PAL_HILITE;
+    for (i = 0; i < sizeof pal_edge / sizeof pal_edge[0]; i++)
+        if (off == pal_edge[i])
+            return FLAT_PAL_EDGE;
+    for (i = 0; i < sizeof pal_dither / sizeof pal_dither[0]; i++)
+        if (off == pal_dither[i])
+            return FLAT_PAL_DITHER;
+    for (i = 0; i < sizeof pal_knob / sizeof pal_knob[0]; i++)
+        if (off == pal_knob[i])
+            return FLAT_PAL_KNOB;
+    for (i = 0; i < sizeof pal_groove / sizeof pal_groove[0]; i++)
+        if (off == pal_groove[i])
+            return FLAT_PAL_GROOVE;
+    return FLAT_PAL_STOCK;
+}
+
+/* 1 when a jsr -306(a6) (RectFill) ends at off. Byte compare, no memcmp: the OM dispatcher reaches this (flat budget). */
+static int pal_jsr_rf(const unsigned char *code, unsigned long off)
+{
+    return code[off - 4] == 0x4e && code[off - 3] == 0xae && code[off - 2] == 0xfe && code[off - 1] == 0xce;
+}
+
+int flat_palette_id(const unsigned char *code, unsigned long len)
+{
+    unsigned long h = 0x811c9dc5UL, i;
+    if (!code || len < FLAT_PAL_CODE_LEN || len > FLAT_PAL_CODE_LEN + 16)
+        return 0;
+    for (i = 0; i < sizeof pal_edge / sizeof pal_edge[0]; i++)
+        if (!pal_jsr_rf(code, pal_edge[i]))
+            return 0;
+    for (i = 0; i < sizeof pal_dither / sizeof pal_dither[0]; i++)
+        if (!pal_jsr_rf(code, pal_dither[i]))
+            return 0;
+    for (i = 0; i < sizeof pal_knob / sizeof pal_knob[0]; i++)
+        if (!pal_jsr_rf(code, pal_knob[i]))
+            return 0;
+    for (i = 0; i < sizeof pal_groove / sizeof pal_groove[0]; i++)
+        if (!pal_jsr_rf(code, pal_groove[i]))
+            return 0;
+    if (!pal_jsr_rf(code, PAL_HILITE))
+        return 0;
+    for (i = 0x5428; i < 0x5568; i++)
+        h = ((h ^ code[i]) * 0x01000193UL) & 0xffffffffUL;
+    return h == 0x99a5f5e6UL;
 }

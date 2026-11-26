@@ -551,15 +551,35 @@ def reboot_args(given, start_file=None):
 
 
 def stale_targets(targets, run=subprocess.run, cwd=None, on_error=None):
-    """The make targets of `targets` that make's own graph says are older than their sources: one `make -q <target>`
-    each (runs no recipe). rc 0 = current, rc 1 = stale, anything else (rc 2: no rule or make error) is not stale;
-    on_error(target, result), when given, is called for it (a caller that must not go on raises there)."""
-    stale = []
+    """The make targets of `targets` that make's own graph says are older than their sources, from ONE
+    `make -n -k --debug=b <targets>` pass (a dry run: no recipe runs; a recursive $(MAKE) line dry-runs too).
+    RIG-BLACK-SCREEN: one `make -q` per target cost a Makefile parse each (16 s on a busy host), over 240 s per rig start.
+    "Must remake target `t'" = stale; a target make has no rule for or fails on ("No rule to make target",
+    "Failed to remake target file") is not stale: on_error(target, result), when given, is called for it (a caller
+    that must not go on raises there). make itself failing with none of those lines (rc 2) is an error for every target."""
+    if not targets:
+        return []
+    r = run(["make", "-n", "-k", "--debug=b", *targets], cwd=str(cwd or VTCON), capture_output=True, text=True,
+            env={**os.environ, "UPTERM_ROOT": str(UPTERM_ROOT)})
+    out = (r.stdout or "") + (r.stderr or "")
+    must = set(re.findall(r"Must remake target [`']([^']+)'", out))
+    # a missing prerequisite names the target only in "needed by `t'" (and -k's "Target `t' not remade")
+    bad = set(re.findall(r"(?:No rule to make target|Failed to remake target file|needed by|Target) [`']([^']+)'", out))
+    if r.returncode and not bad:
+        bad = set(targets)
     for t in targets:
-        r = run(["make", "-q", t], cwd=str(cwd or VTCON), capture_output=True, text=True,
-                env={**os.environ, "UPTERM_ROOT": str(UPTERM_ROOT)})
-        if r.returncode == 1:
-            stale.append(t)
-        elif r.returncode and on_error:
+        if t in bad and on_error:
             on_error(t, r)
-    return stale
+    return [t for t in targets if t in must and t not in bad]
+
+
+@contextlib.contextmanager
+def build_lock(root):
+    """Blocking exclusive flock on <root>/build/rig-build.lock: parallel rig starts on one tree run their make passes
+    one after the other. The Makefile writes build/ files at parse time (vbcc-aos68k.cfg.tmp, upterm_version.h.new),
+    so even two `make -q` passes raced (RIG-BLACK-SCREEN). Released when the block ends or the process dies."""
+    d = pathlib.Path(root) / "build"
+    d.mkdir(parents=True, exist_ok=True)
+    with open(d / "rig-build.lock", "a+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        yield

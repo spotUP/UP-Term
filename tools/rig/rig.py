@@ -212,7 +212,8 @@ RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6",
             "Assign >NIL: LIBS: DH0:MUI/Libs ADD",
             "Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD",
             "Assign >NIL: LIBS: DH0:AmiSSL/Libs ADD",
-            "Assign >NIL: LIBS: VTC:amissl ADD"]
+            "Assign >NIL: LIBS: VTC:amissl ADD",
+            "Assign >NIL: AmiSSL: DH0:AmiSSL"]   # AmiSSL:Certs for TLS peers (a fresh rig has no AmiSSL: after go; makerelease packer, 2026-11-24)
 
 # The rig's lines in the system disk's S:Shell-Startup (go adds them once).
 # The bare "Path >NIL: VTC:gg/bin ADD" an earlier go wrote raised "Please
@@ -315,7 +316,7 @@ def kit_shadow_lines(upterm):
     out = ["If NOT EXISTS VTC:kit-orig", "  C:MakeDir >NIL: VTC:kit-orig", "EndIf",
            "If EXISTS VTC:kit-restore"]
     for _, dest, bak in shadows:
-        out += kit_guard(dest, ["If EXISTS VTC:kit-orig/%s" % bak, "  C:Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, q(dest)), "EndIf"])
+        out += kit_guard(dest, ["If EXISTS VTC:kit-orig/%s" % bak, "  Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, q(dest)), "EndIf"])
     # the kit's own files are back: the next shadowing boot runs the full pass (kitstamp)
     out.append("  C:Delete >NIL: VTC:%s QUIET" % kitstamp.STAMP)
     out.append("Else")
@@ -325,14 +326,14 @@ def kit_shadow_lines(upterm):
         if dest.startswith("C:"):
             # a C: command the kit installs: on a rig with no kit it is put there too (W-R4)
             copy += ["  If EXISTS %s" % q(dest), "    If NOT EXISTS VTC:kit-orig/%s" % bak,
-                     "      C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak), "    EndIf", "  EndIf"]
-            copy += ["  C:Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"]
+                     "      Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak), "    EndIf", "  EndIf"]
+            copy += ["  Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"]
             body += copy
             continue
         body += kit_guard(dest, copy[:1] + ["  If NOT EXISTS VTC:kit-orig/%s" % bak,
-                                "    C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak),
+                                "    Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak),
                                 "  EndIf",
-                                "  C:Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"])
+                                "  Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"])
     # RIG-SLOW-BOOT: a full pass already put this kit on this DH0: (kitstamp; the host drops the stamp when either changed)
     out += ["  If EXISTS VTC:%s" % kitstamp.STAMP, '    Echo >>BOOTX:boot.log "kit shadows skipped"', "  Else"]
     out += ["    " + l for l in body]
@@ -368,7 +369,14 @@ SHADOWS_UP_BLOCK = user_startup.RIG_SHADOWS_BLOCK
 # then skips them (a second Assign ADD would list each path twice).
 RIG_LIBS_DONE = "RAM:rig-libs-done"
 KIT_PATINA_BLOCK = ";BEGIN UP-Term Patina"
+# RIG-BLACK-SCREEN: the boot CLI writes to BOOTX:boot.console (bootcap), so nothing opened a screen before LoadWB and
+# the window stayed black for the whole pass. A CON: window opens the Workbench screen now (IPrefs has run: right mode;
+# LoadWB itself must stay after the pass, it starts WBStartup's Patina). The shadow rows say bare `Copy`, which the
+# shell finds on the resident list, so C:Copy is loaded once instead of once per row (~550 rows).
 SHADOWS_UP_SCRIPT = """FailAt 21
+C:Echo >"CON:0/0/480/30/UP-Term rig/CLOSE" "UP-Term rig: copying the build (shadows-up)"
+Echo >>BOOTX:boot.log "screen opened (before shadows)"
+C:Resident >NIL: C:Copy PURE
 Echo >>BOOTX:boot.log "early UP-Term shadows started (before Patina)"
 C:Assign >NIL: VTC: EXISTS
 If NOT WARN
@@ -400,6 +408,7 @@ If NOT WARN
   EndIf
   Echo >>BOOTX:boot.log "UP-Term shadows done"
 EndIf
+C:Resident >NIL: Copy REMOVE
 """ % {"shadows": ind(kit_shadow_lines(False), 1), "shadows_up": ind(kit_shadow_lines(True), 1),
        "kit_stamp": ind(KIT_STAMP_BOOT, 1), "libs": "\n".join("      C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE}
 SHADOWS_UP_BLOCK_TEXT = ";BEGIN %s\nExecute BOOTX:shadows-up\n;END %s\n" % (SHADOWS_UP_BLOCK, SHADOWS_UP_BLOCK)
@@ -1016,6 +1025,56 @@ def sys_hdf_kit_upterm(image):
     finally:
         shutil.rmtree(back, ignore_errors=True)
         shutil.rmtree(snaps, ignore_errors=True)
+
+def sys_hdf_upterm_bin(image):
+    """RIG-BLACK-SCREEN / RIG-START-SYNC: upterm_sync for the clone, on the host, before it boots. The master image's
+    UP-Term:bin holds an old patina-flat (242884 bytes, before PENS, 93ebc21a), and the PENS block (KIT_PENS_BLOCK_TEXT)
+    runs it without Run: an old binary took PENS for a resident start and held the boot CLI, C:LoadWB never ran, and on
+    RTG rigs IPrefs' switch left no screen open ("screens: 00", rig 21, 2026-11-25). The Patina programs are not kit
+    entries (sys_hdf_kit_upterm, KIT_SHADOWS never see them), so every build/amiga file the drawer holds is made current
+    (ensure_built), written where it differs, and read back; the start is refused on a mismatch."""
+    place = clone_upterm_place(image)
+    built = ROOT / "build/amiga"
+    if not place or not built.is_dir():
+        return []
+    part, base = place
+    d = "/".join(x for x in (base, "bin") if x)
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    def run(*a, check=True):
+        return subprocess.run([xdf, str(image), "open", "part=" + part, "+", *a], check=check, capture_output=True, text=True)
+    r = run("list", d, check=False)
+    if r.returncode != 0:
+        return []
+    listed = {l.split()[0].lower() for l in r.stdout.splitlines() if l.split()}
+    held = [f.name for f in sorted(built.iterdir()) if f.is_file() and f.name.lower() in listed]
+    if not held:
+        return []
+    ensure_built([built / n for n in held])   # before the compare: a rebuild after it would leave the drawer stale again
+    tmp = RIG / "upterm-bin.tmp"
+    def read_back(names):
+        shutil.rmtree(tmp, ignore_errors=True)
+        tmp.mkdir(parents=True)
+        ops = []
+        for n in names:
+            ops += ["+", "read", d + "/" + n, str(tmp / n)]
+        run(*ops[1:], check=False)
+        return lambda n: (tmp / n).read_bytes() if n in names and (tmp / n).is_file() else None
+    try:
+        stale = stale_names(built, read_back(held))
+        if not stale:
+            return []
+        ops = []
+        for n in stale:
+            ops += ["+", "delete", d + "/" + n, "+", "write", str(built / n), d + "/" + n]
+        run(*ops[1:])
+        back = read_back(stale)
+        bad = [n for n in stale if back(n) != (built / n).read_bytes()]
+        if bad:
+            sys.exit("rig: the clone's %s/%s differs from build/amiga after the write (RIG-BLACK-SCREEN)" % (d, ", ".join(bad)))
+        print("[OK] put %d into the clone's %s: %s" % (len(stale), d, ", ".join(stale)))
+        return stale
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 def user_startup_with_block_before_kit(data, name, text):
     """data (S:User-Startup bytes) with the rig block <name> (text) before the first kit ';BEGIN UP-Term' block, or at
@@ -1946,9 +2005,9 @@ RETIRED_VTC_FILES = ("bin/sh",)
 
 def ensure_built(files, run=None):
     """Makes every file of this tree's build/amiga in `files` current before it is pushed to a rig: make's own graph
-    (`make -q`) says which are older than their sources, and those are rebuilt with `make`; a failed build exits with
-    `[ERROR] ... <program>`. A file make has no rule for or fails on (rc 2) is pushed as it is, with a [WARN]. Nothing stale: one `make -q`, no
-    build. Before, install and the refresh gate copied build/amiga as-is, and rig 91 ran a pre-K40d handler after a merge
+    (one `make -n` pass, paths.stale_targets) says which are older than their sources, and those are rebuilt with `make`; a failed build exits with
+    `[ERROR] ... <program>`. A file make has no rule for or fails on (rc 2) is pushed as it is, with a [WARN]. Nothing stale: one make pass, no
+    build. Held under paths.build_lock. Before, install and the refresh gate copied build/amiga as-is, and rig 91 ran a pre-K40d handler after a merge
     (RIG-PUSH-STALE-BUILD). Files outside this tree's build/amiga (the main checkout's, via merge_build) are not ours to build."""
     run = run or subprocess.run
     own = (ROOT / "build/amiga").resolve()
@@ -1956,13 +2015,13 @@ def ensure_built(files, run=None):
     if not names:
         return []
     env = {**os.environ, "UPTERM_ROOT": str(paths.UPTERM_ROOT)}
-    def make(*args):
-        return run(["make", *args], cwd=ROOT, capture_output=True, text=True, env=env)
     targets = ["build/amiga/" + n for n in names]
-    if make("-q", *targets).returncode == 0:
-        return []
+    with paths.build_lock(ROOT):   # parallel rig starts on this tree wait here instead of racing in build/
+        return _build_stale(targets, run, env)
+
+def _build_stale(targets, run, env):
     stale = paths.stale_targets(targets, run, ROOT, on_error=lambda t, r: print(
-        "[WARN] make -q failed (rc %d) for %s, it may be stale: %s" % (r.returncode, t, r.stderr.strip()[-300:])))
+        "[WARN] make -n failed (rc %d) for %s, it may be stale: %s" % (r.returncode, t, r.stderr.strip()[-300:])))
     if not stale:
         return []
     print("[BUILD] stale before push: " + ", ".join(t.rsplit("/", 1)[1] for t in stale))
@@ -2501,6 +2560,7 @@ def _start(retries):
         sys_hdf_no_wasabid(RIG / "sys.hdf")
         if A500:
             sys_hdf_a500(RIG / "sys.hdf")
+        sys_hdf_upterm_bin(RIG / "sys.hdf")   # before the boot runs the PENS block (RIG-BLACK-SCREEN)
         sys_hdf_shadows_block(RIG / "sys.hdf")
         sys_hdf_skip_blocks(RIG / "sys.hdf")
     elif not OS and not OS32:
@@ -2515,6 +2575,7 @@ def _start(retries):
         sys_hdf_kit(RIG / "sys.hdf")
         if A500:
             sys_hdf_a500(RIG / "sys.hdf")
+        sys_hdf_upterm_bin(RIG / "sys.hdf")   # before the boot runs the PENS block (RIG-BLACK-SCREEN)
         sys_hdf_shadows_block(RIG / "sys.hdf")
         sys_hdf_skip_blocks(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
@@ -2575,7 +2636,7 @@ def _start(retries):
                 sys.exit("rig: the boot printed %d error line(s) (see boot.console in the rig's boot drawer)" % len(bad))
             guard_shell_startup()
             guard_upterm_assign()
-            warn_upterm_stale()
+            require_upterm_current()
             rigwasabi.warn_guru()
             start_watchdog()
             if M060:
@@ -2687,11 +2748,18 @@ def upterm_sync(check=False):
         sys.exit(1)
     return stale
 
-def warn_upterm_stale():
+def require_upterm_current():
+    """RIG-START-SYNC: a stale UP-Term:bin fails the start (it was a [WARN]: rig 21 booted an old patina-flat that held
+    the boot CLI at the PENS line, black screen). sys_hdf_upterm_bin makes a clone current before it boots; a drawer
+    this still finds stale (an --os host tree, a copy the boot wrote) needs `rig.py upterm-sync` and a reboot."""
     try:
-        upterm_sync(check=True)
-    except BaseException as e:   # warn only: a failed look never fails the start
+        stale = upterm_sync(check=True)
+    except BaseException as e:   # a failed look (no answer, no build/amiga) still never fails the start
         print("[WARN] rig: UP-Term:bin staleness check failed: %s" % e)
+        return
+    if stale:
+        sys.exit("rig: UP-Term:bin is older than build/amiga (%s); run `rig.py upterm-sync`, then `rig.py reboot` "
+                 "(RIG-START-SYNC)" % ", ".join(stale))
 
 def upterm_sync_command():
     upterm_sync(check="--check" in sys.argv[2:])
@@ -2780,6 +2848,7 @@ def wb_reset_retry_gadgets(tree):
     return gads, " ; ".join(other)
 
 
+WB_SCREEN_WAIT = 120  # s after wasabid answers for a screen to open and turn RTG; raise it on a loaded host
 LATE_REQ_WATCH = 65   # s after the RTG switch a late System Request may still come (IPrefs on the RTG DOpus screen, ~boot+65 s)
 
 
@@ -2808,7 +2877,7 @@ def retry_wb_reset():
     to reset the Workbench screen ... close all windows" requester (IPrefs'
     switch to the saved RTG mode raced a window; ledger W43). Retry then
     succeeds (the owner, 2026-10-05). The requester shows a while after
-    wasabid answers, so wait for it (up to two minutes) and click the
+    wasabid answers, so wait for it (up to WB_SCREEN_WAIT s) and click the
     gadget labelled Retry.
     A saved native (chipset) ScreenMode has no RTG switch to wait for: it returns at once.
     Once RTG it keeps looking for a late System Request for LATE_REQ_WATCH s (late_sysreq).
@@ -2825,9 +2894,15 @@ def retry_wb_reset():
     clicks = 0
     rtg0 = None   # when the Workbench last turned RTG
     noted = False
-    while rtg0 is not None or time.time() - t0 < 120:
+    blank = False   # the last poll saw no screen open at all
+    while rtg0 is not None or time.time() - t0 < WB_SCREEN_WAIT:
         b = ami.req(0x0A)
         width, height = int.from_bytes(b[2:4], "big"), int.from_bytes(b[4:6], "big")
+        blank = (width, height) == (0, 0)
+        if blank:   # no screen (IPrefs closed the Workbench for its RTG switch, not reopened yet): a black display, not RTG
+            rtg0 = None
+            time.sleep(2)
+            continue
         if (width, height) not in NATIVE_WB:   # the 640x360 RTG mode is 640 wide too
             now = time.time()
             if rtg0 is None:
@@ -2870,12 +2945,19 @@ def retry_wb_reset():
             time.sleep(6)
         else:
             time.sleep(2)
+    if blank:
+        log.write("%.0fs no screen open\n" % (time.time() - t0))
+        log.flush()
+        sys.exit("rig: no screen open after %d s (black display; IPrefs' RTG switch closed the Workbench and never "
+                 "reopened it). Raise WB_SCREEN_WAIT in tools/rig/rig.py on a loaded host" % WB_SCREEN_WAIT)
     print("[WARN] the Workbench stayed PAL (W43)")
 
 def stop(emu=None):
     """Safe stop: killing FS-UAE while the Amiga writes to its disk corrupts the filesystem (rig 2, 2026-10-13).
-    Wait until wasabid takes a command (nothing else is running), lock the volumes (the OS flushes them), stay
-    quiet for 8 s, ask FS-UAE to quit (TERM), and kill it only if it ignores that."""
+    Wait until wasabid takes a command (nothing else is running), stay quiet for 8 s (FFS writes its delayed buffers),
+    lock the volumes (the OS flushes them; a later write is refused, not half done), ask FS-UAE to quit (TERM) at
+    once, and kill it only if it ignores that. The lock comes last: during the old 8 s after it, any Amiga writer
+    raised "Volume System is write protected" in the emulator (RIG-STOP-WRITEPROTECT-REQ, 2026-11-25)."""
     if mine(emu) and status(quiet=True):
         try:
             sys.path.insert(0, str(ROOT / "tools/rig"))
@@ -2886,12 +2968,12 @@ def stop(emu=None):
                     break
                 except BaseException:
                     time.sleep(5)
+            time.sleep(8)
             for vol in ("DH0:", "DH1:"):
                 try:
                     ami.req(0x02, (10).to_bytes(2, "big") + b"C:Lock " + vol.encode() + b" ON", timeout=15)
                 except BaseException:
                     pass
-            time.sleep(8)
         except BaseException:
             pass
     subprocess.run(["pkill", "-TERM", "-f", emu_key(emu or paths.EMU)])

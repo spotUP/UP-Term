@@ -2814,41 +2814,62 @@ static int lc(int c)
 
 unsigned long gt_screen_match_steps;
 
-/* Non-recursive state-set (NFA) match, O(pattern length * name length), no malloc, fixed stack (2 * GT_SCR_PAT + 2 bytes).
+/* Non-recursive state-set (NFA) match, O(pattern length * name length), no malloc, no libc call, fixed stack (two bitsets of
+ * GT_SCR_PAT + 2 bits): patina-flat's draw hooks call it on the drawing task's own small stack (scr_themed, make flat-budget).
  * The pattern is tokenised on the fly: a token starts at offset i and is "#c" (repeat c, or any char when c is '?') when
  * p[i] is '#' and p[i+1] exists, else one literal / '?' character. A lone trailing '#' is a literal. reach[i] = 1 when the
  * name read so far can leave the matcher about to read the token that starts at offset i; reach[plen] = whole pattern consumed.
  * A repeat token may be skipped (closure to i + 2). A pattern longer than GT_SCR_PAT - 1 returns 0: the rule parser
  * cannot produce one. */
+#define GT_SM_WORDS ((GT_SCR_PAT + 2 + 31) / 32)
+#define GT_SM_GET(v, i) ((v)[(i) >> 5] >> ((i) & 31) & 1u)
+#define GT_SM_SET(v, i) ((v)[(i) >> 5] |= 1ul << ((i) & 31))
+/* The closure and one name character step run in their own frames, so gt_screen_match keeps few live registers beside its
+ * bitsets (patina-flat HELPER_MAX 80, make flat-budget). */
+static void gt_sm_close(const char *p, unsigned plen, unsigned long *cur)
+{
+    unsigned i;
+    for (i = 0; i < plen; i++) /* closure: repeat tokens may match nothing */
+        if (GT_SM_GET(cur, i) && p[i] == '#' && p[i + 1])
+            GT_SM_SET(cur, i + 2);
+}
+
+static void gt_sm_step(const char *p, unsigned plen, int c, const unsigned long *cur, unsigned long *nxt)
+{
+    unsigned i;
+    for (i = 0; i < GT_SM_WORDS; i++)
+        nxt[i] = 0;
+    for (i = 0; i < plen; i++) {
+        gt_screen_match_steps++;
+        if (!GT_SM_GET(cur, i))
+            continue;
+        if (p[i] == '#' && p[i + 1]) {
+            if (p[i + 1] == '?' || lc((unsigned char)p[i + 1]) == c)
+                GT_SM_SET(nxt, i);
+            i++; /* the char after '#' is part of this token; positions inside a token are never reachable */
+        } else if (p[i] == '?' || lc((unsigned char)p[i]) == c)
+            GT_SM_SET(nxt, i + 1);
+    }
+}
+
 int gt_screen_match(const char *p, const char *s)
 {
-    unsigned char a[GT_SCR_PAT + 2], b[GT_SCR_PAT + 2];
-    unsigned char *cur = a, *nxt = b, *t;
-    size_t plen = strlen(p), i;
+    unsigned long v[2][GT_SM_WORDS];
+    unsigned plen = 0, i, k = 0;
 
+    while (p[plen] && plen < GT_SCR_PAT)
+        plen++;
     if (plen > GT_SCR_PAT - 1)
         return 0;
-    memset(cur, 0, plen + 2);
-    cur[0] = 1;
+    for (i = 0; i < GT_SM_WORDS; i++)
+        v[0][i] = 0;
+    v[0][0] = 1;
     for (;;) {
-        for (i = 0; i < plen; i++) /* closure: repeat tokens may match nothing */
-            if (cur[i] && p[i] == '#' && p[i + 1])
-                cur[i + 2] = 1;
+        gt_sm_close(p, plen, v[k]);
         if (!*s)
-            return cur[plen];
-        memset(nxt, 0, plen + 2);
-        for (i = 0; i < plen; i++) {
-            gt_screen_match_steps++;
-            if (!cur[i])
-                continue;
-            if (p[i] == '#' && p[i + 1]) {
-                if (p[i + 1] == '?' || lc((unsigned char)p[i + 1]) == lc((unsigned char)*s))
-                    nxt[i] = 1;
-                i++; /* the char after '#' is part of this token; positions inside a token are never reachable */
-            } else if (p[i] == '?' || lc((unsigned char)p[i]) == lc((unsigned char)*s))
-                nxt[i + 1] = 1;
-        }
-        t = cur; cur = nxt; nxt = t;
+            return (int)GT_SM_GET(v[k], plen);
+        gt_sm_step(p, plen, lc((unsigned char)*s), v[k], v[k ^ 1]);
+        k ^= 1;
         s++;
     }
 }

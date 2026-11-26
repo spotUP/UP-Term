@@ -366,6 +366,17 @@ typedef struct { const void *obj; unsigned char which; unsigned char size; } fla
 /* DOPUS-ZOOM-WHICH: a ZOOMIMAGE (Which 0x01) is recorded too, so an app title-bar zoom gadget resolves to the zoom glyph.
  * 1 recorded (an existing entry for obj is replaced), 0 not an arrow/zoom Which or table full (the image stays ROM-drawn). */
 int flat_img_record(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size);
+/* PALETTE-SAMPLE-GLYPHS: flat_img_record plus the images Palette 40.2 draws in its example windows with DrawImageState and no
+ * gadget behind them (depth, size, close, screen depth, menu check, Amiga key), so the 3.1 sysiclass hook (no OM_GET) knows
+ * their Which. Called only for an OM_NEW from the identified Palette hunk: any other program keeps the narrow set. */
+int flat_img_record_pal(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size);
+/* PALETTE-AMIGAKEY-FLAT: the box and glyph pens of a Palette sample image. 1 when which is one (pens set), else 0 (unchanged). */
+int flat_pal_glyph_pens(const flat_state *st, unsigned long which, int *frame, int *text);
+/* RESTAURANT-GLYPH-THEME-PENS: Palette highlights a sample menu row like Intuition (COMPLEMENT RectFill, rp->Mask =
+ * BARDETAILPEN ^ BARBLOCKPEN). The flat Amiga key is drawn in theme pens, not bar pens, so the XOR leaves non-theme pens.
+ * The theme pen for a pixel read back after that fill: box -> pen_text, key -> pen_back (the selected roles of
+ * flat_glyph_roles). -1 = not a glyph pixel, leave it. */
+int flat_pal_hilite_pen(const flat_state *st, int mask, int read);
 void flat_img_forget(flat_img_rec *t, int n, const void *obj);
 /* The recorded Which of obj, -1 when none; *size (if non-NULL) gets its SYSIA_Size. */
 int flat_img_which(const flat_img_rec *t, int n, const void *obj, unsigned long *size);
@@ -489,6 +500,9 @@ int flat_edge_pen(const flat_state *s, int depth, int active);
  * rows of it below the title bar (a full-height strip keeps its title rows in the accent); else -1 (draw as asked). */
 int flat_side_fill_pen(const flat_state *s, int fg, int ww, int wh, int bl, int bt, int br, int bb, int x0, int y0, int x1, int y1,
                        int out[4]);
+/* flat_inner_edge_fill: FLAT-INNER-BEVEL. Pen for a RectFill on the 1 px inner box Intuition 3.1 bevels inside a bordered window
+ * (top row bt-1, left col bl-1, right col ww-br, bottom row wh-bb, longer than half the side): pen_back; -1 for any other fill. */
+int flat_inner_edge_fill(const flat_state *s, int ww, int wh, int bl, int bt, int br, int bb, int x0, int y0, int x1, int y1);
 /* FLAT-GADGETS-RIG8: the band spans only the title area between the system gadgets (bx0..bx1, from flat_title_span), so it never
  * wipes the close / depth / zoom gadgets Intuition draws once and does not redraw. */
 typedef struct flat_gadrect { int x, y, w, h, relright, relwidth, drag; } flat_gadrect;
@@ -541,6 +555,9 @@ unsigned long flat_knob_colour(unsigned long surface, unsigned long muted);
 int flat_knob_pen(const flat_state *s, int depth);
 /* A fill (x0,y0)-(x1,y1) on surface surf by task with area pattern size ptsz: the record it ghosts, or 0 (not enabled, held,
  * no pattern, no record of that surface and task containing the rect). */
+/* PALETTE-G17-GHOST (owner 2026-11-25): 1 when a patterned fill x0,y0..x1,y1 (ptsz = rp->AreaPtSz) is the ghost dither over a
+ * disabled custom gadget's box gx,gy gw x gh: inside the box, every edge at most 2 px in. */
+int flat_ghost_custom(int ptsz, int custom_disabled, int gx, int gy, int gw, int gh, int x0, int y0, int x1, int y1);
 const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void *surf, const void *task, int ptsz, int x0, int y0, int x1, int y1);
 
 /* PREFS-NO-OUTLINES (owner 2026-11-11): a frameiclass frame on a flat screen never draws a line in pen_line. An edges-only frame
@@ -554,6 +571,8 @@ const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void
 #define FLAT_GK_OTHER  3
 #define FLAT_GK_DISPLAY 4   /* S74-TEXT-BOX: a read-only display gadget (GadTools TEXT_KIND / NUMBER_KIND carrying its own bevel):
                              * a frame bordering only that gadget and holding no other is DISPLAY (input ground), not BORDERED */
+#define FLAT_GK_CUSTOM 5    /* PALETTE-SWATCH-FRAME: any other boopsi custom gadget (GTYP_CUSTOMGADGET: GadTools 3.1 PALETTE_KIND,
+                             * gradientslider); counts as OTHER, but a frame bordering only it is SELFDRAWN */
 /* S74-TEXT-BOX: a gadget that takes no input: no highlight (GFLG_GADGHNONE) and no activation that reacts to a click
  * (GACT_RELVERIFY, GACT_IMMEDIATE, GACT_TOGGLESELECT, GACT_FOLLOWMOUSE). flags / activation as in struct Gadget. */
 int flat_display_gadget(unsigned flags, unsigned activation);
@@ -569,6 +588,14 @@ int flat_display_gadget(unsigned flags, unsigned activation);
 int flat_mx_image(unsigned long which);
 int flat_check_image(unsigned long which);
 int flat_check_ticked(unsigned long ids);
+/* PALETTE-LEFTOVERS2 (radio / check box still beveled): how a CHECKIMAGE / MXIMAGE draws on the screen with state s. GROUND: the screen
+ * holds the input pen, *fill = that pen, *edge = -1 (S74 look, mark in the image's text pen). OUTLINE: no input pen (a private screen
+ * themed by flat-private-screens, or under 8 colours) but themed: *fill = pen_back, *edge = pen_outline, a 1 px outline and the mark
+ * in *edge (a pen_back box alone would be invisible). STOCK: not themed or no distinct outline pen; fill / edge untouched. */
+#define FLAT_CHECK_STOCK   0
+#define FLAT_CHECK_GROUND  1
+#define FLAT_CHECK_OUTLINE 2
+int flat_check_look(const flat_state *s, int depth, int themed, int *fill, int *edge);
 /* S74-CHECKBOX-SQUARE (owner 2026-11-11): the stock image is 26x11; the flat box is visually square: h rows by h * side columns
  * (side = flat_side_px of the screen), never wider than the image, at the image's left edge. */
 int flat_check_width(int w, int h, int side);
@@ -577,19 +604,22 @@ typedef struct flat_gadbox {
 } flat_gadbox;
 #define FLAT_FC_STRING   0
 #define FLAT_FC_TRACK    1
+/* SLIDER-SCROLLER-NO-FRAME: what a frame around a prop draws: 0 not a track frame, 1 nothing (no box), 2 the ground box of pen */
+int flat_track_frame(int cls, int slider, int fill, int pen);
 #define FLAT_FC_CELL     2
 #define FLAT_FC_BORDERED 3
 #define FLAT_FC_GROUP    4
 #define FLAT_FC_DISPLAY  5
+#define FLAT_FC_SELFDRAWN 6 /* PALETTE-SWATCH-FRAME: borders exactly one custom gadget, which draws its own content: no box, never the ring */
 int flat_frame_class(int fx, int fy, int fw, int fh, const flat_gadbox *g, int n);
 /* The same decision one gadget at a time (the drawing task's stack holds no gadget array): zero a flat_fc, flat_fc_add every gadget of
  * the window for the frame box, flat_fc_class gives the class. */
 typedef struct flat_fc {
-    int string, track, others, inside, holds, display;
+    int string, track, others, inside, holds, display, custom;
 } flat_fc;
 void flat_fc_add(flat_fc *a, int fx, int fy, int fw, int fh, const flat_gadbox *g);
 int flat_fc_class(const flat_fc *a);
-/* The fill pen of a class at depth: TRACK and DISPLAY the input ground pen (flat_input_pen), CELL the push button face (flat_button_pen:
+/* The fill pen of a class at depth: TRACK, DISPLAY and BORDERED (C8-LOOK, owner 2026-11-26: the listview box, was a pen_line outline) the input ground pen (flat_input_pen), CELL the push button face (flat_button_pen:
  * the held pen, else pen_back) or, when centre_pen (the pixel at the box centre, the app's selected fill drawn before the frame) is pen_line, the
  * accent; -1 for any other class (nothing to fill) and when the screen holds no such pen. */
 int flat_noline_pen(const flat_state *s, int cls, int depth, int centre_pen);
@@ -644,6 +674,17 @@ void flat_frame_size(int draw_frame, int dim_w, int dim_h, int img_w, int img_h,
 /* FLAT-BUTTON-FILL, 3.1 (frameiclass does not answer OM_GET): is this window gadget a button or cycle drawn by image? GadTools
  * BUTTON and CYCLE have GadgetRender == SelectRender == the frame; STRING, LISTVIEW, SLIDER have no select image. */
 int flat_button_gadget(const void *gadget_render, const void *select_render, const void *image);
+/* PALETTE-CYCLE-FLAT: 3.1 GadTools CYCLE_KIND draws its frameiclass bevel from inside its own image (the frame is not the gadget's
+ * render == select image, so flat_button_gadget misses it and the frame drew edges only: no ground, square ring). 1 when the
+ * unanswered frame box is exactly the box of a GTYP_BOOLGADGET without GACT_IMMEDIATE (not a scroller arrow): fill it, role PLAIN. */
+int flat_cycle_frame(unsigned gadget_type, unsigned activation, int gx, int gy, int gw, int gh, int fx, int fy, int fw, int fh);
+/* C8-RING: is an unanswered frame a 3.1 cycle's? box_match = flat_cycle_frame on some window gadget. On 3.1 the cycle's frame is
+ * its gadget's render == select image (button_image), as a push button's; push (flat_push_button) keeps the push button out. */
+int flat_cycle_of(int button_image, int push, int box_match);
+/* PALETTE-CYCLE-PAPER (owner 2026-11-25; C8-LOOK owner 2026-11-26: only where the screen holds no input ground pen, else the
+ * cycle is the rounded input ground box, no outline): a 3.1 cycle gadget looks like a Patina window: the rounded face is drawn in the accent
+ * (st->pen_button = st->pen_line), then in[] (the box inside the side-wide outline) is filled with the returned surface pen st->pen_back */
+int flat_cycle_paper(flat_state *st, int ox, int oy, int w, int h, int in[4]);
 
 /* The PRIMARY button fill pen for a screen of the given depth: under 8 colours (depth < 3) the accent pen_line; from 8 colours the
  * theme lighter background pen_button, or pen_back when it is 0 or not a pen of that depth. */
@@ -704,6 +745,25 @@ int flat_knob_state_pen(const flat_state *s, int depth, int active);
  * Plain GTYP_PROPGADGET (0x0003) with SpecialInfo: yes. GTYP_CUSTOMGADGET (0x0005, a boopsi object such as XCON's propgclass gadget) with
  * SpecialInfo: yes only when is_propgclass (the object's class is propgclass or a subclass); a strgclass SpecialInfo is a StringInfo. */
 int flat_gadget_is_prop(unsigned gadgettype, int is_propgclass, int has_specialinfo);
+/* MODERN-SLIDER (owner 2026-11-25: "make them look modern a grey line with a blue circle knob"): a prop gadget draws as a slider
+ * (thin grey track line, round accent knob, no outline box) when it is not a window border gadget (activation & 0xF0: GACT_*BORDER),
+ * moves on one axis (propflags FREEHORIZ 2 xor FREEVERT 4) and its knob (kw x kh, Intuition's box) is no longer than it is thick in
+ * visual units (side = flat_side_px). Returns 1 horizontal, 2 vertical, 0 not a slider.
+ * shortcut: an in-window scroller whose knob is shorter than its thickness (a very long list) takes the slider look too; add a
+ * GadTools kind test if one shows up. */
+int flat_prop_slider(unsigned activation, unsigned propflags, int kw, int kh, int side);
+/* MODERN-SLIDER: the track line of a dir (1 horizontal, 2 vertical) slider with container cx,cy,cw,ch clipped to the fill x0..y1 into
+ * out (x0, y0, x1, y1): one row thick across a horizontal container, side columns wide down a vertical one, centred. 0 = outside. */
+int flat_slider_track(int dir, int side, int cx, int cy, int cw, int ch, int x0, int y0, int x1, int y1, int out[4]);
+/* MODERN-SLIDER: the knob disc's columns *x0..*x1 on row y: a circle of min(kw / side, kh) rows (side columns per row, so it is round
+ * on non-square pixels) centred in the knob box kx,ky,kw,kh. 0 = the row misses the disc. */
+int flat_slider_disc_row(int side, int kx, int ky, int kw, int kh, int y, int *x0, int *x1);
+/* GSLIDER-FLAT (owner 2026-11-25: the Palette brightness bar must lose its bevel): gradientslider.gadget draws a 2 px shine /
+ * shadow bevel itself (no frameiclass). After its GM_RENDER patina repaints that ring flat: 1 when method is FLAT_GM_RENDER, flat
+ * on and not held, the screen themed (flat_screen_themed), the box w x h larger than the ring (w, h > 4) and the gadget placed
+ * absolute (gflags without GFLG_RELBOTTOM / RELRIGHT / RELWIDTH / RELHEIGHT / RELSPECIAL, 0x4078).
+ * shortcut: a relative gadget keeps its bevel; resolve the box against the window when one shows up. */
+int flat_gslider_ring(const flat_state *s, unsigned long method, int themed, unsigned gflags, int w, int h);
 /* S56-XCON-KNOB-BOX: flat_scroller_pen with the knob rectangle given (kx,ky,kw,kh, absolute) instead of computed from pots and bodies. */
 int flat_scroller_pen_box(const flat_state *s, int depth, int active, int cx, int cy, int cw, int ch, int kx, int ky, int kw, int kh,
                           int x0, int y0, int x1, int y1);
@@ -933,5 +993,23 @@ int flat_trow_feed(flat_trow_tab *t, const void *task, const char *prog, int sid
 void flat_trow_drop(flat_trow_tab *t, const void *task);
 /* STATUS name of a FLAT_TROW_* reason ("ok", "nobutton", ...); "bad" out of range. */
 const char *flat_trow_why_name(int why);
+
+
+/* PALETTE-FLAT-PREVIEW (owner 2026-11-25): Palette 40.2 (the 3.1 editor) draws its three example windows itself with RectFill
+ * from its own code (no frameiclass, no ROM caller), so the bevels and scroller dithers stay 3D. The rule is keyed on the
+ * caller's return offset inside Palette's code hunk, and only once the hunk is identified (flat_palette_id). Offsets from the
+ * 40.2 disassembly: 0x5428 is its bevel routine (pen A top/left, pen B bottom/right), 0x538e its two-pen dither box, 0x5bee and
+ * 0x5df6 the scroller-container dither of the Active/Inactive samples.
+ * PALETTE-GROOVE: 0x34e8 / 0x353a are the two 1-row fills (SHADOWPEN, SHINEPEN of Palette's own pens) of the groove above the
+ * samples: GROOVE = paint the ground instead. Text, checkmarks and arrows are other calls: stock. */
+enum { FLAT_PAL_STOCK, FLAT_PAL_EDGE, FLAT_PAL_DITHER, FLAT_PAL_KNOB, FLAT_PAL_GROOVE, FLAT_PAL_HILITE };    /* PALETTE-SAMPLE-SCROLLER: KNOB = a sample scroller's knob fill */
+#define FLAT_PAL_CODE_LEN 0x6704UL
+/* 1 when code (len bytes, the first hunk of the caller's seglist) is Palette 40.2: size, the bevel routine's FNV-1a and the
+ * jsr RectFill opcode before every site. Relocation-free bytes only (the hunk is relocated in memory). */
+int flat_palette_id(const unsigned char *code, unsigned long len);
+/* FLAT_PAL_* of a RectFill whose return address is off bytes into the identified hunk */
+int flat_palette_site(unsigned long off);
+/* PALETTE-PREVIEW-BUTTONS: 1 when off is the return of a bevel call (0x5428) that draws a sample push button */
+int flat_palette_button(unsigned long off);
 
 #endif

@@ -4686,13 +4686,14 @@ static void test_gaps2_tools(void)
 
     /* T2 a command still running at its time limit moves to the background
      * (cd noted), its end is news beside a later round's results; a sleep
-     * stops instead; T3 a failure's long output: its head and its tail */
+     * stops instead; T3 a failure's long output: its head and its tail (its
+     * own timeout, so a busy host does not move it to the background) */
     setenv("BASH_DEFAULT_TIMEOUT_MS", "1000", 1);
     setup_in(&r, none, root);
     add_answer("toolu_B1", "Bash", "{\"command\":\"cd S; echo start; sleep 2; echo late\"}", 0);
     add_answer("toolu_B2", "Bash", "{\"command\":\"sleep 2\",\"timeout\":5000}", 0);
     add_answer("toolu_B3", "Bash", "{\"command\":\"sleep 3\",\"timeout\":1000}", 0);
-    add_answer("toolu_B4", "Bash", "{\"command\":\"yes a | head -n 6000; echo TAILEND; exit 10\"}", 0);
+    add_answer("toolu_B4", "Bash", "{\"command\":\"yes a | head -n 6000; echo TAILEND; exit 10\",\"timeout\":60000}", 0);
     add_answer(0, 0, 0, "done");
     CHECK_INT(run_print(&r, "-p --allowedTools Bash -- go", 0), 0);
     CHECK_INT(sb.nreq, 5);

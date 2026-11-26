@@ -676,7 +676,10 @@ int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, 
     sw = flat_button_side(s->side, w);
     if (fill) {                                      /* OWNER-2026-11-08 FLAT-BUTTON-NO-RING: every push button is a solid fill, never a ring (the secondary role used to be a text-pen outline; it is now a pen_button fill, so the roles still differ: primary accent, secondary the raised button tone). S56-PRIMARY-ACCENT-FILL: primary fill = the theme accent pen (pen_line, a palette pen at every depth), pressed = the text pen; label in pen_ptext (flat_tx_arm); the scroller knob and cycle gadget keep pen_button; no outline */
         int face = s->pen_button ? s->pen_button : s->pen_back;
-        fn(ctx, ox, oy, x1, y1, role == FLAT_ROLE_PLAIN ? face : ids == 1 ? s->pen_text : role == FLAT_ROLE_SECONDARY ? face : s->pen_line);
+        /* CANCEL-INVISIBLE-FLAT: a secondary face in the label pen pen_ptext (no held select pen on an unlisted private screen: face =
+         * pen_back) hides the label and the box; that button takes the accent like the primary */
+        int sec = face != s->pen_ptext ? face : s->pen_line;
+        fn(ctx, ox, oy, x1, y1, role == FLAT_ROLE_PLAIN ? face : ids == 1 ? s->pen_text : role == FLAT_ROLE_SECONDARY ? sec : s->pen_line);
         return 1;
     }
     fn(ctx, ox, oy, x1, oy, s->pen_line);            /* top */
@@ -815,6 +818,15 @@ int flat_knob_frame_draw(const flat_state *s, int depth, int active, int ox, int
     return flat_frame_draw_round(&st, 0, ox, oy, w, h, 1, FLAT_ROLE_PLAIN, fn, rd, ctx);
 }
 
+int flat_cycle_frame_draw(flat_state *st, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd, void *ctx)
+{
+    int in[4], paper = flat_cycle_paper(st, ox, oy, w, h, in);
+    if (!flat_frame_draw_round(st, 0, ox, oy, w, h, 1, FLAT_ROLE_PLAIN, fn, rd, ctx))
+        return 0;
+    fn(ctx, in[0], in[1], in[2], in[3], paper);
+    return 1;
+}
+
 int flat_smart_knob(int is_prop, unsigned prop_flags, const void *knob_next, const void *image)
 {
     return is_prop && image && knob_next == image && (prop_flags & 0x21u) == 0x21u;    /* AUTOKNOB | SMARTKNOBIMAGE */
@@ -900,4 +912,27 @@ int flat_outer_ring_overlap(int w, int h, int px, int bx0, int by0, int bx1, int
         n++;
     }
     return n;
+}
+
+int flat_edge_cell(int i, int w, int h, int *x, int *y)
+{
+    if (w < 1 || h < 1 || i < 0 || i >= h + w - 1)
+        return 0;
+    if (i < h) {
+        *x = w - 1; *y = i;
+    } else {
+        *x = i - h; *y = h - 1;
+    }
+    return 1;
+}
+
+int flat_edge_restore(const unsigned char *saved, int n, int w, int h, int ox, int oy, int pen, flat_fill_fn fill, void *ctx)
+{
+    int i, x, y, k = 0;
+    for (i = 0; i < n && flat_edge_cell(i, w, h, &x, &y); i++)
+        if (saved[i] != pen) {
+            fill(ctx, ox + x, oy + y, ox + x, oy + y, saved[i]);
+            k++;
+        }
+    return k;
 }

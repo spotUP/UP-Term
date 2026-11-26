@@ -554,6 +554,16 @@ static void clone_stack_note(flatshared *r, int after)
 /* DOPUS-ARROW-WHICH: the arrow images made after flat started (flat_img_record holds the rule). Hooks run in many tasks, so the
  * table is touched under Forbid as the other shared tables are; the walk is FLAT_IMG_RECS (256) entries: each app scroller window holds 2-4 arrow images. A full table leaves the image ROM-drawn. */
 static flat_img_rec img_tab[FLAT_IMG_RECS];
+static const unsigned char *pal_hunk(ULONG *len);
+
+/* PALETTE-SAMPLE-GLYPHS: 1 when the calling task runs Palette 40.2 (its example-window images). Its own frame, off the OM
+ * dispatcher's (flat budget). */
+static int pal_task(void)
+{
+    ULONG len = 0;
+    const unsigned char *pal = pal_hunk(&len);
+    return pal && flat_palette_id(pal, len);
+}
 static int img_lookup(Object *obj, ULONG *size)
 {
     int wh;
@@ -580,8 +590,9 @@ static void img_note_new(Object *obj, struct opSet *ops)
     }
     if (!ok)
         return;
+    ok = pal_task();
     Forbid();
-    flat_img_record(img_tab, FLAT_IMG_RECS, obj, which, size);
+    (ok ? flat_img_record_pal : flat_img_record)(img_tab, FLAT_IMG_RECS, obj, which, size);
     Permit();
 }
 
@@ -737,8 +748,49 @@ static ULONG c2_which_31(Object *obj, struct impDraw *d)
     return wh < 0 ? NOWHICH : (ULONG)wh;
 }
 
+/* PALETTE-SAMPLE-OUTLINE (FLAT-ARROWS-CORNER): a Palette 40.2 sample window is drawn by Palette inside its own window, and
+ * the sample's arrow and size images reach its outline with their last column and row. The box fill covered that outline (rig 20:
+ * x211 y276-307 and y307 x194-211 of the active sample); c2_ring_refill only knows the real window's ring. So, for an image in
+ * the Palette window's interior, the edge cells are read before the draw and the ones that held another pen than the box are
+ * put back after it. Real border gadgets (inside BorderRight / BorderBottom) are not touched.
+ * shortcut: one static buffer, Palette runs one sample draw at a time; guard it if a second task ever takes this path. */
+#define PAL_EDGE_CELLS 128
+static UBYTE pal_edge[PAL_EDGE_CELLS];
+static int c2_pal_edge_n(struct impDraw *d, struct Image *im, int pen)
+{
+    struct Window *w = d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
+    int ox = im->LeftEdge + d->imp_Offset.X, oy = im->TopEdge + d->imp_Offset.Y, n = im->Width + im->Height - 1;
+    if (pen < 0 || !w || !g_r->rsw.saved || n < 1 || n > PAL_EDGE_CELLS || ox + im->Width > w->Width - w->BorderRight
+        || oy + im->Height > w->Height - w->BorderBottom || !pal_task())
+        return 0;
+    return n;
+}
+static int c2_pal_edge_save(struct impDraw *d, struct Image *im, int pen)
+{
+    int i, x, y, n = c2_pal_edge_n(d, im, pen);
+    for (i = 0; i < n && flat_edge_cell(i, im->Width, im->Height, &x, &y); i++)
+        pal_edge[i] = (UBYTE)ReadPixel(d->imp_RPort, im->LeftEdge + d->imp_Offset.X + x, im->TopEdge + d->imp_Offset.Y + y);
+    return n;
+}
+static void c2_pal_edge_put(struct impDraw *d, struct Image *im, int n, int pen)
+{
+    UBYTE fg = d->imp_RPort->FgPen;
+    if (n > 0 && flat_edge_restore(pal_edge, n, im->Width, im->Height, im->LeftEdge + d->imp_Offset.X,
+                                   im->TopEdge + d->imp_Offset.Y, pen, c2_ring_fill, d->imp_RPort) > 0)
+        SetAPen(d->imp_RPort, fg);
+}
+
 #define C8_MX 0x1000                /* tick_pen >= C8_MX: an MX image, pen = tick_pen - C8_MX */
 static int c8_draw_on(Object *obj, Msg msg, int tick_pen);
+/* PALETTE-AMIGAKEY-FLAT: a Palette 40.2 sample image takes the flat pens, not the sample DrawInfo's. Own function (flat budget). */
+static void c2_pal_pens(flatshared *r, struct impDraw *d, ULONG which, c2_pens *p)
+{
+    int fr, tx;
+    if (which == FLAT_W_AMIGAKEY && pal_task() && flat_pal_glyph_pens(st_rp(r, d->imp_RPort), which, &fr, &tx)) {
+        p->frame = (short)fr; p->text = (short)tx;
+    }
+}
+
 static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
 {
     flatshared *r = g_r;
@@ -746,6 +798,7 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     struct Image *im = (struct Image *)obj;
     ULONG which = 0xFFFF, raw_which;
     c2_pens pens;
+    int edge, drawn;
     r->st.calls++;
     if (msg->MethodID != FLAT_IM_DRAW || !r->st.enabled || r->st.held || !d->imp_RPort)
         return 0;
@@ -761,16 +814,19 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     raw_which = which;
     which = flat_which_alias(which);
     c2_get_pens(r, d, im, which, &pens);
+    c2_pal_pens(r, d, which, &pens);
     if (flat_mx_image(which))
         return c8_draw_on(obj, msg, pens.text + C8_MX);   /* S93-MX-GROUND: pens.text >= 0 */
     if (flat_check_image(which))
         return c8_draw_on(obj, msg, pens.text);   /* S74-CHECKBOX-GROUND; pen fallback in check_draw keeps this frame small */
     /* S93-GADGET-GLYPH: OS 3.1's sysiclass marker render has no usable outlines (close/depth/zoom/iconify all mapped to plain
      * squares on rig 93), so below Intuition 44 the title-bar gadgets take flat's own plan glyphs */
-    if (flat_conv(IntuitionBase->LibNode.lib_Version) == FLAT_CONV_REG
-        && flat_clone_route(&r->st, which, msg->MethodID) && c2_clone(hk, obj, msg, reg, which, raw_which, &pens))
-        return 1;
-    return c2_glyph(obj, msg, which, &pens);
+    edge = c2_pal_edge_save(d, im, pens.frame);
+    drawn = (flat_conv(IntuitionBase->LibNode.lib_Version) == FLAT_CONV_REG
+             && flat_clone_route(&r->st, which, msg->MethodID) && c2_clone(hk, obj, msg, reg, which, raw_which, &pens))
+            || c2_glyph(obj, msg, which, &pens);
+    c2_pal_edge_put(d, im, drawn ? edge : 0, pens.frame);
+    return drawn;
 }
 
 ULONG c2_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
@@ -893,6 +949,19 @@ static struct Gadget *gadget_of_image(struct RastPort *rp, Object *obj)
 static int button_gadget_of(struct RastPort *rp, Object *obj)
 {
     return gadget_of_image(rp, obj) != NULL;
+}
+
+/* PALETTE-CYCLE-FLAT: 1 when the frame box ox,oy w x h is exactly a bool gadget's box (flat_cycle_frame: a 3.1 cycle gadget) */
+static int cycle_gadget_at(struct RastPort *rp, int ox, int oy, int w, int h)
+{
+    struct Layer *lay = rp->Layer;
+    struct Window *win = lay ? (struct Window *)lay->Window : NULL;
+    struct Gadget *g;
+    int n;
+    for (g = win ? win->FirstGadget : NULL, n = 0; g && n < 64; g = g->NextGadget, n++)
+        if (flat_cycle_frame(g->GadgetType, g->Activation, g->LeftEdge, g->TopEdge, g->Width, g->Height, ox, oy, w, h))
+            return 1;
+    return 0;
 }
 
 /* 1 when obj is the image of a push button gadget (flat_push_button), as role_of tells a push button from a cycle */
@@ -1120,14 +1189,32 @@ static int dopus_push_claim(struct RastPort *rp, int x0, int y0, int x1, int y1,
  * pure, host tested), drawn without a coloured outline. TRACK, CELL and DISPLAY become a rounded ground box and are recorded so the
  * pen-0 content the app draws after the frame lands on it (flat_rf_c, flat_tx_c); GROUP draws nothing. 1 = handled, 0 = stock draw
  * (a frame bordering another gadget type, or no pen on this screen). Any frame draw first drops the records it overlaps. */
-static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int w, int h)
+static int prop_knob(struct Gadget *g, struct PropInfo *pi, int cx, int cy, int *k);
+/* MODERN-SLIDER: 1 when prop gadget g (resolved box gb) of win draws as a slider (flat_prop_slider on its knob box) */
+static int prop_slider_of(flatshared *r, struct Window *win, struct Gadget *g, const flat_gadbox *gb)
+{
+    struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
+    int k[4];
+    return st_scr(r, win->WScreen)->pen_line && prop_knob(g, pi, gb->x + pi->LeftBorder, gb->y + pi->TopBorder, k) &&
+           flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, win->WScreen)) != 0;
+}
+
+/* The rounded ground box of a frame in pen (no outline) and its record, so content drawn after the frame (erases in the window
+ * ground, JAM2 text) stays on that ground. */
+static void ground_frame(flatshared *r, struct RastPort *rp, struct Window *win, int ox, int oy, int w, int h, int pen)
+{
+    ground_box(r, rp, ox, oy, ox + w - 1, oy + h - 1, pen);
+    flat_gr_add(&r->gr, flat_tx_surface(rp->Layer, rp->BitMap), side_px(r, win->WScreen), ox, oy, ox + w - 1, oy + h - 1, pen);   /* FLAT-SPACING: inset clip */
+}
+
+static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int w, int h, int fill)
 {
     struct Layer *lay = rp->Layer;
     struct Window *win = lay ? (struct Window *)lay->Window : NULL;
     const void *surf = flat_tx_surface(lay, rp->BitMap);
     struct Gadget *g;
     flat_fc fc;
-    int n, cls, pen, depth = rp->BitMap ? rp->BitMap->Depth : 0, centre = -1;
+    int n, cls, pen, depth = rp->BitMap ? rp->BitMap->Depth : 0, centre = -1, slider = 0;
     flat_gr_drop(&r->gr, surf, ox, oy, ox + w - 1, oy + h - 1);
     if (!win)
         return 0;
@@ -1143,28 +1230,37 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
         if (flat_string_ext(gt, g->Flags, g->Activation, si != NULL, si && si->Extension != NULL,
                             gt == GTYP_CUSTOMGADGET && gadget_class_has(g, "strgclass", 8)))
             gb.kind = FLAT_GK_STRING;
-        else if (gt == GTYP_PROPGADGET && gadget_has_propinfo(g))
+        else if (gt == GTYP_PROPGADGET && gadget_has_propinfo(g)) {
             gb.kind = FLAT_GK_PROP;
+            if (!slider && flat_string_frame(ox, oy, w, h, gb.x, gb.y, gb.w, gb.h))
+                slider = prop_slider_of(r, win, g, &gb);
+        }
         else if (flat_display_gadget(g->Flags, g->Activation))
             gb.kind = FLAT_GK_DISPLAY;      /* S74-TEXT-BOX: GadTools TEXT_KIND / NUMBER_KIND with its own bevel */
         else
-            gb.kind = FLAT_GK_OTHER;
+            gb.kind = gt == GTYP_CUSTOMGADGET ? FLAT_GK_CUSTOM : FLAT_GK_OTHER;   /* PALETTE-SWATCH-FRAME */
         flat_fc_add(&fc, ox, oy, w, h, &gb);
     }
     cls = flat_fc_class(&fc);
-    if (cls == FLAT_FC_GROUP) {
+    pen = cls == FLAT_FC_TRACK ? flat_noline_pen(st_scr(r, win->WScreen), cls, depth, -1) : 0;
+    if (flat_track_frame(cls, slider, fill, pen) == 1) {   /* MODERN-SLIDER, SLIDER-SCROLLER-NO-FRAME: no box around a prop */
         r->gbhits++;
         return 1;
     }
-    if (cls != FLAT_FC_TRACK && cls != FLAT_FC_CELL && cls != FLAT_FC_DISPLAY)
+    if (fill)
+        return 0;
+    if (cls == FLAT_FC_GROUP || cls == FLAT_FC_SELFDRAWN) {    /* PALETTE-SWATCH-FRAME: no accent ring around a palette's swatches */
+        r->gbhits++;
+        return 1;
+    }
+    if (cls != FLAT_FC_TRACK && cls != FLAT_FC_CELL && cls != FLAT_FC_DISPLAY && cls != FLAT_FC_BORDERED)   /* C8-LOOK: BORDERED = the listview box */
         return 0;
     if (cls == FLAT_FC_CELL)
         centre = (int)ReadPixel(rp, ox + w / 2, oy + h / 2);
     pen = flat_noline_pen(st_scr(r, win->WScreen), cls, depth, centre);
     if (pen < 0)
         return 0;
-    ground_box(r, rp, ox, oy, ox + w - 1, oy + h - 1, pen);
-    flat_gr_add(&r->gr, surf, side_px(r, win->WScreen), ox, oy, ox + w - 1, oy + h - 1, pen);   /* FLAT-SPACING: inset clip */
+    ground_frame(r, rp, win, ox, oy, w, h, pen);
     r->gbhits++;
     return 1;
 }
@@ -1179,11 +1275,7 @@ static int c8_draw(Object *obj, Msg msg)
         struct Image *im = (struct Image *)obj;
         ULONG eo = 1;
         /* Fill only when the frame says it is not edges-only (an unanswered OM_GET counts as edges-only: never erase content). */
-        int fill;
-        if (GetAttr(IA_EdgesOnly, obj, &eo) != 0)
-            fill = flat_frame_fill(1, (int)eo, push_gadget_of(d->imp_RPort, obj));
-        else      /* 3.1 frameiclass V40 does not answer OM_GET: a button or cycle gadget renders this image as render and select */
-            fill = flat_frame_fill(0, 0, button_gadget_of(d->imp_RPort, obj));
+        int fill, role = -1, cyc = 0;
         flat_state st;
         {   /* S57-BUTTON-ASPECT-BORDERS: the outline columns of this window's screen (slot table read, no Intuition call) */
             struct Layer *sl = d->imp_RPort->Layer;
@@ -1194,6 +1286,16 @@ static int c8_draw(Object *obj, Msg msg)
         int ox = im->LeftEdge + d->imp_Offset.X, oy = im->TopEdge + d->imp_Offset.Y;
         int w, h;
         flat_frame_size(msg->MethodID == FLAT_IM_DRAWFRAME, d->imp_Dimensions.Width, d->imp_Dimensions.Height, im->Width, im->Height, &w, &h);
+        if (GetAttr(IA_EdgesOnly, obj, &eo) != 0)
+            fill = flat_frame_fill(1, (int)eo, push_gadget_of(d->imp_RPort, obj));
+        else {   /* 3.1 frameiclass V40 does not answer OM_GET: a button renders this image as render and select */
+            int btn = button_gadget_of(d->imp_RPort, obj);
+            /* C8-RING: a 3.1 cycle is such a button too; testing the button first hid it from PALETTE-CYCLE-PAPER */
+            cyc = flat_cycle_of(btn, btn && push_gadget_of(d->imp_RPort, obj), cycle_gadget_at(d->imp_RPort, ox, oy, w, h));
+            fill = btn || cyc;
+            if (cyc)
+                role = FLAT_ROLE_PLAIN;                   /* PALETTE-CYCLE-FLAT: the 3.1 cycle's own image draws this frame */
+        }
         if (border_button_at(d->imp_RPort, ox, oy, ox + w - 1, oy + h - 1, NULL)) {
             /* INSTALLER-BORDER-BUTTON: the rounded fill was painted at the erase (flat_rf_c) and the label is drawn; no ring */
             flat_tx_frame(&r->tx, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL), 0, 0, ox, oy, ox + w - 1, oy + h - 1);
@@ -1215,16 +1317,27 @@ static int c8_draw(Object *obj, Msg msg)
             r->fflat++;
             return 1;
         }
-        if (!fill && d->imp_State == 0 && noline_frame(r, d->imp_RPort, ox, oy, w, h))
+        if (d->imp_State == 0 && noline_frame(r, d->imp_RPort, ox, oy, w, h, fill))
             return 1;
-        if (!raa_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role_of(d->imp_RPort, obj), c2_fill, c2_read, c2_rgb,
-                            fill ? raa_load(d->imp_RPort) : 0, d->imp_RPort, NULL))
-            return 0;
+        if (role < 0)
+            role = role_of(d->imp_RPort, obj);
+        {
+            /* C8-LOOK (owner 2026-11-26): the 3.1 cycle is the rounded input ground box, no outline, as the listview and inputs */
+            struct Window *cw = cyc && d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
+            int gp = cw ? flat_input_pen(st_scr(r, cw->WScreen), d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0) : -1;
+            if (gp >= 0)
+                ground_frame(r, d->imp_RPort, cw, ox, oy, w, h, gp);
+            /* PALETTE-CYCLE-PAPER: no input pen on the screen: accent outline, surface inside. C8-RING: not raa_frame_draw (see flat_cycle_frame_draw) */
+            else if (cyc ? !flat_cycle_frame_draw(&st, ox, oy, w, h, c2_fill, c2_read, d->imp_RPort)
+                    : !raa_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role, c2_fill, c2_read, c2_rgb,
+                                      fill ? raa_load(d->imp_RPort) : 0, d->imp_RPort, NULL))
+                return 0;
+        }
         flat_gh_frame(&r->gh, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL), d->imp_State == 1, fill,
                       ox, oy, ox + w - 1, oy + h - 1);
         /* a pressed filled frame arms the Text patch for its label; any other frame draw on this rastport disarms */
         flat_tx_frame(&r->tx, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL),
-                      flat_tx_arm(d->imp_State == 1, fill, role_of(d->imp_RPort, obj)), fill, ox, oy, ox + w - 1, oy + h - 1);
+                      flat_tx_arm(d->imp_State == 1, fill, role), fill, ox, oy, ox + w - 1, oy + h - 1);
     }
     r->fflat++;
     return 1;
@@ -1238,25 +1351,39 @@ static LONG c8_on_private(void *a);
  * the box in SHINE / SHADOW, which flat sets to the surface pen, so an unticked box was invisible. Drawn instead as the string
  * input's look (ground_box in flat_input_pen: rounded ground, no outline) plus, when ticked, the menu check mark in the text pen
  * (flat_glyph_tick). Runs on the private stack (c8_draw_on). 0 = no input pen on this screen: the stock draw. */
+static int scr_themed(flatshared *r, const struct Screen *ws);
 static int check_draw(Object *obj, Msg msg, int tick_pen)
 {
-    int mx = tick_pen >= C8_MX;
+    int mx = tick_pen >= C8_MX - 1;     /* PALETTE-LEFTOVERS2: pens.text is -1 on an unlisted screen, so an MX arrives as C8_MX - 1 */
     flatshared *r = g_r;
     struct impDraw *d = (struct impDraw *)msg;
     struct Image *im = (struct Image *)obj;
     struct RastPort *rp = d->imp_RPort;
     struct Window *w = rp->Layer ? (struct Window *)rp->Layer->Window : NULL;
     int x0 = im->LeftEdge + d->imp_Offset.X, y0 = im->TopEdge + d->imp_Offset.Y;
-    int pen = w ? flat_input_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0) : -1;
-    int bw;
-    if (pen < 0)
+    int pen = -1, edge = -1, bw, side;
+    int look = w ? flat_check_look(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0, scr_themed(r, w->WScreen), &pen, &edge)
+                 : FLAT_CHECK_STOCK;
+    if (look == FLAT_CHECK_STOCK) {
+        r->cknopen++;
         return 0;
+    }
     if (mx)
         tick_pen -= C8_MX;
     if (tick_pen < 0)
         tick_pen = d->imp_DrInfo ? d->imp_DrInfo->dri_Pens[TEXTPEN] : 1;
-    bw = flat_check_width(im->Width, im->Height, side_px(r, w->WScreen));   /* S74-CHECKBOX-SQUARE */
-    ground_box(r, rp, x0, y0, x0 + bw - 1, y0 + im->Height - 1, pen);
+    side = side_px(r, w->WScreen);
+    bw = flat_check_width(im->Width, im->Height, side);   /* S74-CHECKBOX-SQUARE */
+    if (look == FLAT_CHECK_OUTLINE) {     /* PALETTE-LEFTOVERS2: no input pen on this screen: outline + ground, mark in the outline pen */
+        UBYTE fg = rp->FgPen;
+        c2_fill(rp, x0, y0, x0 + bw - 1, y0 + im->Height - 1, edge);
+        if (bw > 2 * side && im->Height > 2)
+            c2_fill(rp, x0 + side, y0 + 1, x0 + bw - 1 - side, y0 + im->Height - 2, pen);
+        SetAPen(rp, fg);
+        tick_pen = edge;
+        r->ckline++;
+    } else
+        ground_box(r, rp, x0, y0, x0 + bw - 1, y0 + im->Height - 1, pen);
     if (flat_check_ticked(d->imp_State))
         (mx ? flat_glyph_dot : flat_glyph_tick)(x0, y0, bw, im->Height, tick_pen, c2_fill, rp);
     return 1;
@@ -1304,6 +1431,19 @@ static int c8_draw_on(Object *obj, Msg msg, int tick_pen)
     return c.rc;
 }
 
+/* FONT-PREFS-NOT-FLAT / PALETTE-BUTTONS-BEVELED: 1 when Patina themes ws (the Workbench, a listed screen, or a private one under
+ * flat-private-screens) and no exclude pattern matches its title. */
+static int scr_themed(flatshared *r, const struct Screen *ws)
+{
+    int excluded = 0, i;
+    if (ws && g_nexcl && ws != (const struct Screen *)g_wb_scr) {
+        const char *t = (const char *)(ws->DefaultTitle ? ws->DefaultTitle : ws->Title);
+        for (i = 0; t && i < g_nexcl && !excluded; i++)
+            excluded = gt_screen_match(g_excl[i], t);
+    }
+    return ws && flat_screen_themed(st_scr(r, ws) != &g_draw.plain, r->flatpriv, excluded);
+}
+
 static int c8_skip(Object *obj, Msg msg)
 {
     flatshared *r = g_r;
@@ -1315,16 +1455,8 @@ static int c8_skip(Object *obj, Msg msg)
         return 0;
     {   /* FONT-PREFS-NOT-FLAT: a window on the Workbench or a listed screen is themed even with the stock 3.1 pen map */
         struct Window *w = d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
-        const struct Screen *ws = w ? w->WScreen : NULL;
-        int excluded = 0, themed;
-        if (ws && g_nexcl && ws != (const struct Screen *)g_wb_scr) {   /* PALETTE-BUTTONS-BEVELED: exclude rule by title */
-            const char *t = (const char *)(ws->DefaultTitle ? ws->DefaultTitle : ws->Title);
-            int i;
-            for (i = 0; t && i < g_nexcl && !excluded; i++)
-                excluded = gt_screen_match(g_excl[i], t);
-        }
-        themed = ws && flat_screen_themed(st_scr(r, ws) != &g_draw.plain, r->flatpriv, excluded);
-        if (flat_frame_decide(&r->st, msg->MethodID, d->imp_DrInfo->dri_Pens[SHINEPEN], d->imp_DrInfo->dri_Pens[BACKGROUNDPEN], themed) != FLAT_DRAW_SKIP)
+        if (flat_frame_decide(&r->st, msg->MethodID, d->imp_DrInfo->dri_Pens[SHINEPEN], d->imp_DrInfo->dri_Pens[BACKGROUNDPEN],
+                              scr_themed(r, w ? w->WScreen : NULL)) != FLAT_DRAW_SKIP)
             return 0;
     }
     return c8_draw_on(obj, msg, C8_FRAME);
@@ -1384,6 +1516,63 @@ ULONG g9_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1
 {
     g9_ground(obj, msg);
     return ((oldfn_reg)g_r->gsw.saved)(h, obj, msg);
+}
+
+/* GSLIDER-FLAT: after gradientslider.gadget's GM_RENDER its 2 px bevel ring (the gadget box edge) is repainted flat: the outer
+ * edge in the window's outline pen (1 row top and bottom, side_px columns left and right, so it reads 1 px on both pixel aspects),
+ * the rest of the ring in the background pen. No outline pen: the whole ring takes the background. Stock RectFill (rsw.saved)
+ * so flat_rf_c does not see it; pen, draw mode and area pattern restored. */
+static void gs_fill(flatshared *r, struct RastPort *rp, int x0, int y0, int x1, int y1)
+{
+    if (x0 > x1 || y0 > y1)
+        return;
+    if (r->rsw.installed)
+        ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
+    else
+        RectFill(rp, x0, y0, x1, y1);
+}
+
+static void gs_ring(flatshared *r, Object *obj, Msg msg)
+{
+    struct gpRender *gp = (struct gpRender *)msg;
+    struct Gadget *g = (struct Gadget *)obj;
+    struct GadgetInfo *gi = gp->gpr_GInfo;
+    struct RastPort *rp = gp->gpr_RPort;
+    struct Window *w = gi ? gi->gi_Window : NULL;
+    int x0, y0, x1, y1, sd, op, bp;
+    UBYTE fg, dm, pt;
+    UWORD *pa;
+    if (!rp || !w || !gi->gi_DrInfo ||
+        !flat_gslider_ring(&r->st, msg->MethodID, scr_themed(r, w->WScreen), g->Flags, g->Width, g->Height))
+        return;
+    op = flat_edge_pen(st_scr(r, w->WScreen), gi->gi_DrInfo->dri_Depth, (w->Flags & WFLG_WINDOWACTIVE) != 0);
+    bp = gi->gi_DrInfo->dri_Pens[BACKGROUNDPEN];
+    sd = side_px(r, w->WScreen);
+    sd = sd < 1 ? 1 : sd > 2 ? 2 : sd;
+    x0 = g->LeftEdge; y0 = g->TopEdge; x1 = x0 + g->Width - 1; y1 = y0 + g->Height - 1;
+    fg = rp->FgPen; dm = rp->DrawMode; pt = rp->AreaPtSz; pa = (UWORD *)rp->AreaPtrn;
+    rp->AreaPtrn = 0; rp->AreaPtSz = 0;
+    SetDrMd(rp, JAM2);
+    SetAPen(rp, (UBYTE)bp);
+    gs_fill(r, rp, x0, y0, x1, y0 + 1); gs_fill(r, rp, x0, y1 - 1, x1, y1);
+    gs_fill(r, rp, x0, y0 + 2, x0 + 1, y1 - 2); gs_fill(r, rp, x1 - 1, y0 + 2, x1, y1 - 2);
+    if (op > 0) {
+        SetAPen(rp, (UBYTE)op);
+        gs_fill(r, rp, x0, y0, x1, y0); gs_fill(r, rp, x0, y1, x1, y1);
+        gs_fill(r, rp, x0, y0 + 1, x0 + sd - 1, y1 - 1); gs_fill(r, rp, x1 - sd + 1, y0 + 1, x1, y1 - 1);
+    }
+    rp->AreaPtrn = pa; rp->AreaPtSz = pt;
+    SetDrMd(rp, dm);
+    SetAPen(rp, fg);
+    r->gsrings++;
+}
+
+ULONG gs_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
+{
+    ULONG rc = ((oldfn_reg)g_r->gssw.saved)(h, obj, msg);
+    if (msg->MethodID == FLAT_GM_RENDER && obj)
+        gs_ring(g_r, obj, msg);
+    return rc;
 }
 
 /* ---- FLAT-D4: the replacement routines. They run on the caller's task with the caller's registers (a0 rp, a1 rect,
@@ -1900,10 +2089,11 @@ static void icl_write(struct RastPort *rp, const int *b, int depth, uint32_t fg,
 }
 
 /* Under icl_ss: stock Text in box b, the pixels before and after, the ink mask and coverage, then icl_write */
-static void icl_run(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count, const int *b, int depth, icl_cx *icx)
+/* 1 = the caller runs icl_write with *fg (kept out of this frame: FLAT-BUDGET-MAIN, the tx_c chain) */
+static int icl_run(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count, const int *b, int depth, icl_cx *icx,
+                   uint32_t *fg)
 {
     int n = b[2] * b[3], rtg = depth > 8, jam2 = (rp->DrawMode & JAM2) != 0;
-    uint32_t fg;
     if (!rtg) {
         icl_trp = *rp;
         icl_trp.Layer = 0;
@@ -1918,12 +2108,11 @@ static void icl_run(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG 
         icl_mask(jam2, 0, icl_before, icl_after, icl_rgb(icx->cm, rp->FgPen), icl_rgb(icx->cm, rp->BgPen), n, icl_mk);
     else
         icl_mask(jam2, 1, icl_before, icl_after, rp->FgPen, rp->BgPen, n, icl_mk);
-    if (!icl_fg(icl_mk, icl_after, n, &fg) || !icl_coverage(icl_mk, b[2], b[3], icl_cv)) {
+    if (!icl_fg(icl_mk, icl_after, n, fg) || !icl_coverage(icl_mk, b[2], b[3], icl_cv)) {
         r->lskip++;
-        return;
+        return 0;
     }
-    icl_write(rp, b, depth, fg, icx);
-    r->labels++;
+    return 1;
 }
 
 /* 1 = the label was drawn here (stock Text inside, edges blended or not); 0 = the caller draws stock */
@@ -1932,6 +2121,7 @@ static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG
     struct Window *w;
     icl_cx icx;
     int b[4], depth;
+    uint32_t fg;
     if (!icl_ready || !rp->Layer || !rp->Layer->Window || !rp->Font || !rp->BitMap || count == 0)
         return 0;
     w = (struct Window *)rp->Layer->Window;
@@ -1961,7 +2151,10 @@ static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG
                 ReleasePen(icx.cm, (ULONG)icl_rel[j]);
         }
     }
-    icl_run(r, rp, str, count, b, depth, &icx);
+    if (icl_run(r, rp, str, count, b, depth, &icx, &fg)) {
+        icl_write(rp, b, depth, fg, &icx);
+        r->labels++;
+    }
     ReleaseSemaphore(&icl_ss);
     return 1;
 }
@@ -2207,11 +2400,24 @@ static int scroller_pen_at(flatshared *r, struct RastPort *rp, struct Window *w,
                                                         c[0], c[1], pi->CWidth, pi->CHeight, k[0], k[1], k[2], k[3], (int)box[0], (int)box[1], (int)box[2], (int)box[3]));
 }
 
+/* MODERN-SLIDER: r->slider and its container and pens for the fill about to be painted (flat_prop_slider on Intuition's knob box k);
+ * the track takes the grey scroller knob pen, the knob the theme accent pen_line. */
+static void slider_note(flatshared *r, struct RastPort *rp, struct Window *w, struct Gadget *g, const int *c, const int *k)
+{
+    struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
+    const flat_state *ss = st_scr(r, w->WScreen);
+    r->slider = ss->pen_line ? flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, w->WScreen)) : 0;
+    r->slider_c[0] = c[0]; r->slider_c[1] = c[1]; r->slider_c[2] = pi->CWidth; r->slider_c[3] = pi->CHeight;
+    r->slider_pen[0] = flat_knob_state_pen(ss, rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0);
+    r->slider_pen[1] = ss->pen_line;
+}
+
 static int scroller_pen_of(flatshared *r, struct RastPort *rp, struct Window *w, struct Gadget *g, const LONG *box, int *k)
 {
     int c[2];
     if (!scroller_hit(w, g, box, c) || !prop_knob(g, (struct PropInfo *)g->SpecialInfo, c[0], c[1], k))
         return -1;
+    slider_note(r, rp, w, g, c, k);
     return scroller_pen_at(r, rp, w, (struct PropInfo *)g->SpecialInfo, c, box, k);
 }
 
@@ -2556,17 +2762,52 @@ static void scroller_thin_fill(flatshared *r, struct RastPort *rp, const LONG *b
     ((rectfn)r->rsw.saved)(rp, x0, b[1], x1, b[3], (struct Library *)GfxBase);
 }
 
+/* MODERN-SLIDER: row y of the knob disc of k, clipped to fill b, in xs[0..1]; 0 = no span. A pure helper in its own frame, so vbcc
+ * does not hoist the k and b element addresses into stack temporaries of the slider_disc loop (flat budget, like scroller_cut). */
+static int slider_disc_clip(int side, const LONG *b, const int *k, int y, int *xs)
+{
+    if (!flat_slider_disc_row(side, k[0], k[1], k[2], k[3], y, &xs[0], &xs[1]) || xs[1] < b[0] || xs[0] > b[2])
+        return 0;
+    if (xs[0] < b[0]) xs[0] = (int)b[0];
+    if (xs[1] > b[2]) xs[1] = (int)b[2];
+    return 1;
+}
+
+/* MODERN-SLIDER: the knob disc rows of k inside fill b in the pen set */
+static void slider_disc(flatshared *r, struct RastPort *rp, const LONG *b, const int *k)
+{
+    int y, xs[2];
+    for (y = (int)b[1]; y <= (int)b[3]; y++)
+        if (slider_disc_clip(r->knob_side, b, k, y, xs))
+            ((rectfn)r->rsw.saved)(rp, xs[0], y, xs[1], y, (struct Library *)GfxBase);
+}
+
+/* MODERN-SLIDER: fill b of a slider: window ground, the part of the thin track line inside b, the round knob over it. No outline. */
+static void slider_paint(flatshared *r, struct RastPort *rp, const LONG *b, const int *k)
+{
+    int t[4];
+    SetAPen(rp, (UBYTE)r->st.pen_back);
+    ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+    SetAPen(rp, (UBYTE)r->slider_pen[0]);
+    if (flat_slider_track(r->slider, r->knob_side, r->slider_c[0], r->slider_c[1], r->slider_c[2], r->slider_c[3], (int)b[0], (int)b[1], (int)b[2], (int)b[3], t))
+        ((rectfn)r->rsw.saved)(rp, t[0], t[1], t[2], t[3], (struct Library *)GfxBase);
+    SetAPen(rp, (UBYTE)r->slider_pen[1]);   /* the caller draws slider_disc next (kept out of this frame: the rf_c chain) */
+}
+
 /* FLAT-SCROLLER: a solid fill in the scroller pen sp (the stock track is a dither); FLAT-SLIDER-ROUND: the knob corners take the
  * track pen. Returns the knob corner cut count for the RL6 note. */
 static int scroller_paint(flatshared *r, struct RastPort *rp, const LONG *b, const int *k, int sp)
 {
-    int ncuts = scroller_cuts(r, rp, k, b, -1);
+    int ncuts = r->slider ? 0 : scroller_cuts(r, rp, k, b, -1);
     UBYTE fg = rp->FgPen, dm = rp->DrawMode, pt = rp->AreaPtSz;
     UWORD *pa = (UWORD *)rp->AreaPtrn;
     r->shits++;
     rp->AreaPtrn = 0; rp->AreaPtSz = 0;
     SetDrMd(rp, JAM2);
-    if (sp != r->st.pen_back && (b[0] < k[0] || b[2] >= k[0] + k[2]))
+    if (r->slider) {
+        slider_paint(r, rp, b, k);
+        slider_disc(r, rp, b, k);
+    } else if (sp != r->st.pen_back && (b[0] < k[0] || b[2] >= k[0] + k[2]))
         scroller_thin_fill(r, rp, b, k, sp);        /* S69-KNOB-ASPECT: Intuition's wider knob fill: ground, then the thinner knob */
     else {
         SetAPen(rp, (UBYTE)sp);
@@ -2603,6 +2844,22 @@ static int rf_edge(flatshared *r, struct RastPort *rp, struct Window *w, const L
     r->rhits++;
     SetAPen(rp, (UBYTE)flat_edge_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0));
     ((rectfn)r->rsw.saved)(rp, e[0], e[1], e[2], e[3], (struct Library *)GfxBase);
+    SetAPen(rp, fg);
+    return 1;
+}
+
+/* FLAT-INNER-BEVEL: Intuition 3.1 bevels a 1 px inner box inside the border (ROM 0xfe5a26 via 0xfe0cec); a flat window has none */
+static int rf_inner(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b)
+{
+    int p = flat_inner_edge_fill(st_scr(r, w->WScreen), w->Width, w->Height, w->BorderLeft, w->BorderTop, w->BorderRight, w->BorderBottom,
+                                 (int)b[0], (int)b[1], (int)b[2], (int)b[3]);
+    UBYTE fg;
+    if (p < 0)
+        return 0;
+    fg = rp->FgPen;
+    r->rhits++;
+    SetAPen(rp, (UBYTE)p);
+    ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
     SetAPen(rp, fg);
     return 1;
 }
@@ -2684,6 +2941,136 @@ static int rf_menu(flatshared *r, struct RastPort *rp, const LONG *b)
     return 1;
 }
 
+/* PALETTE-FLAT-PREVIEW (owner 2026-11-25): Palette 40.2 draws its example windows with RectFill from its own code, so no ROM
+ * rule sees them. The calling process's first hunk, once flat_palette_id says it is that editor, maps the call site to the
+ * flat preview: a bevel edge (pen A or B) becomes the outline pen, a scroller dither the plain ground under it, a 2-row dither
+ * (separator) a solid line. Checked on every call: a freed hunk reused by another program fails the identity check. */
+static const unsigned char *pal_hunk(ULONG *len)
+{
+    struct Process *pr = (struct Process *)FindTask(NULL);
+    struct CommandLineInterface *cli;
+    BPTR seg = 0;
+    ULONG *h;
+    if (pr->pr_Task.tc_Node.ln_Type != NT_PROCESS)
+        return NULL;
+    cli = (struct CommandLineInterface *)BADDR(pr->pr_CLI);
+    if (cli)
+        seg = cli->cli_Module;
+    else if (pr->pr_SegList)
+        seg = ((BPTR *)BADDR(pr->pr_SegList))[3];
+    if (!seg)
+        return NULL;
+    h = (ULONG *)BADDR(seg);
+    *len = h[-1] - 8;           /* LoadSeg: the long before the hunk is its allocation, next-hunk BPTR and size included */
+    return (const unsigned char *)(h + 1);
+}
+
+static int pal_fill(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b, ULONG ret, const ULONG *sp)
+{
+    ULONG len = 0;
+    const unsigned char *code = pal_hunk(&len);
+    int site;
+    UBYTE fg, sz;
+    UWORD *pa;
+    if (!code || ret < (ULONG)code || ret >= (ULONG)code + len || !flat_palette_id(code, len))
+        return 0;
+    site = flat_palette_site(ret - (ULONG)code);
+    if (site == FLAT_PAL_EDGE) {
+        int pen = flat_edge_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0, 1), i;
+        /* PALETTE-PREVIEW-BUTTONS: sp is Palette's stack at the RectFill; the bevel's return to its caller lies a few longs up */
+        for (i = 0; i < 32; i++)
+            if (sp[i] >= (ULONG)code && sp[i] < (ULONG)code + len && flat_palette_button(sp[i] - (ULONG)code)) {
+                pen = st_scr(r, w->WScreen)->pen_back;      /* a sample push button has no frame: its edges are the ground */
+                break;
+            }
+        fg = rp->FgPen;
+        SetAPen(rp, (UBYTE)pen);
+        ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+        SetAPen(rp, fg);
+        return 1;
+    }
+    if (site == FLAT_PAL_HILITE) {  /* RESTAURANT-GLYPH-THEME-PENS: stock XOR, then the Amiga key box (x 573..595) back to theme pens */
+        const flat_state *st = st_scr(r, w->WScreen);
+        UBYTE mask = rp->Mask, dm = rp->DrawMode;
+        LONG x, y, x1 = b[2] < 595 ? b[2] : 595;
+        int pen;
+        ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+        fg = rp->FgPen;
+        rp->Mask = 0xff;
+        SetDrMd(rp, JAM1);
+        for (y = b[1]; y <= b[3]; y++)
+            for (x = b[0] > 573 ? b[0] : 573; x <= x1; x++)
+                if ((pen = flat_pal_hilite_pen(st, mask, (int)ReadPixel(rp, x, y))) >= 0) {
+                    SetAPen(rp, (UBYTE)pen);
+                    WritePixel(rp, x, y);
+                }
+        SetAPen(rp, fg);
+        SetDrMd(rp, dm);
+        rp->Mask = mask;
+        return 1;
+    }
+    if (site == FLAT_PAL_GROOVE) {  /* PALETTE-GROOVE: the separator rows above the samples become window ground */
+        fg = rp->FgPen;
+        SetAPen(rp, (UBYTE)st_scr(r, w->WScreen)->pen_back);
+        ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+        SetAPen(rp, fg);
+        return 1;
+    }
+    if (site == FLAT_PAL_KNOB) {    /* PALETTE-SAMPLE-SCROLLER: the flat scroller knob (rf_scroller's pen), over the bevel one pixel out */
+        fg = rp->FgPen;
+        SetAPen(rp, (UBYTE)flat_knob_state_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0, 1));
+        ((rectfn)r->rsw.saved)(rp, b[0] - 1, b[1] - 1, b[2] + 1, b[3] + 1, (struct Library *)GfxBase);
+        SetAPen(rp, fg);
+        return 1;
+    }
+    if (site != FLAT_PAL_DITHER)
+        return 0;
+    if (b[3] - b[1] > 1)        /* a scroller container: its ground was filled first (or is the window's) */
+        return 1;
+    sz = rp->AreaPtSz;
+    pa = (UWORD *)rp->AreaPtrn;          /* PALETTE-MENU-SEPARATOR: size 0 alone still patterns with the first word (dotted line) */
+    rp->AreaPtrn = 0; rp->AreaPtSz = 0;
+    ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+    rp->AreaPtrn = pa; rp->AreaPtSz = sz;
+    return 1;
+}
+
+/* PALETTE-G17-GHOST (owner 2026-11-25): the ROM ghost dither over a disabled custom gadget (Palette G17, no recorded button box)
+ * becomes a solid dim fill, no dither. shortcut: absolute gadget boxes on the window rastport only (no GFLG_REL*, no GZZ);
+ * widen when such a gadget shows a ghost. */
+static int rf_ghost_custom(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b)
+{
+    struct Gadget *g;
+    UBYTE fg, dm, pt;
+    UWORD *pa;
+    if (!rp->AreaPtSz)
+        return 0;
+    for (g = w->FirstGadget; g; g = g->NextGadget)
+        if (flat_ghost_custom(rp->AreaPtSz, (g->GadgetType & GTYP_GTYPEMASK) == GTYP_CUSTOMGADGET && (g->Flags & GFLG_DISABLED) != 0,
+                              g->LeftEdge, g->TopEdge, g->Width, g->Height, (int)b[0], (int)b[1], (int)b[2], (int)b[3]))
+            break;
+    if (!g)
+        return 0;
+    fg = rp->FgPen; dm = rp->DrawMode; pt = rp->AreaPtSz;
+    pa = (UWORD *)rp->AreaPtrn;
+    r->ghits++;
+    rp->AreaPtrn = 0; rp->AreaPtSz = 0;
+    SetDrMd(rp, JAM2);
+    SetAPen(rp, (UBYTE)flat_dim_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0));
+    ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+    SetAPen(rp, fg);
+    SetDrMd(rp, dm);
+    rp->AreaPtrn = pa; rp->AreaPtSz = pt;
+    return 1;
+}
+
+/* The ROM ghost fills over a window's gadgets, one call from flat_rf_c so its frame stays in budget (S62-FLAT-RF-TX-BUDGET);
+ * rf_scroller (the deep chain) stays a direct call so this frame is not on its path */
+static int rf_ghost(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b)
+{
+    return rf_disabled(r, rp, w, b) || rf_ghost_custom(r, rp, w, b);
+}
+
 void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG ret)
 {
     flatshared *r = g_r;
@@ -2696,6 +3083,8 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
     b[0] = x0; b[1] = y0; b[2] = x1; b[3] = y1;
     if (on && rp->Layer)
         w = (struct Window *)rp->Layer->Window;
+    if (on && w && !rom && pal_fill(r, rp, w, b, ret, (const ULONG *)((ULONG)&ret + 8)))   /* the caller's sp: flat_rf.s pushes a copy of ret below it */
+        return;
     if (on && rp->AreaPtSz && rom && !w && ghost_menu(r, rp, b))
         return;
     /* a patterned fill only in the panel's stock ground pen: the separator's dotted punch through its bar image (rig 92: 00FE80DE,
@@ -2723,9 +3112,9 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
         rf_strfill(r, rp, b);
     if (on && rf_gbox(r, rp, b))
         return;
-    if (on && w && rom && (rf_disabled(r, rp, w, b) || rf_scroller(r, rp, w, b)))
+    if (on && w && rom && (rf_ghost(r, rp, w, b) || rf_scroller(r, rp, w, b)))
         return;
-    if (on && r->st.pen_outline && w && !(w->Flags & WFLG_BORDERLESS) && rom && (rf_edge(r, rp, w, b) || rf_side(r, rp, w, b)))
+    if (on && r->st.pen_outline && w && !(w->Flags & WFLG_BORDERLESS) && rom && (rf_edge(r, rp, w, b) || rf_side(r, rp, w, b) || rf_inner(r, rp, w, b)))
         return;
     ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
 }
@@ -3363,10 +3752,12 @@ static void print_status(void)
     int tinst = 0;
     int cginst = 0, twhy = 0;   /* S74-TIME-ROW */
     unsigned long cgcalls = 0, trows = 0;
+    int muinst = 0;             /* MUI-FLAT */
+    unsigned long munew = 0, mumake = 0, muiredir = 0;
     WORD traw[2][5];
     unsigned long scmin = 0, schw = 0, scstk = 0, scno = 0, scb256 = 0, scb8a = 0, scb8b = 0, schdr = 0, scguard = 0, scdeep = 0;
     char sctask[16] = "";
-    unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0, nwc = 0, nws = 0, nwz = 0;
+    unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0, nwc = 0, nws = 0, nwz = 0, ckn = 0, ckl = 0;
     ULONG zcc[2][7];
     static UBYTE grid[32 * 32];   /* S93: copy of cf_lgrid (static: print_status runs on the CLI's stack) */
     int zi;
@@ -3388,6 +3779,7 @@ static void print_status(void)
         memcpy(dsum, r->dsum, sizeof dsum);
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat; fbusy = r->fbusy; fnostk = r->fnostk;
         cginst = r->cgsw.installed; cgcalls = r->cgcalls; trows = r->trow.rows; twhy = r->trow.why;
+        muinst = r->munsw.installed; munew = r->munew; mumake = r->mumake; muiredir = r->muiredir;
         CopyMem(r->trow_raw, traw, sizeof traw);
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; mnhits = r->mnhits; mninst = r->msw.installed && r->nsw.installed && r->bsw.installed; bhits = r->bhits; gbhits = r->gbhits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits; labels = r->labels; lskip = r->lskip;
@@ -3396,7 +3788,7 @@ static void print_status(void)
         cdraws = r->cdraws; cfall = r->cfall;
         cfb = r->cf_busy; cfd = r->cf_nodri; cfm = r->cf_nobm; cfe = r->cf_empty; cfk = r->cf_mask;
         cfi = r->cf_ids; clw = r->cf_lwhich; cls = r->cf_lsize; cln = r->cf_lnz; clm = r->cf_lmarks; CopyMem(r->cf_lgrid, grid, sizeof grid);
-        nwc = r->nw_count; nws = r->nw_state; nwz = r->nw_size; memcpy(zcc, r->zc, sizeof zcc);
+        ckn = r->cknopen; ckl = r->ckline; nwc = r->nw_count; nws = r->nw_state; nwz = r->nw_size; memcpy(zcc, r->zc, sizeof zcc);
         apx = r->aspect_px; alooks = r->aspect_looks;
         memcpy(sring, r->sring, sizeof sring); sn = (int)(r->sring_n > 16 ? 16 : r->sring_n);
         lbeat = r->beat; lstage = r->stage; lref = r->refuse; lnref = r->nrefuse;
@@ -3478,6 +3870,16 @@ static void print_status(void)
         put_word(line, &n, " gboxes=");             put_num(line, &n, gbhits);
         put_word(line, &n, " side=");               put_num(line, &n, (unsigned long)apx);
         put_word(line, &n, " looks=");              put_num(line, &n, alooks);
+        line[n] = 0;
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+    }
+    if (found) {                                    /* MUI-FLAT: new / make rising = the patches run, redir = UP twins handed out */
+        int n = 0;
+        put_word(line, &n, "mui installed=");       put_word(line, &n, muinst ? "yes" : "no");
+        put_word(line, &n, " munew=");              put_num(line, &n, munew);
+        put_word(line, &n, " mumake=");             put_num(line, &n, mumake);
+        put_word(line, &n, " muiredir=");           put_num(line, &n, muiredir);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
@@ -3583,6 +3985,8 @@ static void print_status(void)
         put_word(line, &n, " last state=");         put_num(line, &n, nws);
         put_word(line, &n, " w=");                  put_num(line, &n, nwz >> 8);
         put_word(line, &n, " h=");                  put_num(line, &n, nwz & 255);
+        put_word(line, &n, " ckstock=");            put_num(line, &n, ckn);
+        put_word(line, &n, " ckline=");             put_num(line, &n, ckl);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
@@ -3738,6 +4142,26 @@ static int hook_install(flatshared *r)
                 r->gslot = gs;
         }
     }
+    {   /* GSLIDER-FLAT: gradientslider.gadget is a disk class: open it here and keep it open while the swap is in (no expunge
+         * under our slot). Absent or refused: the bar keeps its bevel, every other hook works. */
+        struct Library *gl = r->gslib ? r->gslib : OpenLibrary((STRPTR)"gadgets/gradientslider.gadget", 39);
+        uintptr_t *gs = gl && !r->gssw.installed ? class_slot("gradientslider.gadget", NULL, 1) : 0;   /* h_Entry, register convention */
+        if (gs && !r->gsgate)
+            r->gsgate = gate_make((void *)flat_dg_tpl, (void *)flat_dg_tpl_end, (ULONG)gs_disp_reg);
+        if (gs && r->gsgate) {
+            Forbid();
+            rc = flat_swap_install(&r->gssw, gs, (uintptr_t)r->gsgate->code);
+            if (rc == FLAT_OK)
+                gate_open(r->gsgate, r->gssw.saved);
+            Permit();
+            if (rc == FLAT_OK)
+                r->gsslot = gs;
+        }
+        if (gl && !r->gssw.installed)
+            CloseLibrary(gl);
+        else
+            r->gslib = gl;
+    }
     {   /* FLAT-C8: the second class. Its absence leaves the sysiclass hook working: report it, do not undo C2. */
         uintptr_t *fs = frameiclass_slot();
         uintptr_t fours = flat_conv(IntuitionBase->LibNode.lib_Version) == FLAT_CONV_REG ? (uintptr_t)c8_disp_reg : (uintptr_t)c8_disp_stk;
@@ -3765,6 +4189,20 @@ static int hook_remove(flatshared *r)
     int rc = FLAT_NOT_INSTALLED;
     if (!r->sw.installed)
         return rc;
+    if (r->gssw.installed) {            /* GSLIDER-FLAT: chained on top = keep all, the class library stays open */
+        gate_close(r->gsgate);
+        Forbid();
+        rc = flat_swap_remove(&r->gssw, r->gsslot, &r->st);
+        Permit();
+        if (rc == FLAT_STILL_CHAINED) {
+            gate_reopen(r->gsgate);
+            return rc;
+        }
+        gate_wait(r->gsgate);
+        r->gsslot = 0;
+        CloseLibrary(r->gslib);
+        r->gslib = 0;
+    }
     if (r->gsw.installed) {             /* INPUT-GROUND: the strgclass hook before all */
         gate_close(r->ggate);
         Forbid();

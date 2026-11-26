@@ -89,6 +89,7 @@ typedef struct flatshared {
     /* S91 diagnostics: c2_draw NOWHICH returns (count, last imp_State, last w << 8 | h) and the last FLAT_W_ZOOM clone draw per window state
      * [0] inactive / [1] active: {draws, imp_State, w << 8 | h, band_rows, frame << 16 | text, edge << 16 | glyph pixels, gpen << 16 | bpen} (pens & 0xFFFF, 65535 = none) */
     ULONG nw_count, nw_state, nw_size;
+    ULONG cknopen, ckline;      /* check_draw: fell back to the stock draw (flat_check_look STOCK) / drew the outlined look */
     ULONG zc[2][7];
     /* FLAT-ASPECT-BORDERS: the cached side-line width for one screen (flat.c side_px) */
     flat_aspect_slot aspect_slot[FLAT_ASPECT_SLOTS];
@@ -127,6 +128,13 @@ typedef struct flatshared {
     struct Library *muibase;    /* muimaster.library, open while the patches are in place */
     ULONG munew, mumake, muiredir; /* sentinels: patched NewObject calls, MakeObject calls, objects handed the UP twin */
     /* the icon pens are no longer here: the shared holder record IPD_SEM_NAME owns them (iconpen_dos.h, F14) */
+    int slider, slider_c[4], slider_pen[2]; /* MODERN-SLIDER: the scroller fill being painted is a slider (flat_prop_slider dir), its
+                                             * container x,y,w,h and track / knob pens (set by slider_note, read by slider_paint) */
+    flat_swap gssw;             /* GSLIDER-FLAT: the gradientslider.gadget h_Entry swap (flat.c gs_disp_reg) */
+    uintptr_t *gsslot;
+    struct flat_gate *gsgate;   /* FLAT-UNLOAD-INFLIGHT: its never-freed gate */
+    struct Library *gslib;      /* the class library, open while the swap is in */
+    ULONG gsrings;              /* sentinel: bevel rings repainted flat */
 } flatshared;
 
 #endif

@@ -876,6 +876,14 @@ static void test_disabled_button_dim_fill(void)
     CHECK_INT(m && m->str && m->count == 3 && m->lx == 14 && m->ly == 32, 1);
     CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 12, 22, 20, 30) != 0, 1);
     CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 0, 10, 20, 49, 39) == 0, 1);
+    /* PALETTE-G17-GHOST: Palette G17 315,147 293x20 */
+    CHECK_INT(flat_ghost_custom(1, 1, 315, 147, 293, 20, 315, 147, 607, 166), 1);
+    CHECK_INT(flat_ghost_custom(1, 1, 315, 147, 293, 20, 317, 148, 605, 165), 1);   /* inset ghost */
+    CHECK_INT(flat_ghost_custom(0, 1, 315, 147, 293, 20, 315, 147, 607, 166), 0);   /* solid fill: not a ghost */
+    CHECK_INT(flat_ghost_custom(1, 0, 315, 147, 293, 20, 315, 147, 607, 166), 0);   /* enabled or not custom */
+    CHECK_INT(flat_ghost_custom(1, 1, 315, 147, 293, 20, 315, 147, 607, 150), 0);   /* part of the box */
+    CHECK_INT(flat_ghost_custom(1, 1, 315, 147, 293, 20, 314, 147, 607, 166), 0);   /* outside the box */
+    CHECK_INT(flat_ghost_custom(1, 1, 315, 147, -8, 20, 315, 147, 607, 166), 0);    /* relative width */
     CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 60, 20, 80, 39) == 0, 1);
     CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 5, 20, 49, 39) == 0, 1);
     CHECK_INT(flat_gh_match(&s, &g, &b, &c1, 2, 10, 20, 49, 39) == 0, 1);
@@ -1033,6 +1041,14 @@ static void test_inactive_pens(void)
         CHECK_INT(flat_side_fill_pen(&s, 5, 200, 100, 4, 11, 4, 2, 0, 0, 199, 10, o), -1);    /* title band stays the accent */
         CHECK_INT(flat_side_fill_pen(&s, 5, 200, 100, 4, 11, 4, 2, 4, 20, 100, 30, o), -1);   /* interior: a selected row */
         CHECK_INT(flat_side_fill_pen(&s, 3, 200, 100, 4, 11, 4, 2, 0, 11, 3, 97, o), -1);     /* another pen */
+        /* FLAT-INNER-BEVEL: Font prefs window 402 x 146, borders 4/14/4/2 */
+        CHECK_INT(flat_inner_edge_fill(&s, 402, 146, 4, 14, 4, 2, 3, 13, 397, 13), 2);    /* top row */
+        CHECK_INT(flat_inner_edge_fill(&s, 402, 146, 4, 14, 4, 2, 3, 14, 3, 144), 2);     /* left col */
+        CHECK_INT(flat_inner_edge_fill(&s, 402, 146, 4, 14, 4, 2, 398, 13, 398, 143), 2); /* right col */
+        CHECK_INT(flat_inner_edge_fill(&s, 402, 146, 4, 14, 4, 2, 4, 144, 398, 144), 2);  /* bottom row */
+        CHECK_INT(flat_inner_edge_fill(&s, 402, 146, 4, 14, 4, 2, 398, 130, 398, 143), -1); /* short: a size gadget edge */
+        CHECK_INT(flat_inner_edge_fill(&s, 402, 146, 4, 14, 4, 2, 4, 20, 100, 20), -1);   /* interior line */
+        CHECK_INT(flat_inner_edge_fill(&s, 402, 146, 4, 14, 4, 2, 0, 0, 0, 145), -1);     /* outer edge */
         CHECK_INT(flat_side_fill_pen(&s, 5, 200, 100, 4, 11, 4, 2, 0, 11, 3, 100, o), -1);    /* past the window: untouched */
         s.held = 1;
         CHECK_INT(flat_side_fill_pen(&s, 5, 200, 100, 4, 11, 4, 2, 0, 11, 3, 97, o), -1);
