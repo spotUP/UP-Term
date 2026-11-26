@@ -762,8 +762,9 @@ int flat_ghost_custom(int ptsz, int custom_disabled, int gx, int gy, int gw, int
 {
     if (!ptsz || !custom_disabled || gw <= 0 || gh <= 0)
         return 0;
-    return x0 >= gx && x0 <= gx + 2 && y0 >= gy && y0 <= gy + 2 && x1 <= gx + gw - 1 && x1 >= gx + gw - 3 && y1 <= gy + gh - 1 &&
-           y1 >= gy + gh - 3;
+    /* rig 12: the 3.1 ghost over G17 starts 1 row above the gadget box (y146 for TopEdge 147), so each edge may sit 2 px either side */
+    return x0 >= gx - 2 && x0 <= gx + 2 && y0 >= gy - 2 && y0 <= gy + 2 && x1 <= gx + gw + 1 && x1 >= gx + gw - 3 &&
+           y1 <= gy + gh + 1 && y1 >= gy + gh - 3;
 }
 
 int flat_dim_pen(const flat_state *s, int depth)

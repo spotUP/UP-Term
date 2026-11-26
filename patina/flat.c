@@ -3064,13 +3064,6 @@ static int rf_ghost_custom(flatshared *r, struct RastPort *rp, struct Window *w,
     return 1;
 }
 
-/* The ROM ghost fills over a window's gadgets, one call from flat_rf_c so its frame stays in budget (S62-FLAT-RF-TX-BUDGET);
- * rf_scroller (the deep chain) stays a direct call so this frame is not on its path */
-static int rf_ghost(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b)
-{
-    return rf_disabled(r, rp, w, b) || rf_ghost_custom(r, rp, w, b);
-}
-
 void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG ret)
 {
     flatshared *r = g_r;
@@ -3083,6 +3076,10 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
     b[0] = x0; b[1] = y0; b[2] = x1; b[3] = y1;
     if (on && rp->Layer)
         w = (struct Window *)rp->Layer->Window;
+    /* PALETTE-G17-GHOST: no ROM gate, 3.1 GadTools (ROM but outside intuition's range) ghosts its own palette gadget; the
+     * disabled custom gadget box is the gate. Before pal_fill so a Palette-side fill cannot claim it. */
+    if (on && w && rf_ghost_custom(r, rp, w, b))
+        return;
     if (on && w && !rom && pal_fill(r, rp, w, b, ret, (const ULONG *)((ULONG)&ret + 8)))   /* the caller's sp: flat_rf.s pushes a copy of ret below it */
         return;
     if (on && rp->AreaPtSz && rom && !w && ghost_menu(r, rp, b))
@@ -3112,7 +3109,7 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
         rf_strfill(r, rp, b);
     if (on && rf_gbox(r, rp, b))
         return;
-    if (on && w && rom && (rf_ghost(r, rp, w, b) || rf_scroller(r, rp, w, b)))
+    if (on && w && rom && (rf_disabled(r, rp, w, b) || rf_scroller(r, rp, w, b)))
         return;
     if (on && r->st.pen_outline && w && !(w->Flags & WFLG_BORDERLESS) && rom && (rf_edge(r, rp, w, b) || rf_side(r, rp, w, b) || rf_inner(r, rp, w, b)))
         return;
