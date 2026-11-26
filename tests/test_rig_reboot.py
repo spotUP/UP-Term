@@ -19,10 +19,13 @@ class RigReboot(unittest.TestCase):
         p = lambda name, new: st.enter_context(mock.patch.object(rig, name, new))
         p("RIG", self.tmp)
         p("START_ARGS", self.tmp / "start.args")
-        p("stop", lambda: self.calls.append("stop"))
+        p("OWNER_FILE", self.tmp / "owner.json")   # the real build/rigN files stay untouched
+        st.enter_context(mock.patch.object(rig.paths, "EMU_FILE", self.tmp / "emu"))
+        p("session_pid", lambda: None)   # walks the real ps tree
+        p("stop", lambda emu=None: self.calls.append("stop"))   # reboot passes the running emulator (2026-11-09)
         p("fresh_sys_hdf", lambda: self.calls.append("clone"))
         for name in ("sys_hdf_screenmode", "sys_hdf_monitors", "sys_hdf_no_wasabid", "sys_hdf_shadows_block", "sys_hdf_no_dopus",
-                     "sys_hdf_dopus", "sys_hdf_kit", "sys_hdf_cpu_lib"):
+                     "sys_hdf_dopus", "sys_hdf_kit", "sys_hdf_cpu_lib", "sys_hdf_upterm_bin"):
             p(name, lambda image, _n=name: self.calls.append(_n))
         p("mine", lambda: [])
         p("gc", lambda: [])   # the start sweep reads the real build/ folders
@@ -33,6 +36,8 @@ class RigReboot(unittest.TestCase):
         p("boot_assigns_missing", lambda: [])
         p("guard_shell_startup", lambda: None)
         p("retry_wb_reset", lambda: None)
+        for name in ("guard_upterm_assign", "require_upterm_current", "boot_device_check"):   # wasabi probes of a live Amiga
+            p(name, lambda *a, **k: None)
         st.enter_context(mock.patch.object(rig.rigwasabi, "warn_guru", lambda *a, **k: []))   # would start a wasabi client on a live rig
         st.enter_context(mock.patch.object(rig.paths, "cap_fsuae_log", lambda **k: None))
         st.enter_context(mock.patch.object(rig.subprocess, "Popen", lambda *a, **k: None))
@@ -76,7 +81,7 @@ class RigReboot(unittest.TestCase):
     def test_keep_sys_start_boots_the_disk_the_last_run_left(self):
         self.boot(True, ["rig.py", "start", "--keep-sys", "--max"])
         self.assertNotIn("clone", self.calls)
-        self.assertEqual(self.calls, ["sys_hdf_no_wasabid", "sys_hdf_shadows_block"])   # wasabid and shadow blocks go again; nothing else
+        self.assertEqual(self.calls, ["sys_hdf_no_wasabid", "sys_hdf_upterm_bin", "sys_hdf_shadows_block"])   # wasabid, UP-Term:bin and shadow blocks go again
         self.assertEqual((self.tmp / "sys.hdf").read_bytes(), b"installed")
         self.assertEqual(json.loads((self.tmp / "start.args").read_text()), ["--max"])   # a later reboot or aga clones again
 
