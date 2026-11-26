@@ -9,6 +9,7 @@ import rig
 
 class Stale(unittest.TestCase):
     def setUp(self):
+        rig._BUILT_CURRENT.clear()
         self.t = pathlib.Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.t, ignore_errors=True)
         (self.t / "build/amiga").mkdir(parents=True)

@@ -2010,6 +2010,8 @@ def program_pairs(vtc, built):
 # VSH-JOB-SIGNALS hunt (STALE-VTC-SH, 2026-10-29). refresh_programs removes them.
 RETIRED_VTC_FILES = ("bin/sh",)
 
+_BUILT_CURRENT = set()   # names ensure_built made current in this process (RIG-START-HOST-SLOW)
+
 def ensure_built(files, run=None):
     """Makes every file of this tree's build/amiga in `files` current before it is pushed to a rig: make's own graph
     (one `make -n` pass, paths.stale_targets) says which are older than their sources, and those are rebuilt with `make`; a failed build exits with
@@ -2018,13 +2020,15 @@ def ensure_built(files, run=None):
     (RIG-PUSH-STALE-BUILD). Files outside this tree's build/amiga (the main checkout's, via merge_build) are not ours to build."""
     run = run or subprocess.run
     own = (ROOT / "build/amiga").resolve()
-    names = sorted({f.name for f in map(pathlib.Path, files) if f.resolve().parent == own})
+    names = sorted({f.name for f in map(pathlib.Path, files) if f.resolve().parent == own} - _BUILT_CURRENT)
     if not names:
         return []
     env = {**os.environ, "UPTERM_ROOT": str(paths.UPTERM_ROOT)}
     targets = ["build/amiga/" + n for n in names]
     with paths.build_lock(ROOT):   # parallel rig starts on this tree wait here instead of racing in build/
-        return _build_stale(targets, run, env)
+        stale = _build_stale(targets, run, env)
+    _BUILT_CURRENT.update(names)   # one start calls this 4 times (each a make -n parse, 8-43 s); later calls skip these names
+    return stale
 
 def _build_stale(targets, run, env):
     stale = paths.stale_targets(targets, run, ROOT, on_error=lambda t, r: print(
