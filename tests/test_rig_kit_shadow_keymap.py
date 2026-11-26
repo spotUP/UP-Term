@@ -36,7 +36,7 @@ class KitShadowKeymap(unittest.TestCase):
         self.assertEqual(rig.user_startup_with_shadows_block(out.encode("latin-1")).decode("latin-1"), out)   # once
         self.assertEqual(rig.user_startup_with_shadows_block(b"; no kit\n"), b"; no kit\n" + rig.SHADOWS_UP_BLOCK_TEXT.encode())   # never go (RIG-GO-EARLY)
         # Patina programs are the up-patina add-on, not kit entries: rig.sys_hdf_upterm_bin syncs them (tests/test_rig_upterm_bin)
-        self.assertNotIn("patina-flat", rig.SHADOWS_UP_SCRIPT)
+        self.assertNotIn("VTC:patina-flat", rig.SHADOWS_UP_SCRIPT)   # a PENS run of the synced UP-Term:bin copy is allowed (BOOT-ECHO-WINDOW-FAILS)
         self.assertNotIn("patina-flat", rig.GO)   # go no longer runs any shadow pass
 
     def test_early_block_assigns_libs_ixp6_before_patina_and_go_skips_then(self):

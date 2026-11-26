@@ -372,12 +372,24 @@ SHADOWS_UP_BLOCK = user_startup.RIG_SHADOWS_BLOCK
 RIG_LIBS_DONE = "RAM:rig-libs-done"
 KIT_PATINA_BLOCK = ";BEGIN UP-Term Patina"
 # RIG-BLACK-SCREEN: the boot CLI writes to BOOTX:boot.console (bootcap), so nothing opened a screen before LoadWB and
-# the window stayed black for the whole pass. A CON: window opens the Workbench screen now (IPrefs has run: right mode;
-# LoadWB itself must stay after the pass, it starts WBStartup's Patina). The shadow rows say bare `Copy`, which the
+# the window stayed black for the whole pass. BOOT-ECHO-WINDOW-FAILS: CON: is vtcon-handler here, and it never opens a
+# closed Workbench (handler/pubscr.c, BOOT-31-WB-DEADLOCK), so the Echo's window alone failed. patina-flat PENS opens the
+# Workbench first (OpenWorkBench, after IPrefs: right mode), as the kit's Patina-Pens block does at this boot point;
+# LoadWB itself must stay after the pass, it starts WBStartup's Patina. The shadow rows say bare `Copy`, which the
 # shell finds on the resident list, so C:Copy is loaded once instead of once per row (~550 rows).
 SHADOWS_UP_SCRIPT = """FailAt 21
+C:Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  If EXISTS UP-Term:bin/patina-flat
+    UP-Term:bin/patina-flat PENS
+  EndIf
+EndIf
 C:Echo >"CON:0/0/480/30/UP-Term rig/CLOSE" "UP-Term rig: copying the build (shadows-up)"
-Echo >>BOOTX:boot.log "screen opened (before shadows)"
+If WARN
+  Echo >>BOOTX:boot.log "screen open FAILED (before shadows)"
+Else
+  Echo >>BOOTX:boot.log "screen opened (before shadows)"
+EndIf
 C:Resident >NIL: C:Copy PURE
 Echo >>BOOTX:boot.log "early UP-Term shadows started (before Patina)"
 C:Assign >NIL: VTC: EXISTS
