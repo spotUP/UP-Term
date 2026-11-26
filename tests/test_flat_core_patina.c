@@ -1362,6 +1362,13 @@ static void test_which_from_gtype(void)
             CHECK_INT(flat_cycle_frame(0x0001, 0x0001, 315, 17, 293, 14, 315, 17, 293, 14), 1);
             CHECK_INT(flat_cycle_frame(0x1001, 0x0001, 315, 17, 293, 14, 315, 17, 293, 14), 1);   /* GTYP_GADTOOLS bit set */
             CHECK_INT(flat_cycle_frame(0x0001, 0x0001, 315, 17, 293, 14, 316, 18, 291, 12), 0);   /* an inner box (list frame) */
+            /* PREFSFLAT2-DRAWBORDER: rig 24 Palette cycle separator, shadow 0e0e14 x=335 / shine a9b1d6 x=336 (roles 2 / 1) */
+            CHECK_INT(flat_cycle_border_pen(1, 2, 4, 7), -1);   /* shadow half skipped */
+            CHECK_INT(flat_cycle_border_pen(1, 1, 3, 7), 7);    /* shine half in the edge pen */
+            CHECK_INT(flat_cycle_border_pen(1, 3, 2, 7), 2);    /* the glyph keeps its text pen */
+            CHECK_INT(flat_cycle_border_pen(1, 0, 5, 7), 5);    /* a program's own Border (BackPen 0) untouched */
+            CHECK_INT(flat_cycle_border_pen(0, 2, 4, 7), 4);    /* outside a 3.1 cycle box: stock */
+            CHECK_INT(flat_cycle_border_pen(0, 1, 3, 7), 3);
             CHECK_INT(flat_cycle_frame(0x0001, 0x0003, 589, 123, 19, 12, 589, 123, 19, 12), 0);   /* scroller arrow: IMMEDIATE */
             CHECK_INT(flat_cycle_frame(0x0003, 0x0001, 149, 137, 149, 7, 149, 137, 149, 7), 0);   /* prop */
             CHECK_INT(flat_cycle_frame(0x0004, 0x0001, 20, 20, 100, 14, 20, 20, 100, 14), 0);     /* string */

@@ -681,6 +681,12 @@ int flat_cycle_frame(unsigned gadget_type, unsigned activation, int gx, int gy, 
 /* C8-RING: is an unanswered frame a 3.1 cycle's? box_match = flat_cycle_frame on some window gadget. On 3.1 the cycle's frame is
  * its gadget's render == select image (button_image), as a push button's; push (flat_push_button) keeps the push button out. */
 int flat_cycle_of(int button_image, int push, int box_match);
+/* PREFSFLAT2-DRAWBORDER: 3.1 GadTools CYCLE_KIND draws its glyph and the separator beside it with DrawBorder from its own image
+ * class (ROM 40.068 fe96fa, after DrawImage); before the call it sets each Border's FrontPen from the role it keeps in BackPen:
+ * 1 shine, 2 shadow, 3 text (swapped shine/shadow when selected). The separator is a role-1 / role-2 one pixel bevel pair. The pen
+ * one Border segment draws in: in_cycle = the border lies in a 3.1 cycle gadget box on a flat screen; -1 = skip the segment (the
+ * shadow half), the flat edge pen for the shine half, else front (the glyph, any other caller) */
+int flat_cycle_border_pen(int in_cycle, int role, int front, int edge_pen);
 /* PALETTE-CYCLE-PAPER (owner 2026-11-25; C8-LOOK owner 2026-11-26: only where the screen holds no input ground pen, else the
  * cycle is the rounded input ground box, no outline): a 3.1 cycle gadget looks like a Patina window: the rounded face is drawn in the accent
  * (st->pen_button = st->pen_line), then in[] (the box inside the side-wide outline) is filled with the returned surface pen st->pen_back */
