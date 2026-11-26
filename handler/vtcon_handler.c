@@ -8790,6 +8790,14 @@ static void packet(con *c, struct DosPacket *p)
             if (!c->auto_open && !open_window(c)) {
                 DBG("open failed", c->w.win, c->w.t);
                 close_window(c);
+                /* FIRST-NEWSHELL: give dn_Task back and end once idle, like the ROM CON:. Kept, the process
+                 * lived on (ever_opened 0) and took the next Open of CON: with this failed spec: the boot
+                 * Echo's 480x30 "UP-Term rig" window instead of the first NewShell's own. */
+                Forbid();
+                if (c->node && c->node->dn_Task == c->port)
+                    c->node->dn_Task = 0;
+                Permit();
+                c->ever_opened = 1;
                 reply(p, DOSFALSE, ERROR_NO_FREE_STORE);
                 return;
             }
