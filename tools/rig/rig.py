@@ -1638,20 +1638,27 @@ def setup():
     elif sysconf.exists():
         sysconf.unlink()
     # the pinned wasabid (`make wasabi`), every start; one daemon, no other agent in the boot
-    shutil.copyfile(rigwasabi.build_dir() / "wasabid", RIG / "boot/wasabid")
-    stage_bootcap(RIG / "boot")
-    stage_amissl(RIG / "vtc", M060)
-    stage_ixemul(RIG / "vtc", NOFPU)
-    stage_screennotify(RIG / "vtc")
+    with phase("setup stage wasabid/bootcap/amissl/ixemul/screennotify"):
+        shutil.copyfile(rigwasabi.build_dir() / "wasabid", RIG / "boot/wasabid")
+        stage_bootcap(RIG / "boot")
+        stage_amissl(RIG / "vtc", M060)
+        stage_ixemul(RIG / "vtc", NOFPU)
+        stage_screennotify(RIG / "vtc")
     # a stale build/amiga program is rebuilt here, even when VTC: already holds the same old bytes (S92-STALE-STAGE)
-    ensure_built([src for src, dst in program_pairs(RIG / "vtc", ROOT / "build/amiga")])
-    refresh_programs(RIG / "vtc", ROOT / "build/amiga")   # the files build_drift checks, as install copies them
-    refresh_kit_shadows(RIG / "vtc")
-    stale = build_drift(RIG / "vtc")
+    with phase("setup ensure_built (stale-binary check)"):
+        ensure_built([src for src, dst in program_pairs(RIG / "vtc", ROOT / "build/amiga")])
+    with phase("setup refresh_programs (host VTC: copy)"):
+        refresh_programs(RIG / "vtc", ROOT / "build/amiga")   # the files build_drift checks, as install copies them
+    with phase("setup refresh_kit_shadows"):
+        refresh_kit_shadows(RIG / "vtc")
+    with phase("setup build_drift"):
+        stale = build_drift(RIG / "vtc")
     if stale:
         print("[WARN] %d file(s) in VTC: differ from the build: %s; `rig.py install` puts the build there"
               % (len(stale), ", ".join(stale)))
-    for rel, why in start_media_drift(RIG / "vtc", RIG / "sys.hdf"):
+    with phase("setup start_media_drift"):
+        media_drift = list(start_media_drift(RIG / "vtc", RIG / "sys.hdf"))
+    for rel, why in media_drift:
         print("[WARN] UP-Term:%s is %s in the rig's UP-Term: tree; `rig.py install` puts the kit's copy there" % (rel, why))
     (RIG / "boot/go").write_text(GO)
     (RIG / "boot/shadows-up").write_text(SHADOWS_UP_SCRIPT)
@@ -2493,6 +2500,26 @@ def guard_stale_base(root, argv, fetch=True):
                  "merge origin/main, or pass --allow-stale-base \"<reason>\"" % (head, om, missing))
     print("[WARN] rig: RIG-STALE-BASE overridden: HEAD %s lacks %d origin/main commits (%s); reason: %s" % (head, missing, om, reason))
 
+def phase_note(name, t_from, t_to=None):
+    """RIG-START-HOST-SLOW: one `[TIME] <name> <s>s` line to stderr, appended to RIG/start-timing.log (never truncated,
+    retries append). The span is t_from to t_to (default now), both time.time()."""
+    line = "[TIME] %s %.1fs" % (name, (t_to or time.time()) - t_from)
+    print(line, file=sys.stderr, flush=True)
+    try:
+        with open(RIG / "start-timing.log", "a") as f:
+            f.write("%s %s\n" % (time.strftime("%H:%M:%S"), line))
+    except OSError:
+        pass
+
+@contextlib.contextmanager
+def phase(name):
+    """Time the with-block of one `start` step with phase_note, also when it raises or exits."""
+    t = time.time()
+    try:
+        yield
+    finally:
+        phase_note(name, t)
+
 def start(retries=START_RETRIES):
     """Boot; a boot whose boot.log stops advancing (boot_frozen: the emulator froze before anything under test
     loaded, seen 3 times on 2026-09-29, cause not found) is killed and retried. A slow boot is waited for.
@@ -2501,8 +2528,10 @@ def start(retries=START_RETRIES):
     Amiga showed a disk checksum error (rig 3, 2026-10-30). A second start waits on start.lock for the first, then
     finds its emulator in mine() and says "already running"."""
     if not KEEP_SYS:   # a reboot restarts the run the guard already passed
-        guard_stale_base(ROOT, sys.argv)
-        gc()   # idle rig folders of other numbers (RULES.md rule 7) go before this rig's own folder is made
+        with phase("guard-stale-base"):
+            guard_stale_base(ROOT, sys.argv)
+        with phase("gc-idle-rigs"):
+            gc()   # idle rig folders of other numbers (RULES.md rule 7) go before this rig's own folder is made
     RIG.mkdir(parents=True, exist_ok=True)
     with open(RIG / "start.lock", "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)   # released when the block ends or the process dies
@@ -2564,45 +2593,66 @@ def _start(retries):
     if mine():
         print("already running")
         return
-    refuse_port_clash()
+    with phase("refuse_port_clash"):
+        refuse_port_clash()
     # the system disk is new from the master on every start: nothing a dead run wrote into DH0: survives, and a rig
     # that never had one gets it here. Only here: no emulator of this rig runs (mine() above).
     if KEEP_SYS and not OS and not OS32 and (RIG / "sys.hdf").exists():
         # `rig.py reboot`: DH0: stays as the last run left it. The clone-time edits are in it already; only the
         # wasabi block goes again (an install may have written it, and its wasabid takes port 1234, sys_hdf_no_wasabid)
-        sys_hdf_no_wasabid(RIG / "sys.hdf")
+        with phase("sys_hdf_no_wasabid"):
+            sys_hdf_no_wasabid(RIG / "sys.hdf")
         if A500:
-            sys_hdf_a500(RIG / "sys.hdf")
-        sys_hdf_upterm_bin(RIG / "sys.hdf")   # before the boot runs the PENS block (RIG-BLACK-SCREEN)
-        sys_hdf_shadows_block(RIG / "sys.hdf")
-        sys_hdf_skip_blocks(RIG / "sys.hdf")
+            with phase("sys_hdf_a500"):
+                sys_hdf_a500(RIG / "sys.hdf")
+        with phase("sys_hdf_upterm_bin"):
+            sys_hdf_upterm_bin(RIG / "sys.hdf")   # before the boot runs the PENS block (RIG-BLACK-SCREEN)
+        with phase("sys_hdf_shadows_block"):
+            sys_hdf_shadows_block(RIG / "sys.hdf")
+        with phase("sys_hdf_skip_blocks"):
+            sys_hdf_skip_blocks(RIG / "sys.hdf")
     elif not OS and not OS32:
-        fresh_sys_hdf()
-        sys_hdf_screenmode(RIG / "sys.hdf")
-        sys_hdf_monitors(RIG / "sys.hdf")
-        sys_hdf_no_wasabid(RIG / "sys.hdf")
+        with phase("fresh_sys_hdf"):
+            fresh_sys_hdf()
+        with phase("sys_hdf_screenmode"):
+            sys_hdf_screenmode(RIG / "sys.hdf")
+        with phase("sys_hdf_monitors"):
+            sys_hdf_monitors(RIG / "sys.hdf")
+        with phase("sys_hdf_no_wasabid"):
+            sys_hdf_no_wasabid(RIG / "sys.hdf")
         if "--no-dopus" in sys.argv:
-            sys_hdf_no_dopus(RIG / "sys.hdf")
+            with phase("sys_hdf_no_dopus"):
+                sys_hdf_no_dopus(RIG / "sys.hdf")
         else:
-            sys_hdf_dopus(RIG / "sys.hdf")
-        sys_hdf_kit(RIG / "sys.hdf")
+            with phase("sys_hdf_dopus"):
+                sys_hdf_dopus(RIG / "sys.hdf")
+        with phase("sys_hdf_kit"):
+            sys_hdf_kit(RIG / "sys.hdf")
         if A500:
-            sys_hdf_a500(RIG / "sys.hdf")
-        sys_hdf_upterm_bin(RIG / "sys.hdf")   # before the boot runs the PENS block (RIG-BLACK-SCREEN)
-        sys_hdf_shadows_block(RIG / "sys.hdf")
-        sys_hdf_skip_blocks(RIG / "sys.hdf")
-        sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
+            with phase("sys_hdf_a500"):
+                sys_hdf_a500(RIG / "sys.hdf")
+        with phase("sys_hdf_upterm_bin"):
+            sys_hdf_upterm_bin(RIG / "sys.hdf")   # before the boot runs the PENS block (RIG-BLACK-SCREEN)
+        with phase("sys_hdf_shadows_block"):
+            sys_hdf_shadows_block(RIG / "sys.hdf")
+        with phase("sys_hdf_skip_blocks"):
+            sys_hdf_skip_blocks(RIG / "sys.hdf")
+        with phase("sys_hdf_cpu_lib"):
+            sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     RIG.mkdir(parents=True, exist_ok=True)
     START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))
     OWNER_FILE.write_text(json.dumps({"root": str(ROOT), "purpose": PURPOSE, "pid": session_pid()}))
     paths.EMU_FILE.write_text(paths.EMU + "\n")   # stop/status of a later call find this rig's emulator without the flag
-    setup_config_only()
+    with phase("setup_config_only"):
+        setup_config_only()
     paths.cap_fsuae_log(limit=0)   # a fresh log per start (the tail of the last run stays in <name>.tail)
     log = RIG / "boot/boot.log"
     if log.exists():
         log.unlink()
     (RIG / "boot/boot.console").unlink(missing_ok=True)
-    boot_device_check()   # no boot device = an emulator on the insert-disk screen; refuse before launching either one
+    with phase("boot_device_check"):
+        boot_device_check()   # no boot device = an emulator on the insert-disk screen; refuse before launching either one
+    t_launch = time.time()
     emu_proc = None   # the Popen handle where the launch keeps one (not `open -a`)
     if AMIBERRY:
         # Amiberry's console log goes where cap_fsuae_log, fsuae_crash and fsuae_reset_count already read
@@ -2623,6 +2673,7 @@ def _start(retries):
         subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "serialwatch"], stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     t0 = time.time()
+    phase_note("emulator-launch", t_launch, t0)
     seen, changed, noted = "", t0, t0
     emu_seen = False
     while True:
@@ -2634,6 +2685,8 @@ def _start(retries):
         text = log.read_text() if log.exists() else ""
         if go_assigns_done(text) and status(quiet=True):
             print("up")
+            phase_note("boot-until-wasabid-up", t0)
+            t_post = time.time()
             missing = boot_assigns_missing()
             if missing:
                 sys.exit("rig: the boot lacks the assigns %s (BOOTX:go or the boot hook did not run)" % " ".join(missing))
@@ -2650,15 +2703,22 @@ def _start(retries):
             reset0 = paths.fsuae_reset_count()
             err = None
             try:
-                guard_shell_startup()
-                guard_upterm_assign()
-                require_upterm_current()
-                rigwasabi.warn_guru()
-                start_watchdog()
+                with phase("post-up guard_shell_startup"):
+                    guard_shell_startup()
+                with phase("post-up guard_upterm_assign"):
+                    guard_upterm_assign()
+                with phase("post-up require_upterm_current (UP-Term:bin stale check)"):
+                    require_upterm_current()
+                with phase("post-up warn_guru"):
+                    rigwasabi.warn_guru()
+                with phase("post-up start_watchdog"):
+                    start_watchdog()
                 if M060:
-                    retry_wb_reset()
+                    with phase("post-up retry_wb_reset"):
+                        retry_wb_reset()
             except (SystemExit, OSError) as e:
                 err = e
+            phase_note("post-up-total", t_post)
             lost = boot_lost_after_up(reset0, paths.fsuae_reset_count(), status(quiet=True))
             if not lost:
                 if err is not None:
