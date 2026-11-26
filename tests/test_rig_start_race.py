@@ -19,7 +19,8 @@ import rig
 class StartRace(unittest.TestCase):
     def test_two_concurrent_starts_launch_one_emulator(self):
         names = ("RIG", "OS", "M060", "mine", "START_ARGS", "setup_config_only", "status", "time", "subprocess",
-                 "boot_assigns_missing", "guard_shell_startup", "start_watchdog", "guard_stale_base", "gc", "port_listeners")
+                 "boot_assigns_missing", "guard_shell_startup", "start_watchdog", "guard_stale_base", "gc", "port_listeners",
+                 "session_pid", "OWNER_FILE")
         saved = {n: getattr(rig, n) for n in names}
         saved_paths = (rig.paths.cap_fsuae_log, rig.paths.FSUAE)
         launched = []
@@ -31,6 +32,9 @@ class StartRace(unittest.TestCase):
 
             @staticmethod
             def time(): return time.time()
+
+            @staticmethod
+            def strftime(fmt): return time.strftime(fmt)   # phase_note stamps start-timing.log
 
         class Proc:
             DEVNULL = None
@@ -52,6 +56,8 @@ class StartRace(unittest.TestCase):
                 rig.M060 = False
                 rig.mine = lambda: bool(launched)
                 rig.guard_stale_base = lambda *a, **k: None   # git checks against the real checkout
+                rig.session_pid = lambda: None   # walks the real ps tree through the faked subprocess
+                rig.OWNER_FILE = rig.RIG / "owner.json"   # never the real rig's owner file
                 rig.gc = lambda: []   # the start sweep reads the real build/ folders
                 rig.port_listeners = lambda port: []   # RIG-PORT-CLASH: lsof sees the real machine
                 rig.START_ARGS = rig.RIG / "start_args.json"
