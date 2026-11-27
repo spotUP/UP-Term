@@ -115,7 +115,7 @@ def boot(go, assigns, files):
     neither a device nor an assign when a line asks for it, where AmigaDOS puts
     up "Please insert volume" and the boot waits for ever."""
     assigns, files = dict(assigns), set(files)
-    devices = {"DH0", "VTCX", "BOOTX", "SYS", "C", "S", "L", "LIBS", "DEVS", "FONTS", "ENV", "ENVARC", "T", "VTC"}
+    devices = {"DH0", "VTCX", "BOOTX", "SYS", "C", "S", "L", "LIBS", "DEVS", "FONTS", "ENV", "ENVARC", "T", "VTC", "RAM"}
     requesters = []
 
     def ask(path):
@@ -171,7 +171,8 @@ a, f, req = boot(rig.GO, {}, PICON)
 check("sys:prefs/up-term-prefs.info" in f, "no kit: the Prefs icon is copied to SYS:Prefs")
 a, f, req = boot(rig.GO, {}, PICON | {"sys:prefs/up-term-prefs.info"})
 check("sys:prefs/up-term-prefs" not in f, "a kit's Prefs icon in SYS:Prefs stays")
-check('C:Copy >NIL: VTC:upprefs C:UP-Term-Prefs CLONE' in [l.strip() for l in rig.GO.splitlines()], "GO installs C:UP-Term-Prefs")
+# the C: install moved from GO to the shadow pass (BOOTX:shadows-up), which says bare Copy
+check('Copy >NIL: VTC:upprefs C:UP-Term-Prefs CLONE' in [l.strip() for l in rig.SHADOWS_UP_SCRIPT.splitlines()], "the shadow pass installs C:UP-Term-Prefs")
 
 # regression (rig 1, 2026-10-13): an installer_rig run left ENVARC:up-term/Dir naming
 # SYS:UP-Term, a drawer it had deleted; the boot asked for the volume UP-Term: and froze
