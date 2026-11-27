@@ -221,8 +221,7 @@ EndCLI >NIL:
 # for the CPU this boot emulates, flat, as Install-AmiSSL lays it out
 # (stage_amissl). The rig image has no AmiTCP and no usergroup.library: the
 # kit's curl is the upterm-ports build on ixemul sockets (owner, 2026-10-27).
-# VTC:ixp6 and DH0:Libs in one Assign: go runs beside the Startup-Sequence, whose `LoadResource LIBS:diskfont.library`
-# landed between a bare `Assign LIBS: VTC:ixp6` and the next ADD on the 68000 ("object not found", rig 29, 2026-11-27).
+# VTC:ixp6 first makes Lock("LIBS:<system library>") fail (first directory only): loadresource_from_sys.
 RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6 DH0:Libs",
             "Assign >NIL: LIBS: DH0:Classes ADD",
             "Assign >NIL: LIBS: DH0:MUI/Libs ADD",
@@ -230,10 +229,10 @@ RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6 DH0:Libs",
             "Assign >NIL: LIBS: DH0:AmiSSL/Libs ADD",
             "Assign >NIL: LIBS: VTC:amissl ADD",
             "Assign >NIL: AmiSSL: DH0:AmiSSL"]   # AmiSSL:Certs for TLS peers (a fresh rig has no AmiSSL: after go; makerelease packer, 2026-11-24)
-# A500-DISKFONT-RACE: the one-Assign form above still lost: C:Assign sets LIBS: to its first directory and then ADDs
-# the next, and on the 68000 the Startup-Sequence's `LoadResource LIBS:diskfont.library` still ran in that gap (rig 29,
-# 13:15, on 513dd3b9). BOOTX:s/startup-sequence therefore makes the RIG_LIBS assigns itself, after VTC: and before the
-# Startup-Sequence starts, when nothing else runs; go and shadows-up see RIG_LIBS_DONE and skip theirs.
+# BOOTX:s/startup-sequence makes the RIG_LIBS assigns itself, after VTC: and before the Startup-Sequence starts, when
+# nothing else runs, so LIBS: is the same for every boot command; go and shadows-up see RIG_LIBS_DONE and skip theirs.
+# (It was added against "'LIBS:diskfont.library' - object not found" on rig 29, taken for a race with go's assigns; the
+# cause was Lock() on a multi-directory assign, loadresource_from_sys.)
 # FailAt 21: an Assign to a package dir the rig lacks returns 20 and must not abort the boot script.
 STARTUP = STARTUP.replace('Echo >BOOTX:boot.log "boot started"\n', 'Echo >BOOTX:boot.log "boot started"\n'
     "FailAt 21\nIf EXISTS VTC:ixp6/ixemul.library\n" + "".join("  DH0:C/" + l + "\n" for l in RIG_LIBS) +
@@ -1206,13 +1205,27 @@ def sys_hdf_no_wasabid(image):
 
 def sys_hdf_strip_file_blocks(image, path, name):
     """Remove the ';BEGIN <name>' blocks from the image file <path> ("S/Startup-Sequence"); none: nothing happens."""
+    sys_hdf_edit_file(image, path, lambda data: user_startup.strip_upterm_blocks(data, name))
+
+def loadresource_from_sys(data):
+    """The Startup-Sequence's `C:LoadResource LIBS:diskfont.library ...` names SYS:Libs/ instead of LIBS:.
+    LOADRESOURCE-MULTI-ASSIGN: LoadResource finds its file with Lock(), and Lock() looks only in the first directory of
+    a multi-directory assign. The rig's LIBS: starts with VTC:ixp6 (RIG_LIBS), so the line printed
+    "'LIBS:diskfont.library' - object not found" (rc 20, nothing preloaded) whenever it ran after the rig's assigns:
+    always since the boot script makes them, by chance before. By hand on rig 29 (KS 40.63, 2026-11-27): LIBS: rc 20,
+    DH0:Libs/ rc 0, and `List LIBS:diskfont.library` fails the same way. OpenLibrary searches every directory."""
+    return b"".join(re.sub(rb"(?i)\bLIBS:", b"SYS:Libs/", l) if re.match(rb"(?i)\s*(C:)?LoadResource\s", l) else l
+                    for l in data.splitlines(keepends=True))
+
+def sys_hdf_edit_file(image, path, edit):
+    """Rewrite the image file <path> as edit(bytes); absent or unchanged: nothing is written."""
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
     tmp = RIG / "block-strip.tmp"
     tmp.unlink(missing_ok=True)
     if subprocess.run([xdf, str(image), "read", path, str(tmp)], capture_output=True).returncode != 0:
         return
     data = tmp.read_bytes()
-    clean = user_startup.strip_upterm_blocks(data, name)
+    clean = edit(data)
     if clean != data:
         tmp.write_bytes(clean)
         subprocess.run([xdf, str(image), "delete", path], check=True, capture_output=True)
@@ -2798,6 +2811,8 @@ def _start(retries):
             sys_hdf_upterm_bin(RIG / "sys.hdf")   # before the boot runs the PENS block (RIG-BLACK-SCREEN)
         with phase("sys_hdf_shadows_block"):
             sys_hdf_shadows_block(RIG / "sys.hdf")
+        with phase("sys_hdf_loadresource"):
+            sys_hdf_edit_file(RIG / "sys.hdf", "S/Startup-Sequence", loadresource_from_sys)
         if A500:   # after the shadows block, which appends the kit's Patina-Pens block
             with phase("sys_hdf_a500"):
                 sys_hdf_a500(RIG / "sys.hdf")
@@ -2824,6 +2839,8 @@ def _start(retries):
             sys_hdf_upterm_bin(RIG / "sys.hdf")   # before the boot runs the PENS block (RIG-BLACK-SCREEN)
         with phase("sys_hdf_shadows_block"):
             sys_hdf_shadows_block(RIG / "sys.hdf")
+        with phase("sys_hdf_loadresource"):
+            sys_hdf_edit_file(RIG / "sys.hdf", "S/Startup-Sequence", loadresource_from_sys)
         if A500:   # after the shadows block, which appends the kit's Patina-Pens block
             with phase("sys_hdf_a500"):
                 sys_hdf_a500(RIG / "sys.hdf")

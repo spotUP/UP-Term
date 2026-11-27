@@ -91,5 +91,11 @@ if rig.paths.IXNET_LIB.is_file():
 else:
     print("[UNVERIFIED] no ixnet.library at %s" % rig.paths.IXNET_LIB)
 
+# LOADRESOURCE-MULTI-ASSIGN: LIBS: starts with VTC:ixp6, and LoadResource's Lock() looks in the first directory only
+SS = b"  C:LoadResource LIBS:diskfont.library LIBS:asl.library\nAssign >NIL: LIBS: SYS:Classes ADD\n"
+check(rig.loadresource_from_sys(SS) == b"  C:LoadResource SYS:Libs/diskfont.library SYS:Libs/asl.library\n"
+      b"Assign >NIL: LIBS: SYS:Classes ADD\n", "the clone's LoadResource line names SYS:Libs/, other lines stay")
+check(rig.loadresource_from_sys(rig.loadresource_from_sys(SS)) == rig.loadresource_from_sys(SS), "the edit is idempotent")
+
 print("[%s] rig_libs: %d failed" % ("FAIL" if fails else "OK", fails))
 sys.exit(1 if fails else 0)
