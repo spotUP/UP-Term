@@ -1,8 +1,9 @@
 """S93-PREFS-FLAT: on 3.1 the flat pen map must reach palette.prefs without an IPrefs reset.
 Rig 93/94 (KS 3.1 + DOpus): no palette.prefs in ENV: or ENVARC: after boot, so the Workbench DrawInfo kept the stock bevels (Font prefs
 window bevelled, patina-flat STATUS frame flat=0) and any IPrefs reset reopened the Workbench with stock colours.
-The start apply keeps the 3.1-safe flat file; the 1 s tick writes it once, DK_QUIET_SECS later, ENVARC: directly and ENV: by rename
-(no notify). The two 3.1 gates (dk_flat_pens, desk_dos_flat_pens_refresh) stay: they would reset the Workbench at boot."""
+The start apply keeps the 3.1-safe flat file; the 1 s tick writes it once, DK_QUIET_SECS later, ENVARC: directly and ENV: by rename.
+AGA060-C (rig 28 snoop): the rename notifies IPrefs as well (IPrefs opened the file 1 ms later) and the reset deadlocked with DOpus, so
+the ENV: rename runs only with no DOpus port, with our windows closed around it. The two 3.1 gates (dk_flat_pens, desk_dos_flat_pens_refresh) stay: they would reset the Workbench at boot."""
 import pathlib, re, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -23,8 +24,8 @@ class FlatPaletteQuiet(unittest.TestCase):
 
     def test_start_apply_keeps_the_safe_flat_file_on_31_only(self):
         b = body(self.src, "int desk_dos_start_apply(void)")
-        self.assertIn("if (flat && !dk_flat_failed && !dk_palette_editor_ok())", b)
-        self.assertIn("desk_palette_31safe(pal, pallen, dk_quiet_pal, sizeof dk_quiet_pal)", b)
+        # PREFS-RESET-THEME: theme colours armed on 3.1, flat or not; dk_quiet_arm makes them 3.1-safe
+        self.assertIn("if (pallen > 0 && !dk_palette_editor_ok())\n        dk_quiet_arm(pal, pallen);", b)
         # the palette is never written to ENV: in the start apply itself (AGA-BOOT-DEADLOCK)
         self.assertNotIn("dk_rename_in(", b)
 
@@ -33,6 +34,9 @@ class FlatPaletteQuiet(unittest.TestCase):
         self.assertIn("dk_quiet_due = now + DK_QUIET_SECS;", b)
         self.assertIn("dk_rename_in(DK_PAL_ENV, dk_quiet_pal, dk_quiet_len)", b)
         self.assertIn("dk_quiet_len = 0;", b)
+        # AGA060-C: the ENV: rename resets the Workbench; never under DOpus, and our windows close around it
+        self.assertRegex(b, r"!rexx_port_exists\(DOPUS_PORT\)\) \{[^}]*dk_windows_close\(\);[^}]*dk_rename_in\(DK_PAL_ENV")
+        self.assertIn("dk_windows_open(was);", b)
         # no editor run, no plain ENV: write (both notify IPrefs, which resets the Workbench)
         self.assertNotRegex(b, r"dk_put\(|dk_put_palette\(|dk_write\(")
         r = body(self.src, "static int dk_rename_in(const char *name, const unsigned char *buf, long len)")

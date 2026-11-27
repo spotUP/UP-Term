@@ -2114,9 +2114,9 @@ static void dk_start_persist(unsigned plan, int flat)
 /* S93-PREFS-FLAT: on 3.1 the flat pen map never reached palette.prefs (dk_flat_pens and desk_dos_flat_pens_refresh stay gated there), and
  * the boot palette goes on the screen live only (AGA-BOOT-DEADLOCK). So the Workbench DrawInfo kept the stock bevels (Font prefs window),
  * and any IPrefs reset another prefs editor caused reopened it with the stock file. The start apply keeps the file the screen shows (theme
- * colours, flat pens, 3.1-safe form); DK_QUIET_SECS after the start the tick writes it to ENVARC: and ENV: without an IPrefs notify:
- * written as palette.prefs.s93, the old name renamed away, the new one renamed in (ram-handler notifies on a written close and a delete,
- * not on a rename; the rename part is not measured directly). Nothing resets now; the next reset or boot reads the file.
+ * colours, flat pens, 3.1-safe form); DK_QUIET_SECS after the start the tick writes it to ENVARC:, and to ENV: only with no DOpus
+ * (written as palette.prefs.s93 and renamed in). AGA060-C (rig 28, 060 planar AGA): the rename notifies IPrefs too, which resets the
+ * Workbench; with DOpus still starting that reset froze the boot (AGA-BOOT-DEADLOCK). Under DOpus the next boot reads the ENVARC: file.
  * PREFS-RESET-THEME (owner 2026-11-22): the file holds the theme colours with the desk pens, never the flat map (desk_start_file_pens);
  * a 3.1 theme pick under DOpus (ENVARC: only) arms the same write. Flat frames on a stock pen map: FONT-PREFS-NOT-FLAT (flat_core).
  * Rig 94, S93: both files written 11 s after the start; next boot Font prefs frame flat=6, Input prefs flat=14 (was flat=0). */
@@ -2164,8 +2164,17 @@ void desk_dos_palette_quiet(long now)
     if (n != dk_quiet_len || memcmp(cur, dk_quiet_pal, (size_t)n))
         dk_put_boot("ENVARC:Sys/palette.prefs", dk_quiet_pal, dk_quiet_len);   /* nobody watches ENVARC: */
     n = dk_read(DK_PAL_ENV, cur, sizeof cur);
-    if ((n != dk_quiet_len || memcmp(cur, dk_quiet_pal, (size_t)n)) && dk_rename_in(DK_PAL_ENV, dk_quiet_pal, dk_quiet_len))
-        desk_dos_quiet_pal_writes++;
+    /* AGA060-C: the rename DOES notify IPrefs (rig 28 snoop: IPrefs opened ENV:Sys/palette.prefs 1 ms after it), so it resets the
+     * Workbench. Under DOpus that reset is AGA-BOOT-DEADLOCK: ENVARC: only (S92-DKAPPLY); without DOpus our windows close around it. */
+    if ((n != dk_quiet_len || memcmp(cur, dk_quiet_pal, (size_t)n)) && !rexx_port_exists(DOPUS_PORT)) {
+        unsigned long idle = dk_iprefs_idle_mask();
+        int was = dk_windows_close();
+        if (dk_rename_in(DK_PAL_ENV, dk_quiet_pal, dk_quiet_len)) {
+            desk_dos_quiet_pal_writes++;
+            dk_wait_iprefs(idle);
+        }
+        dk_windows_open(was);
+    }
     am_sentinel("PATINA_DESK_QUIET_PAL", (long)desk_dos_quiet_pal_writes);
     dk_quiet_len = 0;
 }
