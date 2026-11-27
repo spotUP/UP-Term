@@ -2018,7 +2018,8 @@ const char *flat_trow_why_name(int why)
     return why >= FLAT_TROW_OK && why <= FLAT_TROW_ROW ? nm[why] : "bad";
 }
 
-static const unsigned long pal_edge[] = { 0x54ac, 0x54e4, 0x5526, 0x5556 };
+static const unsigned long pal_edge[] = { 0x54ac, 0x54e4, 0x5526, 0x5556,
+                                          0x573e, 0x575c, 0x5770, 0x5786 };  /* PALETTE-MENU-OUTLINE: Restaurant sample BARDETAILPEN top, bottom, left, right */
 static const unsigned long pal_dither[] = { 0x5418, 0x5bf2, 0x5dfa };
 static const unsigned long pal_groove[] = { 0x34ec, 0x353e,     /* PALETTE-GROOVE: SHADOWPEN row, SHINEPEN row above the samples */
                                             0x5ace, 0x5ae0 };   /* PALETTE-PREVIEW-FRAMES: Active sample's FILLPEN left and right border fills */
