@@ -61,6 +61,7 @@ def config_lines(m):
         "sound_output=exact" if m["volume"] else "sound_output=none",
         "sound_volume=%d" % (100 - m["volume"]),   # Amiberry counts attenuation: 0 loud, 100 mute
         "floppy0sound=0",
+        "floppy_speed=0",   # turbo floppy (owner, 2026-11-27)
         "clipboard_sharing=%s" % ("true" if m["clipboard"] else "false"),
         "gfx_width_windowed=%d" % m["window"][0],
         "gfx_height_windowed=%d" % m["window"][1],
