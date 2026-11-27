@@ -2,7 +2,7 @@
 
 Regression (2026-10-13): XCON: is mounted from DEVS:DOSDrivers/XCON with Handler = L:vtcon-handler,
 which the kit's install put in SYS:. `rig.py install` wrote only VTC:vtcon-handler, so three rig
-checks ran the old handler. The boot (rig.GO) must put every VTC: build over the kit's copy of it,
+checks ran the old handler. The boot (rig.SHADOWS_UP_SCRIPT, BOOTX:shadows-up) must put every VTC: build over the kit's copy of it,
 keep the kit's own in VTC:kit-orig, bring it back on `kit-restore`, and touch nothing where no kit
 put a copy (and never ask for a volume that is not there).
 """
@@ -49,7 +49,7 @@ def boot(files, assigns=None):
         return p in files or p in dirs
 
     stack, warn = [True], False
-    for l in (l.strip() for l in rig.GO.splitlines()):
+    for l in (l.strip() for l in rig.SHADOWS_UP_SCRIPT.splitlines()):
         w = [] if l.startswith((";", "Echo")) else shlex.split(l)
         if not w or w[0].startswith(";") or w[0] in ("FailAt", "Echo"):
             continue
@@ -71,8 +71,8 @@ def boot(files, assigns=None):
         elif w[0] == "C:MakeDir":
             dirs.add(w[-1].lower())
         elif w[0] == "C:Assign" and len(w) >= 4 and w[3] == "EXISTS":
-            warn = w[2].rstrip(":").upper() not in assigns
-        elif w[0] == "C:Copy":
+            warn = w[2].rstrip(":").upper() not in set(assigns) | devices
+        elif w[0] in ("C:Copy", "Copy"):
             a = [x for x in w[1:] if x != ">NIL:" and x != "CLONE"]
             if len(a) == 2 and ":" in a[0] and a[0].split(":")[0].upper() in devices | set(assigns):
                 src, dst = resolve(a[0]).lower(), resolve(a[1]).lower()
