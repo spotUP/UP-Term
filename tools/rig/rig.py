@@ -2042,14 +2042,21 @@ def ensure_built(files, run=None):
     _BUILT_CURRENT.update(names)   # one start calls this 4 times (each a make -n parse, 8-43 s); later calls skip these names
     return stale
 
+SMALL_STALE_MAX = 8   # stale programs built direct; more than this goes through the buildq heavy lane
+
 def _build_stale(targets, run, env):
     stale = paths.stale_targets(targets, run, ROOT, on_error=lambda t, r: print(
         "[WARN] make -n failed (rc %d) for %s, it may be stale: %s" % (r.returncode, t, r.stderr.strip()[-300:])))
     if not stale:
         return []
     print("[BUILD] stale before push: " + ", ".join(t.rsplit("/", 1)[1] for t in stale))
-    r = run(["%s/.claude/bin/buildq" % os.path.expanduser("~"), "--purpose", "rig.py: stale rebuild", "--", "make", *stale],
-            cwd=ROOT, capture_output=True, text=True, env=env)
+    # A few small Amiga programs build in about a minute: they run direct at nice 19 (owner 2026-11-26 "quick small
+    # builds skip the queue"). Through the heavy buildq lane they sat behind other apps' long builds while holding
+    # build_lock, which blocked every rig start on this tree. Larger sets still queue.
+    cmd = ["nice", "-n", "19", "make", "-j3", *stale]
+    if len(stale) > SMALL_STALE_MAX:
+        cmd = ["%s/.claude/bin/buildq" % os.path.expanduser("~"), "--purpose", "rig.py: stale rebuild", "--", *cmd]
+    r = run(cmd, cwd=ROOT, capture_output=True, text=True, env=env)
     if r.returncode:
         sys.exit("[ERROR] make failed for stale program(s) %s, not pushing them:\n%s"
                  % (", ".join(t.rsplit("/", 1)[1] for t in stale), (r.stdout + r.stderr)[-1500:]))
