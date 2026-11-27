@@ -40,8 +40,20 @@ class A500UserStartup(unittest.TestCase):
 
     def test_start_strips_on_both_clone_paths(self):
         src = inspect.getsource(rig._start)   # start() only wraps _start() in start.lock
-        self.assertEqual(src.count("if A500:\n            sys_hdf_a500("), 2)
+        self.assertEqual(src.count("sys_hdf_a500(RIG"), 2)
+        # after the shadows block (it appends the kit's Patina-Pens block, patina-flat is 68020) on both paths
+        for part in src.split("sys_hdf_a500(RIG")[:2]:
+            self.assertIn("sys_hdf_shadows_block(RIG", part.rsplit("if A500", 1)[0][-600:])
         self.assertLess(src.index("sys_hdf_a500("), src.index("sys_hdf_cpu_lib("))
+
+    def test_wbstartup_launchers_go(self):
+        # ST2-A500-CRASH: patina-index (68020) from SYS:WBStartup gave #80000004 on the A500 rig
+        with mock.patch.object(rig, "strip_user_startup_blocks"), \
+             mock.patch.object(rig, "sys_hdf_strip_file_blocks") as ss, mock.patch.object(rig.subprocess, "run") as run:
+            rig.sys_hdf_a500("sys.hdf")
+        ss.assert_called_once_with("sys.hdf", "S/Startup-Sequence", "UP-Term")
+        gone = [c.args[0][-1] for c in run.call_args_list if c.args[0][2] == "delete"]
+        self.assertEqual(sorted(gone), sorted(rig.KIT_WBSTARTUP_ICONS))
 
 
 if __name__ == "__main__":

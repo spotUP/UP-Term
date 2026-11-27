@@ -1212,8 +1212,15 @@ def sys_hdf_a500(image):
     before it boots. The master image carries the kit's blocks, and the kit is built for the 68020 (Makefile CPU ?= 68020):
     on the 68000 the block's `Run >NIL: UP-Term:bin/Patina` and patina-index put up two Software Failure requesters at
     boot and installer_rig's D10 case failed on them (RIG-A500-KIT-BOOT, 2026-10-29). install_rig strips the same blocks
-    only after the boot. A real 68000 never has them: the base Installer refuses the 68000. The master is never touched."""
+    only after the boot. A real 68000 never has them: the base Installer refuses the 68000. The master is never touched.
+    Since Leg W Patina and patina-index also start from SYS:WBStartup icons and the Startup-Sequence Patina-Flat block:
+    those go too (patina-index #80000004 at boot on rig 29, ST2-A500-CRASH 2026-11-27). Runs after sys_hdf_shadows_block,
+    which appends the kit's Patina-Pens block (patina-flat, 68020) again."""
     strip_user_startup_blocks(image, "UP-Term")
+    sys_hdf_strip_file_blocks(image, "S/Startup-Sequence", "UP-Term")
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    for icon in KIT_WBSTARTUP_ICONS:
+        subprocess.run([xdf, str(image), "delete", icon], capture_output=True)   # absent: nothing to remove
 
 def restore_loadwb(image):
     """C/LoadWB becomes the master's kept original (C/loadwb_old) again: the master image replaces the Workbench
@@ -2662,13 +2669,13 @@ def _start(retries):
         # wasabi block goes again (an install may have written it, and its wasabid takes port 1234, sys_hdf_no_wasabid)
         with phase("sys_hdf_no_wasabid"):
             sys_hdf_no_wasabid(RIG / "sys.hdf")
-        if A500:
-            with phase("sys_hdf_a500"):
-                sys_hdf_a500(RIG / "sys.hdf")
         with phase("sys_hdf_upterm_bin"):
             sys_hdf_upterm_bin(RIG / "sys.hdf")   # before the boot runs the PENS block (RIG-BLACK-SCREEN)
         with phase("sys_hdf_shadows_block"):
             sys_hdf_shadows_block(RIG / "sys.hdf")
+        if A500:   # after the shadows block, which appends the kit's Patina-Pens block
+            with phase("sys_hdf_a500"):
+                sys_hdf_a500(RIG / "sys.hdf")
         with phase("sys_hdf_skip_blocks"):
             sys_hdf_skip_blocks(RIG / "sys.hdf")
     elif not OS and not OS32:
@@ -2688,13 +2695,13 @@ def _start(retries):
                 sys_hdf_dopus(RIG / "sys.hdf")
         with phase("sys_hdf_kit"):
             sys_hdf_kit(RIG / "sys.hdf")
-        if A500:
-            with phase("sys_hdf_a500"):
-                sys_hdf_a500(RIG / "sys.hdf")
         with phase("sys_hdf_upterm_bin"):
             sys_hdf_upterm_bin(RIG / "sys.hdf")   # before the boot runs the PENS block (RIG-BLACK-SCREEN)
         with phase("sys_hdf_shadows_block"):
             sys_hdf_shadows_block(RIG / "sys.hdf")
+        if A500:   # after the shadows block, which appends the kit's Patina-Pens block
+            with phase("sys_hdf_a500"):
+                sys_hdf_a500(RIG / "sys.hdf")
         with phase("sys_hdf_skip_blocks"):
             sys_hdf_skip_blocks(RIG / "sys.hdf")
         with phase("sys_hdf_cpu_lib"):
