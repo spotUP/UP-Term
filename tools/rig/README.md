@@ -62,6 +62,7 @@ Machine flags (on `start`, and `setup` when the config alone changes):
 | `--os32` | AmigaOS 3.2 tree and ROM (see the table above) |
 | `--kick <file>` | another Kickstart ROM for this boot |
 | `--serial <path>` | serial port to a host pty (`getty_rig.py` does this itself) |
+| `--openmui <dir>` | stages `<dir>/Libs/muimaster.library` and `<dir>/Libs/mui/*` into this rig's `VTC:ixp6` (first in `LIBS:`) before boot, so Patina opens OpenMUI, not MUI 3.8; error and exit 1 without `Libs/muimaster.library` |
 | `--ro` | DH0: read-only (stalls on "write protected" requesters; avoid) |
 
 `dvmatrix.sh <kickstart file> <label>` boots the rig on another ROM and runs the console.device checks on it.

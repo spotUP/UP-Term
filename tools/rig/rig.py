@@ -17,6 +17,9 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   3.x image, no wasabid; `ami.py exec` goes through the BOOTX: mailbox (start_ks13);
                   --fast: the CPU at the host's speed; --os32: AmigaOS 3.2 -- the 3.2.3 ROM
                   and the owner's 3.2 install as DH0:, ledger T3;
+                  --openmui <dir>: <dir>/Libs/muimaster.library + Libs/mui/* go into this rig's LIBS: (VTC:ixp6)
+                  before the first boot, so patina-gui/patina-menu open OpenMUI, not MUI 3.8; exits non-zero when
+                  <dir> has no Libs/muimaster.library;
                   --ro: DH0: read-only, stalls on writes;
                   --kick <file>: another Kickstart ROM for this boot;
                   --serial <path>: the serial port to that path, not serial.log;
@@ -685,6 +688,8 @@ if KS13 and "--kick" not in sys.argv:
     KICK = paths.ROM_KS13
 # --overscan: AGA rigs show the whole overscan picture (FS-UAE zoom = full) instead of the cropped 640x512 area, so a
 # program that fills the Overscan prefs area (Selecta Fill Screen, I566) can be seen edge to edge. Other rigs keep the crop.
+# --openmui <dir>: stage <dir>/Libs/muimaster.library + Libs/mui/* into the rig's LIBS: before boot (stage_openmui)
+OPENMUI = sys.argv[sys.argv.index("--openmui") + 1] if "--openmui" in sys.argv else ""
 OVERSCAN = "--overscan" in sys.argv
 MAX = "--max" in sys.argv or not (A1200 or A500)
 M060 = "--060" in sys.argv or MAX
@@ -1724,6 +1729,7 @@ def setup():
         stage_amissl(RIG / "vtc", M060)
         stage_ixemul(RIG / "vtc", NOFPU)
         stage_screennotify(RIG / "vtc")
+        stage_openmui(RIG / "vtc", OPENMUI)
     # a stale build/amiga program is rebuilt here, even when VTC: already holds the same old bytes (S92-STALE-STAGE)
     with phase("setup ensure_built (stale-binary check)"):
         ensure_built([src for src, dst in program_pairs(RIG / "vtc", ROOT / "build/amiga")])
@@ -2048,6 +2054,34 @@ def stage_bootcap(boot):
     BOOTX:boot.console (BOOT-CONSOLE-CAPTURE, STARTUP)."""
     subprocess.run(["make", "-s", "build/amiga/bootcap"], cwd=ROOT, check=True)
     shutil.copyfile(ROOT / "build/amiga/bootcap", boot / "bootcap")
+
+def openmui_check(d):
+    """--openmui <dir>: <dir>/Libs/muimaster.library (+ optional <dir>/Libs/mui/*), or exit with the reason."""
+    lib = pathlib.Path(d) / "Libs/muimaster.library"
+    if not lib.is_file():
+        sys.exit("rig: --openmui %s: no Libs/muimaster.library there (layout: <dir>/Libs/muimaster.library, <dir>/Libs/mui/*.mui)" % d)
+    return lib
+
+def stage_openmui(vtc, d):
+    """--openmui <dir>: OpenMUI's muimaster.library and mui/ classes in VTC:ixp6 (first in LIBS:, RIG_LIBS), before the
+    first boot, so patina-gui and patina-menu open OpenMUI, not MUI 3.8 (the kit's install copies it in only after they
+    ran, and a loaded library cannot be flushed). This rig's VTC: only; marker ixp6/.openmui lets the next start
+    without the flag remove them again."""
+    ix, mark = vtc / "ixp6", vtc / "ixp6/.openmui"
+    if not d:
+        if mark.exists():
+            (ix / "muimaster.library").unlink(missing_ok=True)
+            shutil.rmtree(ix / "mui", ignore_errors=True)
+            mark.unlink()
+        return
+    lib = openmui_check(d)
+    ix.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(lib, ix / "muimaster.library")
+    shutil.rmtree(ix / "mui", ignore_errors=True)
+    if (lib.parent / "mui").is_dir():
+        shutil.copytree(lib.parent / "mui", ix / "mui")
+    mark.write_text(str(d))
+    print("staged OpenMUI from %s into ixp6" % d)
 
 def stage_screennotify(vtc):
     """VTC:ixp6/screennotify.library (first in LIBS:, RIG_LIBS), every start: the pinned Aminet 1.0 (`make
