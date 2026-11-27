@@ -1137,12 +1137,9 @@ int flat_cycle_border_pen(int in_cycle, int role, int front, int edge_pen)
     return role == 2 ? -1 : edge_pen;
 }
 
-int flat_cycle_paper(flat_state *st, int ox, int oy, int w, int h, int in[4])
+int flat_cycle_pen(const flat_state *st)
 {
-    int sw = flat_button_side(st->side, w);
-    st->pen_button = st->pen_line;
-    in[0] = ox + sw; in[1] = oy + 1; in[2] = ox + w - 1 - sw; in[3] = oy + h - 2;
-    return st->pen_back;
+    return st ? st->pen_button : -1;
 }
 
 int flat_border_button(unsigned gadget_type, unsigned flags, const void *gadget_render, const void *select_render, int has_text, int w, int h)

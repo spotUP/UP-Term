@@ -1372,15 +1372,13 @@ static void test_which_from_gtype(void)
             CHECK_INT(flat_cycle_frame(0x0001, 0x0003, 589, 123, 19, 12, 589, 123, 19, 12), 0);   /* scroller arrow: IMMEDIATE */
             CHECK_INT(flat_cycle_frame(0x0003, 0x0001, 149, 137, 149, 7, 149, 137, 149, 7), 0);   /* prop */
             CHECK_INT(flat_cycle_frame(0x0004, 0x0001, 20, 20, 100, 14, 20, 20, 100, 14), 0);     /* string */
-            {   /* PALETTE-CYCLE-PAPER: the cycle face is the accent, the inside is the surface pen (a Patina window) */
-                flat_state cs; int in[4], sw;
+            {   /* EYECHECK-SELECT-FAIL: a flat cycle gadget is a solid button-pen box: not the accent ring, not surface paper, not the input pen */
+                flat_state cs;
                 memset(&cs, 0, sizeof cs);
-                cs.side = 2; cs.pen_line = 7; cs.pen_back = 0; cs.pen_button = 3;
-                sw = flat_button_side(cs.side, 293);
-                CHECK_INT(flat_cycle_paper(&cs, 315, 17, 293, 14, in), 0);
-                CHECK_INT(cs.pen_button, 7);
-                CHECK_INT(in[0] == 315 + sw && in[1] == 18 && in[2] == 607 - sw && in[3] == 29, 1);
-                CHECK_INT(sw >= 1, 1);
+                cs.side = 2; cs.pen_line = 7; cs.pen_back = 0; cs.pen_button = 3; cs.pen_outline = 1;
+                CHECK_INT(flat_cycle_pen(&cs), 3);
+                CHECK_INT(cs.pen_button == 3 && cs.pen_line == 7, 1);        /* the state is left as it was */
+                CHECK_INT(flat_cycle_pen(0), -1);
             }
             CHECK_INT(flat_cycle_frame(0x0005, 0x0001, 15, 20, 285, 20, 15, 20, 285, 20), 0);     /* custom (Palette's colour wheel) */
             /* C8-RING: the 3.1 cycle's frame is its render == select image: still a cycle; a push button with the same box is not */
@@ -2735,14 +2733,6 @@ static void test_flat_spacing(void)
     for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 3;
     CHECK_INT(raa_frame_draw(&fs, 0, 5, 5, 22, 16, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
     CHECK_INT(cv->pix[12][5] == 0 && cv->pix[12][6] == 0 && cv->pix[12][7] != 0 && cv->pix[12][26] == 0 && cv->pix[12][25] == 0, 1);
-    {   /* C8-RING: the cycle ring is on the program box 5..48 x 5..18 (accent 1), paper (0) inside, corners left as the backdrop (3) */
-        flat_state cs = fs;
-        for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 3;
-        CHECK_INT(flat_cycle_frame_draw(&cs, 5, 5, 44, 14, round_fill, round_read, cv), 1);
-        CHECK_INT(cv->pix[5][27] == 1 && cv->pix[18][27] == 1 && cv->pix[12][5] == 1 && cv->pix[12][6] == 1 && cv->pix[12][48] == 1, 1);
-        CHECK_INT(cv->pix[12][27] == 0 && cv->pix[6][27] == 0 && cv->pix[12][7] == 0, 1);
-        CHECK_INT(cv->pix[5][5] == 3 && cv->pix[4][27] == 3 && cv->pix[19][27] == 3, 1);
-    }
     free(cv);
     /* ground record: the program-box erase matches, its fill is clipped to the inset box, the band part is ground */
     memset(&gr, 0, sizeof gr);

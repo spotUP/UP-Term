@@ -1338,15 +1338,14 @@ static int c8_draw(Object *obj, Msg msg)
         if (role < 0)
             role = role_of(d->imp_RPort, obj);
         {
-            /* C8-LOOK (owner 2026-11-26): the 3.1 cycle is the rounded input ground box, no outline, as the listview and inputs */
+            /* EYECHECK-SELECT-FAIL (owner 2026-11-27, FLAT-BUTTON-NO-RING): the 3.1 cycle is one rounded solid box in the button pen
+             * (flat_cycle_pen), no outline, at every depth; recorded as a ground so the cycle's later label erases stay on it.
+             * C8-RING: not raa_frame_draw, whose FLAT-SPACING inset would leave a band in the window ground round the face. */
             struct Window *cw = cyc && d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
-            int gp = cw ? flat_input_pen(st_scr(r, cw->WScreen), d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0) : -1;
-            if (gp >= 0)
-                ground_frame(r, d->imp_RPort, cw, ox, oy, w, h, gp);
-            /* PALETTE-CYCLE-PAPER: no input pen on the screen: accent outline, surface inside. C8-RING: not raa_frame_draw (see flat_cycle_frame_draw) */
-            else if (cyc ? !flat_cycle_frame_draw(&st, ox, oy, w, h, c2_fill, c2_read, d->imp_RPort)
-                    : !raa_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role, c2_fill, c2_read, c2_rgb,
-                                      fill ? raa_load(d->imp_RPort) : 0, d->imp_RPort, NULL))
+            if (cw)
+                ground_frame(r, d->imp_RPort, cw, ox, oy, w, h, flat_cycle_pen(&st));
+            else if (!raa_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role, c2_fill, c2_read, c2_rgb,
+                                     fill ? raa_load(d->imp_RPort) : 0, d->imp_RPort, NULL))
                 return 0;
         }
         flat_gh_frame(&r->gh, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL), d->imp_State == 1, fill,
