@@ -687,9 +687,14 @@ int flat_cycle_of(int button_image, int push, int box_match);
  * one Border segment draws in: in_cycle = the border lies in a 3.1 cycle gadget box on a flat screen; -1 = skip the segment (the
  * shadow half), the flat edge pen for the shine half, else front (the glyph, any other caller) */
 int flat_cycle_border_pen(int in_cycle, int role, int front, int edge_pen);
-/* EYECHECK-SELECT-FAIL (owner 2026-11-27, FLAT-BUTTON-NO-RING): the ground pen of a 3.1 cycle gadget on a flat screen: the solid
- * raised button tone st->pen_button, at every depth and whether or not the screen holds an input ground pen. No accent outline, no
- * surface paper inside (the old PALETTE-CYCLE-PAPER ring), no selection pen. -1 without a state. */
+/* CYCLE-FILL (owner 2026-11-27): the fill of a secondary push button, and so of every flat control that must read as a button. The
+ * raised tone st->pen_button (0: pen_back) when it differs from both the window ground pen_back and the label pen pen_ptext; else the
+ * accent pen_line. flat_frame_state sets pen_button to the held select pen, or pen_back when the screen holds none (Workbench rig
+ * status: back=0 ptext=0), where the bare tone would vanish into the window. -1 without a state. */
+int flat_secondary_face(const flat_state *st);
+/* EYECHECK-SELECT-FAIL (owner 2026-11-27, FLAT-BUTTON-NO-RING): the ground pen of a 3.1 cycle gadget on a flat screen: the face a
+ * secondary push button shows (flat_secondary_face), at every depth and whether or not the screen holds an input ground pen. No
+ * accent outline, no surface paper inside (the old PALETTE-CYCLE-PAPER ring), no selection pen. Never pen_back. -1 without a state. */
 int flat_cycle_pen(const flat_state *st);
 
 /* The PRIMARY button fill pen for a screen of the given depth: under 8 colours (depth < 3) the accent pen_line; from 8 colours the

@@ -1338,8 +1338,8 @@ static int c8_draw(Object *obj, Msg msg)
         if (role < 0)
             role = role_of(d->imp_RPort, obj);
         {
-            /* EYECHECK-SELECT-FAIL (owner 2026-11-27, FLAT-BUTTON-NO-RING): the 3.1 cycle is one rounded solid box in the button pen
-             * (flat_cycle_pen), no outline, at every depth; recorded as a ground so the cycle's later label erases stay on it.
+            /* EYECHECK-SELECT-FAIL (owner 2026-11-27, FLAT-BUTTON-NO-RING): the 3.1 cycle is one rounded solid box in the secondary
+             * push button face (flat_cycle_pen: flat_secondary_face, never the window ground), no outline, at every depth; recorded as a ground so the cycle's later label erases stay on it.
              * C8-RING: not raa_frame_draw, whose FLAT-SPACING inset would leave a band in the window ground round the face. */
             struct Window *cw = cyc && d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
             if (cw)
