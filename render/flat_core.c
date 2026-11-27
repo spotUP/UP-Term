@@ -921,8 +921,8 @@ int flat_fc_class(const flat_fc *a)
         return FLAT_FC_STRING;
     if (a->track)
         return FLAT_FC_TRACK;
-    if (a->inside)
-        return FLAT_FC_CELL;
+    if (a->inside && !(a->others == 1 && !a->custom && !a->display))
+        return FLAT_FC_CELL;                    /* LV-PAPER: a 3.2 listview frame sits inside its outer gadget yet borders its one list gadget: BORDERED (the paper) */
     if (a->display && !a->others && !a->holds)
         return FLAT_FC_DISPLAY;                 /* S74-TEXT-BOX: the bevel of a read-only text / number box: the input ground */
     if (a->others + a->display == 1)
@@ -1144,6 +1144,11 @@ int flat_secondary_face(const flat_state *st)
         return -1;
     face = st->pen_button ? st->pen_button : st->pen_back;
     return face != st->pen_back && face != st->pen_ptext ? face : st->pen_line;
+}
+
+int flat_gr_row_face(const flat_state *st, int pen)
+{
+    return st && st->pen_line && pen == st->pen_line ? flat_secondary_face(st) : -1;
 }
 
 int flat_cycle_pen(const flat_state *st)

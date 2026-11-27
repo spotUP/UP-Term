@@ -692,6 +692,11 @@ int flat_cycle_border_pen(int in_cycle, int role, int front, int edge_pen);
  * accent pen_line. flat_frame_state sets pen_button to the held select pen, or pen_back when the screen holds none (Workbench rig
  * status: back=0 ptext=0), where the bare tone would vanish into the window. -1 without a state. */
 int flat_secondary_face(const flat_state *st);
+/* LV-ROW-PENS (owner 2026-11-27: "the content in the dropdown should have the same text colors like the buttons"): a listview
+ * draws its selected row in FILLPEN (the accent, pen_line) with FILLTEXTPEN text. Inside a recorded ground box that fill and the
+ * row text's background take the secondary push button face (flat_secondary_face), the text pen_ptext, like a button label.
+ * The face for a fill / text background in pen, or -1 (pen is not the accent: stock). */
+int flat_gr_row_face(const flat_state *st, int pen);
 /* EYECHECK-SELECT-FAIL (owner 2026-11-27, FLAT-BUTTON-NO-RING): the ground pen of a 3.1 cycle gadget on a flat screen: the face a
  * secondary push button shows (flat_secondary_face), at every depth and whether or not the screen holds an input ground pen. No
  * accent outline, no surface paper inside (the old PALETTE-CYCLE-PAPER ring), no selection pen. Never pen_back. -1 without a state. */

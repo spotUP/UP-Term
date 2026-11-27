@@ -2545,6 +2545,17 @@ static void test_no_outlines(void)
     CHECK_INT(flat_frame_class(54, 32, 53, 14, time_g, 3), FLAT_FC_STRING);         /* the year input keeps the string path */
     CHECK_INT(flat_frame_class(10, 10, 104, 18, font_g, 0), FLAT_FC_DISPLAY);       /* no gadgets at all */
     CHECK_INT(flat_frame_class(20, 52, 100, 14, font_g, 2), FLAT_FC_BORDERED);      /* borders exactly one other gadget: today's draw */
+    {   /* LV-PAPER: Palette / ScreenMode 3.2 listviews: the frame borders the list gadget and sits inside the outer listview gadget: the paper, not a pen_line cell ring */
+        flat_gadbox pal_g[7] = { { 317, 34, 270, 96, FLAT_GK_OTHER }, { 593, 34, 11, 72, FLAT_GK_PROP }, { 589, 108, 19, 12, FLAT_GK_OTHER }, { 589, 120, 19, 12, FLAT_GK_OTHER },
+                                 { 589, 32, 19, 100, FLAT_GK_OTHER }, { 315, 32, 293, 100, FLAT_GK_OTHER }, { 315, 132, 293, 20, FLAT_GK_CUSTOM } };
+        flat_gadbox sm_g[6] = { { 14, 48, 274, 72, FLAT_GK_OTHER }, { 294, 48, 10, 54, FLAT_GK_PROP }, { 290, 104, 18, 9, FLAT_GK_OTHER }, { 290, 113, 18, 9, FLAT_GK_OTHER },
+                                { 290, 46, 18, 76, FLAT_GK_OTHER }, { 12, 46, 296, 76, FLAT_GK_OTHER } };
+        CHECK_INT(flat_frame_class(315, 32, 274, 100, pal_g, 7), FLAT_FC_BORDERED);
+        CHECK_INT(flat_frame_class(12, 46, 278, 76, sm_g, 6), FLAT_FC_BORDERED);
+        CHECK_INT(flat_gr_row_face(&s, 3), 4);         /* LV-ROW-PENS: the accent row bar takes the secondary button face */
+        CHECK_INT(flat_gr_row_face(&s, 0), -1);        /* any other pen: stock */
+        CHECK_INT(flat_gr_row_face(0, 3), -1);
+    }
     {   /* S74-TEXT-BOX: Input Prefs "Test Double-Click" box: a TEXT_KIND gadget (GADGHNONE, no activation) whose bevel is its own box */
         flat_gadbox in_g[2] = { { 221, 88, 155, 14, FLAT_GK_DISPLAY }, { 14, 88, 207, 14, FLAT_GK_OTHER } };
         flat_gadbox lv_g[2] = { { 386, 30, 166, 130, FLAT_GK_DISPLAY }, { 388, 32, 144, 126, FLAT_GK_OTHER } };
