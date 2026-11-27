@@ -687,10 +687,10 @@ int flat_cycle_of(int button_image, int push, int box_match);
  * one Border segment draws in: in_cycle = the border lies in a 3.1 cycle gadget box on a flat screen; -1 = skip the segment (the
  * shadow half), the flat edge pen for the shine half, else front (the glyph, any other caller) */
 int flat_cycle_border_pen(int in_cycle, int role, int front, int edge_pen);
-/* PALETTE-CYCLE-PAPER (owner 2026-11-25; C8-LOOK owner 2026-11-26: only where the screen holds no input ground pen, else the
- * cycle is the rounded input ground box, no outline): a 3.1 cycle gadget looks like a Patina window: the rounded face is drawn in the accent
- * (st->pen_button = st->pen_line), then in[] (the box inside the side-wide outline) is filled with the returned surface pen st->pen_back */
-int flat_cycle_paper(flat_state *st, int ox, int oy, int w, int h, int in[4]);
+/* EYECHECK-SELECT-FAIL (owner 2026-11-27, FLAT-BUTTON-NO-RING): the ground pen of a 3.1 cycle gadget on a flat screen: the solid
+ * raised button tone st->pen_button, at every depth and whether or not the screen holds an input ground pen. No accent outline, no
+ * surface paper inside (the old PALETTE-CYCLE-PAPER ring), no selection pen. -1 without a state. */
+int flat_cycle_pen(const flat_state *st);
 
 /* The PRIMARY button fill pen for a screen of the given depth: under 8 colours (depth < 3) the accent pen_line; from 8 colours the
  * theme lighter background pen_button, or pen_back when it is 0 or not a pen of that depth. */
