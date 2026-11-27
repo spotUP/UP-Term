@@ -1839,10 +1839,10 @@ $(BUILD)/amiga/cudump: tests/amiga/cudump.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/cudump.c
 
-# D2.3's probe (tools/rig/rkc_rig.py)
+# D2.3's probe (tools/rig/rkc_rig.py); also ami.py's keymap probe on every rig, A500 68000 too
 $(BUILD)/amiga/rkcprobe: tests/amiga/rkcprobe.c
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ tests/amiga/rkcprobe.c
+	$(subst -cpu=$(CPU),-cpu=68000,$(VC)) -o $@ tests/amiga/rkcprobe.c
 
 # Patina clash rig's third-party window (tools/rig/patina_clash_rig.py)
 $(BUILD)/amiga/lcmdprobe: tests/amiga/lcmdprobe.c
