@@ -2669,6 +2669,8 @@ def start_ks13():
         "hard_drive_0 = %s" % boot, "hard_drive_0_label = BOOTX", "hard_drive_0_priority = -128",
         "joystick_port_1 = none", "uae_sound_output = exact", "volume = %d" % rig_volume(), "initial_input_grab = 0",
         "floppy_drive_volume = 0", "floppy_drive_volume_empty = 0", "clipboard_sharing = 0",
+        # floppy at max speed, 0 = turbo (owner, 2026-11-27)
+        "floppy_drive_speed = 0",
     ] + HOST_KEYS + [title_line()] + window_lines() + [
         "texture_filter = nearest", "scale = integer", "serial_port = %s" % SERIAL,
         "screenshots_output_dir = %s" % (RIG / "shots"), ""]))
