@@ -299,7 +299,7 @@ def stream(name, opts):
 
 
 def guru():
-    r = subprocess.run(client_cmd("get", "T:lastguru", "-"), capture_output=True, text=True, timeout=30)
+    r = subprocess.run(client_cmd("get", "T:lastguru", "-"), capture_output=True, text=True, encoding="latin-1", timeout=30)
     print(r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else "no Guru recorded (T:lastguru absent)")
     for s in STREAMS:
         lp = log_path(s)
