@@ -13,6 +13,8 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   --nofpu: the same machine without an FPU: the default 060 becomes a 68LC060, --a1200 a
                   68020 with no fpu key (what the soft-float ixemul.library is for; --mmu is ignored);
                   --a500: a 68000 A500 at 7 MHz, cycle-exact, 8 MB Zorro II fast (68000 speed, W7);
+                  --ks13: that A500 on Kickstart 1.3 booting the Workbench 1.3 floppy in DF0: (Super Type M2): no
+                  3.x image, no wasabid; `ami.py exec` goes through the BOOTX: mailbox (start_ks13);
                   --fast: the CPU at the host's speed; --os32: AmigaOS 3.2 -- the 3.2.3 ROM
                   and the owner's 3.2 install as DH0:, ledger T3;
                   --ro: DH0: read-only, stalls on writes;
@@ -655,6 +657,11 @@ A1200 = any(f in sys.argv for f in ("--a1200", "--stock", "--exact", "--fast"))
 A500 = "--a500" in sys.argv
 if A500 and "--kick" not in sys.argv:
     KICK = paths.ROM_A500   # the A1200 ROM needs a 68020; FS-UAE stops at once on a 68000
+# --ks13: the --a500 machine (same cycle-exact calibration) on paths.ROM_KS13, booting a copy of paths.ADF_WB13 (start_ks13)
+KS13 = "--ks13" in sys.argv
+A500 = A500 or KS13
+if KS13 and "--kick" not in sys.argv:
+    KICK = paths.ROM_KS13
 # --overscan: AGA rigs show the whole overscan picture (FS-UAE zoom = full) instead of the cropped 640x512 area, so a
 # program that fills the Overscan prefs area (Selecta Fill Screen, I566) can be seen edge to edge. Other rigs keep the crop.
 OVERSCAN = "--overscan" in sys.argv
@@ -2597,7 +2604,85 @@ def start(retries=START_RETRIES):
     RIG.mkdir(parents=True, exist_ok=True)
     with open(RIG / "start.lock", "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)   # released when the block ends or the process dies
-        return _start(retries)
+        return start_ks13() if KS13 else _start(retries)
+
+# --ks13 exec: 1.3 has no TCP stack for wasabid, so BOOTX: (a host drawer: UAE's filesys mounts on KS 1.3) is the
+# channel. The floppy copy's Startup-Sequence runs BOOTX:loop13 in the background; it polls BOOTX:ks13.cmd each
+# second and Runs it as BOOTX:ks13.run; ami.exec13 writes that script (the command redirected to BOOTX:ks13.out).
+# shortcut: 1.3 Execute has no Skip BACK, so the loop is unrolled KS13_POLLS times (about 1 h of polls, then the
+# rig stops answering); a 68000 exec daemon on BOOTX: would lift that if a run ever needs longer.
+KS13_POLLS = 3600
+# Run, not a nested Execute: on rig 31 the loop ran one nested Execute and never polled again. BOOTX:ks13.run is the
+# busy flag: the Amiga cannot delete it (its Execute holds a lock), so the host deletes it once the result lands, and
+# a new command waits in ks13.cmd until then. loop13 starts with FailAt 1000: a failed command must not end the loop.
+KS13_POLL = ("If EXISTS BOOTX:ks13.cmd\nIf NOT EXISTS BOOTX:ks13.run\nRename >NIL: BOOTX:ks13.cmd BOOTX:ks13.run\n"
+             "Run >NIL: Execute BOOTX:ks13.run\nEndIf\nEndIf\nWait 1\n")
+KS13_BOOT_SECS = 600   # a 7 MHz floppy boot; the up marker came after 64 s on rig 31
+
+def start_ks13():
+    """--ks13: boot KS 1.3 + the WB 1.3 floppy (copy) with BOOTX: = <rig>/boot13 (C: of the floppy copied there so
+    the poll loop never loads from the floppy), print "up" once BOOTX:loop13 wrote BOOTX:ks13.up."""
+    if mine():
+        refuse_foreign_owner()
+        clash = owner_clash(OWNER_FILE.read_text() if OWNER_FILE.exists() else "", PURPOSE)
+        if clash:
+            sys.exit(clash)
+        print("already running")
+        return
+    if AMIBERRY or paths.FSUAE.suffix == ".app":
+        sys.exit("rig: --ks13 runs on the bare FS-UAE binary only")
+    paths.require_rom(KICK)
+    if not paths.ADF_WB13.is_file():
+        sys.exit("rig: Workbench 1.3 floppy not found: %s (set UPTERM_ADF_WB13=<file>)" % paths.ADF_WB13)
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    boot, adf = RIG / "boot13", RIG / "wb13.adf"
+    shutil.rmtree(boot, ignore_errors=True)
+    boot.mkdir(parents=True)
+    shutil.copyfile(paths.ADF_WB13, adf)
+    with tempfile.TemporaryDirectory(dir=RIG) as tmp:
+        subprocess.run([xdf, str(adf), "unpack", tmp], check=True, capture_output=True)
+        shutil.move(str(next(pathlib.Path(tmp).glob("*/c"))), str(boot / "c"))
+        ss = pathlib.Path(tmp) / "startup-sequence"
+        subprocess.run([xdf, str(adf), "read", "s/startup-sequence", str(ss)], check=True, capture_output=True)
+        text = ss.read_text(encoding="latin-1")
+        if "\nLoadWB" not in text:
+            sys.exit("rig: %s: no LoadWB line in S:Startup-Sequence to hook BOOTX:loop13 before" % paths.ADF_WB13)
+        ss.write_text(text.replace("\nLoadWB", "\nRun >NIL: Execute BOOTX:loop13\nLoadWB", 1), encoding="latin-1")
+        subprocess.run([xdf, str(adf), "delete", "s/startup-sequence", "+", "write", str(ss), "s/startup-sequence"],   # write refuses an existing name
+                       check=True, capture_output=True)
+    # CD: the CLI looks in the current directory before C:, so If/Wait/Delete load from the host drawer
+    (boot / "loop13").write_text('FailAt 1000\nCD BOOTX:c\nEcho >BOOTX:ks13.up "up"\n' + KS13_POLL * KS13_POLLS, encoding="latin-1")
+    START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))
+    OWNER_FILE.write_text(json.dumps({"root": str(ROOT), "purpose": PURPOSE, "pid": session_pid()}))
+    paths.EMU_FILE.write_text(paths.EMU + "\n")
+    paths.FSUAE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    CFG.write_text("\n".join([
+        "[fs-uae]", "amiga_model = A500", "accuracy = 1", "fast_memory = 8192", "jit_compiler = 0",
+        "uae_cpu_speed = real", "uae_cpu_cycle_exact = true", "uae_cpu_compatible = true",   # as --a500
+        "kickstart_file = %s" % KICK, "floppy_drive_0 = %s" % adf,
+        "logs_dir = %s" % paths.FSUAE_LOG_DIR, "uaem_write_flags = nhsparwed",
+        # -128: a data drive, DF0: boots
+        "hard_drive_0 = %s" % boot, "hard_drive_0_label = BOOTX", "hard_drive_0_priority = -128",
+        "joystick_port_1 = none", "uae_sound_output = exact", "volume = %d" % rig_volume(), "initial_input_grab = 0",
+        "floppy_drive_volume = 0", "floppy_drive_volume_empty = 0", "clipboard_sharing = 0",
+    ] + HOST_KEYS + [title_line()] + window_lines() + [
+        "texture_filter = nearest", "scale = integer", "serial_port = %s" % SERIAL,
+        "screenshots_output_dir = %s" % (RIG / "shots"), ""]))
+    pathlib.Path(SERIAL).touch()
+    paths.cap_fsuae_log(limit=0)
+    fin, fout, ferr = fsuae_stdio()
+    proc = subprocess.Popen(["nice", "-n", "19", str(paths.FSUAE), str(CFG)], stdin=fin, stdout=fout, stderr=ferr,
+                            start_new_session=True)
+    t0 = time.time()
+    while not (boot / "ks13.up").exists():
+        if proc.poll() is not None:
+            sys.exit("rig: FS-UAE exited (rc %s) before BOOTX:loop13 ran" % proc.returncode)
+        if time.time() - t0 > KS13_BOOT_SECS:
+            sys.exit("rig: no BOOTX:ks13.up after %d s (the 1.3 boot did not reach BOOTX:loop13; FS-UAE log %s)"
+                     % (KS13_BOOT_SECS, paths.FSUAE_LOG_DIR))
+        time.sleep(1)
+    print("up (KS 1.3, %d s)" % (time.time() - t0))
+    start_watchdog()
 
 def boot_device_path():
     """The path of the rig's first hard drive (the boot device), read from CFG: FS-UAE `hard_drive_0 = <path>`, Amiberry

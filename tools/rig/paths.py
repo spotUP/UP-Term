@@ -395,6 +395,10 @@ OS_IMAGES = pathlib.Path(os.environ.get("UPTERM_OS_IMAGES") or
 #                   (CRC32 88136CA9, magic 0x1116) is a relocated image whose reset jumps to $2000D2: the 68000
 #                   rig stayed black and never ran a line of BOOTX:s/startup-sequence (2026-10-29).
 ROM_A500 = pathlib.Path(os.environ.get("UPTERM_ROM_A500") or UPTERM_ROOT / "roms/kick40063-a500.rom")
+# UPTERM_ROM_KS13  the A500 Kickstart 1.3 (34.5, 256 KB, CRC32 C4F0F55F), for --ks13 (Super Type M2)
+# UPTERM_ADF_WB13  the Workbench 1.3 (34.20) boot floppy --ks13 boots in DF0: (the rig boots its own copy)
+ROM_KS13 = pathlib.Path(os.environ.get("UPTERM_ROM_KS13") or UPTERM_ROOT / "roms/kick34005-a500.rom")
+ADF_WB13 = pathlib.Path(os.environ.get("UPTERM_ADF_WB13") or UPTERM_ROOT / "roms/wb13-34.20-boot.adf")
 ROM314 = pathlib.Path(os.environ.get("UPTERM_ROM314") or
     pathlib.Path.home() / "Downloads/kickstart 3.1.4/kick.a1200.46.143")
 

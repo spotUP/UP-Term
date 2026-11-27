@@ -37,7 +37,7 @@ there when the command started and is still there on the next look ends the EXEC
 owning task and buttons (also appended to build/rig<N>/requesters.log). It is never answered for the caller: the
 requester is the finding. The EXEC ends within wasabi's RUN_CHECK (10 s) of that. A timeout ERR names any requester open at that moment. UPTERM_REQUESTER_WATCH=0 turns the
 watch off for a run that opens requesters on purpose. `ami.py requesters` lists the open ones."""
-import contextlib, os, socket, struct, sys, time
+import contextlib, json, os, socket, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kitstamp
 import paths   # the one reader of UPTERM_RIG: rig 2's wasabid is on 1235
@@ -772,12 +772,47 @@ def open_window(icon='SYS:System/UP-Term', wait=20):
 def png(path, w, h, rows):
     _m().write_png(path, w, h, b''.join(rows))
 
+def ks13():
+    """True when this rig was started with --ks13 (rig.py start_ks13): no wasabid, exec goes through exec13."""
+    try:
+        return '--ks13' in json.loads((paths.RIG / 'start.args').read_text())
+    except (OSError, ValueError):
+        return False
+
+
+def exec13(cmd, secs=60):
+    """EXEC on a --ks13 rig: writes BOOTX:ks13.cmd (renamed into place whole), which BOOTX:loop13 Runs within a
+    second; returns (rc, output). shortcut: a 1.3 If overwrites the return code it tests, so one If WARN is all the
+    script can ask: rc is 0 or 5 (meaning 5 or more); the 2.0+ $RC would give the number."""
+    d = paths.RIG / 'boot13'
+    # ks13.run is the busy flag BOOTX:loop13 renames ks13.cmd onto. The Amiga cannot delete it: its own Execute
+    # holds a lock on it (seen on rig 31), so the host deletes it here and after the result lands.
+    for n in ('ks13.out', 'ks13.rc', 'ks13.r', 'ks13.run'):
+        (d / n).unlink(missing_ok=True)
+    tmp = d / 'ks13.cmd.tmp'
+    tmp.write_text('FailAt 1000\n%s >BOOTX:ks13.out\nIf WARN\nEcho >BOOTX:ks13.r "5"\nElse\nEcho >BOOTX:ks13.r "0"\n'
+                   'EndIf\nRename BOOTX:ks13.r BOOTX:ks13.rc\n' % cmd, encoding='latin-1')
+    os.replace(tmp, d / 'ks13.cmd')
+    paths.touch_command()
+    end = time.time() + secs + 5   # + the loop's poll and the load of Echo/Rename
+    while not (d / 'ks13.rc').exists():
+        if time.time() > end:
+            raise SystemExit('ami: --ks13 exec: no BOOTX:ks13.rc after %d s (%r)' % (secs, cmd))
+        time.sleep(0.25)
+    rc, out = int((d / 'ks13.rc').read_text(encoding='latin-1').split()[0]), (d / 'ks13.out').read_text(encoding='latin-1')
+    (d / 'ks13.run').unlink(missing_ok=True)
+    return rc, out
+
+
 def main(a):
     cmd = a[0]
     if cmd == 'ping': print(req(0x01).decode('latin-1'))
     elif cmd == 'break': print(req(0x09).decode('latin-1'))
     elif cmd == 'info': print(req(0x06).decode('latin-1'))
     elif cmd == 'reboot': print('back after %d s' % reboot())
+    elif cmd == 'exec' and ks13():
+        rc, out = exec13(a[1], int(a[2]) if len(a) > 2 else 60)
+        print('rc', rc); sys.stdout.write(out)
     elif cmd == 'exec':
         b = req(0x02, struct.pack('>H', int(a[2]) if len(a) > 2 else 60) + a[1].encode('latin-1'))
         print('rc', struct.unpack('>I', b[:4])[0]); sys.stdout.write(b[4:].decode('latin-1'))
