@@ -1190,13 +1190,43 @@ static int dopus_push_claim(struct RastPort *rp, int x0, int y0, int x1, int y1,
  * pen-0 content the app draws after the frame lands on it (flat_rf_c, flat_tx_c); GROUP draws nothing. 1 = handled, 0 = stock draw
  * (a frame bordering another gadget type, or no pen on this screen). Any frame draw first drops the records it overlaps. */
 static int prop_knob(struct Gadget *g, struct PropInfo *pi, int cx, int cy, int *k);
+/* C8-SCROLLER: the window-relative box x, y, w, h of gadget g in o (GRELRIGHT/BOTTOM/WIDTH/HEIGHT resolved as noline_frame does) */
+static void gad_xywh(struct Window *w, struct Gadget *g, int *o)
+{
+    o[0] = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? w->Width - 1 : 0);
+    o[1] = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? w->Height - 1 : 0);
+    o[2] = g->Width + ((g->Flags & GFLG_RELWIDTH) ? w->Width : 0);
+    o[3] = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? w->Height : 0);
+}
+
+/* C8-SCROLLER: 1 when one-axis prop g of w has a scroller arrow (flat_prop_arrow) in the window's gadget list: a list scroller, never
+ * a slider, however short its knob. Walks the list only (no Intuition call: this also runs inside graphics.library). */
+static int prop_arrows(struct Window *w, struct Gadget *g)
+{
+    struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
+    struct Gadget *o;
+    int n, dir = (pi->Flags & (FREEHORIZ | FREEVERT)) == FREEHORIZ ? 1 : (pi->Flags & (FREEHORIZ | FREEVERT)) == FREEVERT ? 2 : 0;
+    int p[4], b[4];
+    if (!dir)
+        return 0;
+    gad_xywh(w, g, p);
+    for (o = w->FirstGadget, n = 0; o && n < 64; o = o->NextGadget, n++) {
+        if (o == g)
+            continue;
+        gad_xywh(w, o, b);
+        if (flat_prop_arrow(dir, p[0], p[1], p[2], p[3], o->GadgetType, o->Activation, b[0], b[1], b[2], b[3]))
+            return 1;
+    }
+    return 0;
+}
+
 /* MODERN-SLIDER: 1 when prop gadget g (resolved box gb) of win draws as a slider (flat_prop_slider on its knob box) */
 static int prop_slider_of(flatshared *r, struct Window *win, struct Gadget *g, const flat_gadbox *gb)
 {
     struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
     int k[4];
     return st_scr(r, win->WScreen)->pen_line && prop_knob(g, pi, gb->x + pi->LeftBorder, gb->y + pi->TopBorder, k) &&
-           flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, win->WScreen)) != 0;
+           flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, win->WScreen), prop_arrows(win, g)) != 0;
 }
 
 /* The rounded ground box of a frame in pen (no outline) and its record, so content drawn after the frame (erases in the window
@@ -2400,13 +2430,14 @@ static int scroller_pen_at(flatshared *r, struct RastPort *rp, struct Window *w,
                                                         c[0], c[1], pi->CWidth, pi->CHeight, k[0], k[1], k[2], k[3], (int)box[0], (int)box[1], (int)box[2], (int)box[3]));
 }
 
-/* MODERN-SLIDER: r->slider and its container and pens for the fill about to be painted (flat_prop_slider on Intuition's knob box k);
+/* MODERN-SLIDER: r->slider and its container and pens for the fill about to be painted (flat_prop_slider on Intuition's knob box k;
+ * scroller_pen clears it afterwards for a scroller with arrows);
  * the track takes the grey scroller knob pen, the knob the theme accent pen_line. */
 static void slider_note(flatshared *r, struct RastPort *rp, struct Window *w, struct Gadget *g, const int *c, const int *k)
 {
     struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
     const flat_state *ss = st_scr(r, w->WScreen);
-    r->slider = ss->pen_line ? flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, w->WScreen)) : 0;
+    r->slider = ss->pen_line ? flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, w->WScreen), 0) : 0;
     r->slider_c[0] = c[0]; r->slider_c[1] = c[1]; r->slider_c[2] = pi->CWidth; r->slider_c[3] = pi->CHeight;
     r->slider_pen[0] = flat_knob_state_pen(ss, rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0);
     r->slider_pen[1] = ss->pen_line;
@@ -2426,8 +2457,11 @@ static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, co
     struct Gadget *g;
     int pen, n;
     for (g = w->FirstGadget, n = 0; g && n < 64; g = g->NextGadget, n++)
-        if (gadget_has_propinfo(g) && (pen = scroller_pen_of(r, rp, w, g, box, k)) >= 0)
+        if (gadget_has_propinfo(g) && (pen = scroller_pen_of(r, rp, w, g, box, k)) >= 0) {
+            if (r->slider && prop_arrows(w, g))
+                r->slider = 0;          /* C8-SCROLLER here, not in slider_note: two frames shallower on flat_rf_c's chain (flat budget) */
             return pen;
+        }
     return -1;
 }
 
@@ -3064,13 +3098,6 @@ static int rf_ghost_custom(flatshared *r, struct RastPort *rp, struct Window *w,
     return 1;
 }
 
-/* The ROM ghost fills over a window's gadgets, one call from flat_rf_c so its frame stays in budget (S62-FLAT-RF-TX-BUDGET);
- * rf_scroller (the deep chain) stays a direct call so this frame is not on its path */
-static int rf_ghost(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b)
-{
-    return rf_disabled(r, rp, w, b) || rf_ghost_custom(r, rp, w, b);
-}
-
 void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG ret)
 {
     flatshared *r = g_r;
@@ -3083,6 +3110,10 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
     b[0] = x0; b[1] = y0; b[2] = x1; b[3] = y1;
     if (on && rp->Layer)
         w = (struct Window *)rp->Layer->Window;
+    /* PALETTE-G17-GHOST: no ROM gate, 3.1 GadTools (ROM but outside intuition's range) ghosts its own palette gadget; the
+     * disabled custom gadget box is the gate. Before pal_fill so a Palette-side fill cannot claim it. */
+    if (on && w && rf_ghost_custom(r, rp, w, b))
+        return;
     if (on && w && !rom && pal_fill(r, rp, w, b, ret, (const ULONG *)((ULONG)&ret + 8)))   /* the caller's sp: flat_rf.s pushes a copy of ret below it */
         return;
     if (on && rp->AreaPtSz && rom && !w && ghost_menu(r, rp, b))
@@ -3112,7 +3143,7 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
         rf_strfill(r, rp, b);
     if (on && rf_gbox(r, rp, b))
         return;
-    if (on && w && rom && (rf_ghost(r, rp, w, b) || rf_scroller(r, rp, w, b)))
+    if (on && w && rom && (rf_disabled(r, rp, w, b) || rf_scroller(r, rp, w, b)))
         return;
     if (on && r->st.pen_outline && w && !(w->Flags & WFLG_BORDERLESS) && rom && (rf_edge(r, rp, w, b) || rf_side(r, rp, w, b) || rf_inner(r, rp, w, b)))
         return;
@@ -3430,6 +3461,107 @@ static int cg_install(flatshared *r)
     if (rc != FLAT_OK) {
         CloseLibrary(r->gtbase);
         r->gtbase = 0;
+    }
+    return rc;
+}
+
+/* ---- PREFSFLAT2-DRAWBORDER: intuition.library DrawBorder (LVO -108, rp a0, border a1, left d0, top d1). 3.1 GadTools draws the
+ * cycle glyph separator as a shine/shadow Border pair (flat_cycle_border_pen); inside a 3.1 cycle box on a flat screen the shadow
+ * half is skipped and the shine half takes the edge pen. Any other Border list goes to the original untouched. */
+#define FLAT_LVO_DRAWBORDER (-108)
+typedef void (*dbfn)(__reg("a0") struct RastPort *, __reg("a1") struct Border *, __reg("d0") LONG, __reg("d1") LONG,
+                     __reg("a6") struct Library *);
+extern void flat_db_tpl(void), flat_db_tpl_end(void);
+
+/* 1 when window point x,y lies in an image-drawn bool gadget that is not a scroller arrow (the 3.1 cycle: flat_cycle_frame) */
+static int cycle_point_at(struct Window *win, int x, int y)
+{
+    struct Gadget *g;
+    int n;
+    for (g = win->FirstGadget, n = 0; g && n < 64; g = g->NextGadget, n++)
+        if ((g->Flags & GFLG_GADGIMAGE) && flat_cycle_frame(g->GadgetType, g->Activation, g->LeftEdge, g->TopEdge, g->Width, g->Height,
+                                                             g->LeftEdge, g->TopEdge, g->Width, g->Height)
+            && x >= g->LeftEdge && x < g->LeftEdge + g->Width && y >= g->TopEdge && y < g->TopEdge + g->Height)
+            return 1;
+    return 0;
+}
+
+static int db_in_cycle(struct Window *w, const struct Border *b, LONG l, LONG t)
+{
+    return b->Count && b->XY && (b->BackPen == 1 || b->BackPen == 2)
+           && cycle_point_at(w, (int)(l + b->LeftEdge + b->XY[0]), (int)(t + b->TopEdge + b->XY[1]));
+}
+
+void flat_db_c(struct RastPort *rp, struct Border *b, LONG l, LONG t)
+{
+    flatshared *r = g_r;
+    dbfn orig = (dbfn)r->dbsw.saved;
+    struct Window *w = rp && rp->Layer ? (struct Window *)rp->Layer->Window : NULL;
+    const flat_state *s = w ? st_scr(r, w->WScreen) : NULL;
+    struct Border *p;
+    int n, hit = 0, edge;
+    if (s && s->enabled && !s->held)
+        for (p = b, n = 0; p && n < 64 && !hit; p = p->NextBorder, n++)
+            hit = db_in_cycle(w, p, l, t);
+    if (!hit) {
+        orig(rp, b, l, t, (struct Library *)IntuitionBase);
+        return;
+    }
+    edge = flat_edge_pen(s, rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0);
+    r->dbhits++;
+    for (n = 0; b; b = b->NextBorder, n++) {
+        struct Border *next = b->NextBorder;
+        UBYTE fp = b->FrontPen;
+        int pen = flat_cycle_border_pen(n < 64 && db_in_cycle(w, b, l, t), b->BackPen, fp, edge);
+        if (pen < 0)
+            continue;
+        b->FrontPen = (UBYTE)pen;          /* one segment at a time: GadTools sets FrontPen again before every draw */
+        b->NextBorder = NULL;
+        orig(rp, b, l, t, (struct Library *)IntuitionBase);
+        b->NextBorder = next;
+        b->FrontPen = fp;
+    }
+}
+
+static int db_install(flatshared *r)
+{
+    unsigned char *entry = (unsigned char *)IntuitionBase + FLAT_LVO_DRAWBORDER;
+    int rc = -100;
+    if (!flat_jmp_target(entry))
+        return rc;
+    flat_swap_init(&r->dbsw);
+    if (!r->dbgate)
+        r->dbgate = gate_make((void *)flat_db_tpl, (void *)flat_db_tpl_end, 0);
+    if (!r->dbgate)
+        return -101;
+    g_r = r;
+    Forbid();
+    rc = flat_swap_install(&r->dbsw, (uintptr_t *)(entry + 2), (uintptr_t)r->dbgate->code);
+    if (rc == FLAT_OK) {
+        gate_open(r->dbgate, r->dbsw.saved);
+        r->dbslot = (uintptr_t *)(entry + 2);
+        libpatch_done((struct Library *)IntuitionBase);
+    }
+    Permit();
+    return rc;
+}
+
+static int db_remove(flatshared *r)
+{
+    int rc = FLAT_NOT_INSTALLED;
+    if (!r->dbsw.installed)
+        return rc;
+    gate_close(r->dbgate);
+    Forbid();
+    rc = flat_swap_remove(&r->dbsw, r->dbslot, &r->st);
+    if (rc == FLAT_REMOVED)
+        libpatch_done((struct Library *)IntuitionBase);
+    Permit();
+    if (rc != FLAT_REMOVED)
+        gate_reopen(r->dbgate);
+    if (rc == FLAT_REMOVED) {
+        gate_wait(r->dbgate);
+        r->dbslot = 0;
     }
     return rc;
 }
@@ -4687,6 +4819,8 @@ static int install_all(flatshared *r, poll_timer *tm, int *marker_live)
         PutStr((STRPTR)"patina-flat: CreateGadgetA patch not installed\n");
     if (mu_install(r) != FLAT_OK)
         PutStr((STRPTR)"patina-flat: MUI class patch not installed\n");
+    if (db_install(r) != FLAT_OK)
+        PutStr((STRPTR)"patina-flat: DrawBorder patch not installed\n");
     pt_start(tm, (unsigned long)FLAT_MARKER_SECS * 1000000UL);
     return rc;
 }
@@ -4901,6 +5035,11 @@ int main(void)
             continue;
         }
         STG(FLAT_STG_CG_REMOVE);
+        if (db_remove(r) == FLAT_STILL_CHAINED) {
+            refused(r, FLAT_REF_GADTOOLS);  /* shortcut: shares the gadtools refusal; add a FLAT_REF if the status row must tell them apart */
+            PutStr((STRPTR)"patina-flat: a patch is still chained on intuition DrawBorder, not unloading\n");
+            continue;
+        }
         if (cg_remove(r) == FLAT_STILL_CHAINED) {
             refused(r, FLAT_REF_GADTOOLS);
             PutStr((STRPTR)"patina-flat: a patch is still chained on gadtools CreateGadgetA, not unloading\n");

@@ -882,7 +882,10 @@ static void test_disabled_button_dim_fill(void)
     CHECK_INT(flat_ghost_custom(0, 1, 315, 147, 293, 20, 315, 147, 607, 166), 0);   /* solid fill: not a ghost */
     CHECK_INT(flat_ghost_custom(1, 0, 315, 147, 293, 20, 315, 147, 607, 166), 0);   /* enabled or not custom */
     CHECK_INT(flat_ghost_custom(1, 1, 315, 147, 293, 20, 315, 147, 607, 150), 0);   /* part of the box */
-    CHECK_INT(flat_ghost_custom(1, 1, 315, 147, 293, 20, 314, 147, 607, 166), 0);   /* outside the box */
+    CHECK_INT(flat_ghost_custom(1, 1, 315, 147, 293, 20, 315, 146, 607, 166), 1);   /* rig 12: ghost 1 row above the box */
+    CHECK_INT(flat_ghost_custom(1, 1, 315, 147, 293, 20, 313, 145, 609, 168), 1);   /* 2 px out on every edge */
+    CHECK_INT(flat_ghost_custom(1, 1, 315, 147, 293, 20, 312, 147, 607, 166), 0);   /* 3 px out: another fill */
+    CHECK_INT(flat_ghost_custom(1, 1, 315, 147, 293, 20, 315, 147, 607, 169), 0);   /* 3 px below */
     CHECK_INT(flat_ghost_custom(1, 1, 315, 147, -8, 20, 315, 147, 607, 166), 0);    /* relative width */
     CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 60, 20, 80, 39) == 0, 1);
     CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 5, 20, 49, 39) == 0, 1);

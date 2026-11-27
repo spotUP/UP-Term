@@ -247,6 +247,8 @@ static void test_gui_welcome_wired(void)
     CHECK(strstr(gui, "mg_strip_hit(&g->g, mx, my)") != 0 && strstr(gui, "mg_strip_y(q, r)") != 0);
     CHECK(strstr(gui, "amconf_save_with(amconf_dos_io(), p, 1, &failed)") != 0);
     CHECK(strstr(gui, "\"Welcome to Patina\"") != 0 && strstr(gui, "\"Patina Help\"") != 0);
+    /* WELCOME-BORDER: no Intuition title at open (a titled borderless window gets a repainted title strip) */
+    CHECK(strstr(gui, "WA_Title") == 0 && strstr(gui, "w->Title = (UBYTE *)title_of[") != 0);
     CHECK(strstr(am, "hc_should_welcome(") != 0 && strstr(am, "\"patina-gui\", \"welcome\"") != 0);
 }
 

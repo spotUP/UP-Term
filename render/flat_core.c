@@ -762,8 +762,9 @@ int flat_ghost_custom(int ptsz, int custom_disabled, int gx, int gy, int gw, int
 {
     if (!ptsz || !custom_disabled || gw <= 0 || gh <= 0)
         return 0;
-    return x0 >= gx && x0 <= gx + 2 && y0 >= gy && y0 <= gy + 2 && x1 <= gx + gw - 1 && x1 >= gx + gw - 3 && y1 <= gy + gh - 1 &&
-           y1 >= gy + gh - 3;
+    /* rig 12: the 3.1 ghost over G17 starts 1 row above the gadget box (y146 for TopEdge 147), so each edge may sit 2 px either side */
+    return x0 >= gx - 2 && x0 <= gx + 2 && y0 >= gy - 2 && y0 <= gy + 2 && x1 <= gx + gw + 1 && x1 >= gx + gw - 3 &&
+           y1 <= gy + gh + 1 && y1 >= gy + gh - 3;
 }
 
 int flat_dim_pen(const flat_state *s, int depth)
@@ -1131,6 +1132,13 @@ int flat_cycle_of(int button_image, int push, int box_match)
     return box_match && !(button_image && push);
 }
 
+int flat_cycle_border_pen(int in_cycle, int role, int front, int edge_pen)
+{
+    if (!in_cycle || (role != 1 && role != 2))
+        return front;
+    return role == 2 ? -1 : edge_pen;
+}
+
 int flat_cycle_paper(flat_state *st, int ox, int oy, int w, int h, int in[4])
 {
     int sw = flat_button_side(st->side, w);
@@ -1287,14 +1295,27 @@ int flat_scroller_pen_box(const flat_state *s, int depth, int active, int cx, in
     return s->pen_back;
 }
 
-int flat_prop_slider(unsigned activation, unsigned propflags, int kw, int kh, int side)
+int flat_prop_slider(unsigned activation, unsigned propflags, int kw, int kh, int side, int arrows)
 {
     int sd = side > 1 ? side : 1, horiz = (propflags & 0x0002u) != 0, vert = (propflags & 0x0004u) != 0;
-    if ((activation & 0x00F0u) || horiz == vert || kw < 1 || kh < 1)
+    if (arrows || (activation & 0x00F0u) || horiz == vert || kw < 1 || kh < 1)
         return 0;
     if (horiz)
         return kw / sd <= kh ? 1 : 0;
     return kh <= kw / sd ? 2 : 0;
+}
+
+int flat_prop_arrow(int dir, int px, int py, int pw, int ph, unsigned gadget_type, unsigned activation, int gx, int gy, int gw, int gh)
+{
+    int a0, alen, c0, clen, g0, glen, h0, hlen;
+    if ((gadget_type & 0x8000u) || (gadget_type & 0x0007u) != 0x0001u || !(activation & 0x0002u) || gw < 1 || gh < 1)
+        return 0;                                   /* GTYP_BOOLGADGET with GACT_IMMEDIATE only (not a system gadget) */
+    if (dir == 1) { a0 = px; alen = pw; c0 = py; clen = ph; g0 = gx; glen = gw; h0 = gy; hlen = gh; }
+    else if (dir == 2) { a0 = py; alen = ph; c0 = px; clen = pw; g0 = gy; glen = gh; h0 = gx; hlen = gw; }
+    else return 0;
+    if (glen >= alen || h0 >= c0 + clen || h0 + hlen <= c0)
+        return 0;                                   /* longer than the track, or beside it on the cross axis */
+    return (g0 >= a0 + alen && g0 <= a0 + alen + 6) || (g0 + glen <= a0 && g0 + glen >= a0 - 6);
 }
 
 int flat_slider_track(int dir, int side, int cx, int cy, int cw, int ch, int x0, int y0, int x1, int y1, int out[4])

@@ -26,3 +26,25 @@ _flat_cg_tpl_pass:
 	move.l	($33333333).l,-(a7)
 	rts
 _flat_cg_tpl_end:
+; PREFSFLAT2-DRAWBORDER: intuition.library DrawBorder(rp a0, border a1, left d0, top d1): flat_db_c(rp, border, left, top).
+; Same FLAT-UNLOAD-INFLIGHT gate operands as above.
+	xdef	_flat_db_tpl
+	xdef	_flat_db_tpl_end
+	xref	_flat_db_c
+_flat_db_tpl:
+	addq.l	#1,($11111111).l
+	tst.l	($22222222).l
+	bne.s	_flat_db_tpl_pass
+	move.l	d1,-(a7)
+	move.l	d0,-(a7)
+	move.l	a1,-(a7)
+	move.l	a0,-(a7)
+	jsr	(_flat_db_c).l
+	lea	16(a7),a7
+	subq.l	#1,($11111111).l
+	rts
+_flat_db_tpl_pass:
+	subq.l	#1,($11111111).l
+	move.l	($33333333).l,-(a7)
+	rts
+_flat_db_tpl_end:
