@@ -25,6 +25,9 @@ class StageScreenNotify(unittest.TestCase):
         self.assertLess(lines.index("DH0:C/Assign >NIL: VTC: VTCX:"), first)
         self.assertLess(first, next(i for i, l in enumerate(lines) if "S/Startup-Sequence" in l))
         self.assertIn('  Echo >%s "done"' % rig.RIG_LIBS_DONE, lines)
+        # an Assign to a missing package dir (rc 20) must not abort the boot script
+        self.assertEqual(lines[first - 2], "FailAt 21")
+        self.assertEqual(lines[lines.index("EndIf", first) + 1], "FailAt 10")
 
     def test_every_start_stages_it(self):
         src = (ROOT / "tools/rig/rig.py").read_text()

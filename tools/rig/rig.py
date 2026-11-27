@@ -234,9 +234,10 @@ RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6 DH0:Libs",
 # the next, and on the 68000 the Startup-Sequence's `LoadResource LIBS:diskfont.library` still ran in that gap (rig 29,
 # 13:15, on 513dd3b9). BOOTX:s/startup-sequence therefore makes the RIG_LIBS assigns itself, after VTC: and before the
 # Startup-Sequence starts, when nothing else runs; go and shadows-up see RIG_LIBS_DONE and skip theirs.
+# FailAt 21: an Assign to a package dir the rig lacks returns 20 and must not abort the boot script.
 STARTUP = STARTUP.replace('Echo >BOOTX:boot.log "boot started"\n', 'Echo >BOOTX:boot.log "boot started"\n'
-    "If EXISTS VTC:ixp6/ixemul.library\n" + "".join("  DH0:C/" + l + "\n" for l in RIG_LIBS) +
-    '  Echo >RAM:rig-libs-done "done"\n  Echo >>BOOTX:boot.log "LIBS: assigned in the boot script"\nEndIf\n', 1)
+    "FailAt 21\nIf EXISTS VTC:ixp6/ixemul.library\n" + "".join("  DH0:C/" + l + "\n" for l in RIG_LIBS) +
+    '  Echo >RAM:rig-libs-done "done"\n  Echo >>BOOTX:boot.log "LIBS: assigned in the boot script"\nEndIf\nFailAt 10\n', 1)
 
 # The rig's lines in the system disk's S:Shell-Startup (go adds them once).
 # The bare "Path >NIL: VTC:gg/bin ADD" an earlier go wrote raised "Please
