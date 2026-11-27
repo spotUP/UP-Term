@@ -53,7 +53,8 @@ class A500UserStartup(unittest.TestCase):
             rig.sys_hdf_a500("sys.hdf")
         ss.assert_called_once_with("sys.hdf", "S/Startup-Sequence", "UP-Term")
         gone = [c.args[0][-1] for c in run.call_args_list if c.args[0][2] == "delete"]
-        self.assertEqual(sorted(gone), sorted(rig.KIT_WBSTARTUP_ICONS))
+        # the uaegfx monitor too: no graphics card, it only printed "P96 needs an 68020 or better!"
+        self.assertEqual(sorted(gone), sorted(list(rig.KIT_WBSTARTUP_ICONS) + ["Devs/Monitors/uaegfx", "Devs/Monitors/uaegfx.info"]))
 
 
 if __name__ == "__main__":

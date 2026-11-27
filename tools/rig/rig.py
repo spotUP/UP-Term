@@ -230,6 +230,13 @@ RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6 DH0:Libs",
             "Assign >NIL: LIBS: DH0:AmiSSL/Libs ADD",
             "Assign >NIL: LIBS: VTC:amissl ADD",
             "Assign >NIL: AmiSSL: DH0:AmiSSL"]   # AmiSSL:Certs for TLS peers (a fresh rig has no AmiSSL: after go; makerelease packer, 2026-11-24)
+# A500-DISKFONT-RACE: the one-Assign form above still lost: C:Assign sets LIBS: to its first directory and then ADDs
+# the next, and on the 68000 the Startup-Sequence's `LoadResource LIBS:diskfont.library` still ran in that gap (rig 29,
+# 13:15, on 513dd3b9). BOOTX:s/startup-sequence therefore makes the RIG_LIBS assigns itself, after VTC: and before the
+# Startup-Sequence starts, when nothing else runs; go and shadows-up see RIG_LIBS_DONE and skip theirs.
+STARTUP = STARTUP.replace('Echo >BOOTX:boot.log "boot started"\n', 'Echo >BOOTX:boot.log "boot started"\n'
+    "If EXISTS VTC:ixp6/ixemul.library\n" + "".join("  DH0:C/" + l + "\n" for l in RIG_LIBS) +
+    '  Echo >RAM:rig-libs-done "done"\n  Echo >>BOOTX:boot.log "LIBS: assigned in the boot script"\nEndIf\n', 1)
 
 # The rig's lines in the system disk's S:Shell-Startup (go adds them once).
 # The bare "Path >NIL: VTC:gg/bin ADD" an earlier go wrote raised "Please
@@ -1240,6 +1247,9 @@ def sys_hdf_a500(image):
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
     for icon in KIT_WBSTARTUP_ICONS:
         subprocess.run([xdf, str(image), "delete", icon], capture_output=True)   # absent: nothing to remove
+    # no graphics card on the A500: the uaegfx monitor only printed "P96 needs an 68020 or better!" to the boot console
+    for n in ("uaegfx", "uaegfx.info"):
+        subprocess.run([xdf, str(image), "delete", "Devs/Monitors/" + n], capture_output=True)   # absent: nothing to remove
 
 def restore_loadwb(image):
     """C/LoadWB becomes the master's kept original (C/loadwb_old) again: the master image replaces the Workbench
