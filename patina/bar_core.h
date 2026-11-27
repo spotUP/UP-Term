@@ -76,6 +76,8 @@ int bar_set_text(bar *b, int id, const char *text, int tw);
  * so a text of another length never moves its neighbours (AM-BAR-COLUMNS). The slot grows to the text when the text is
  * wider. 1 when the slot changed (the bar must be laid out again). */
 int bar_set_slot(bar *b, int id, int slot);
+/* Takes segment `id` out of the bar; 1 when it was there. */
+int bar_remove(bar *b, int id);
 /* Places every segment: the left group from x = 0 in order, the right group ending at the width, in order, the
  * centre group centred on the width and pushed right of the left group when they would touch. When the left group
  * and the centre do not fit between the left edge and the right group, the screens list loses entries from its
@@ -155,8 +157,12 @@ void bar_fmt_cpu(char *out, int cap, int pct);
 /* Network segment. BAR_NET_NONE: bsdsocket.library did not open. BAR_NET_EMULATED: the library's id string starts with
  * "UAE" (the emulator's stub; any QueryInterfaceTagList call with tags kills the rig, so it is never made).
  * BAR_NET_STACK: a real stack opened but no interface answered (no interface, or the query failed): "No network".
- * BAR_NET_DOWN / BAR_NET_UP: the first interface and its IFQ_State. The numbers are what BAR STATUS prints as net=. */
-enum { BAR_NET_NONE = 0, BAR_NET_EMULATED, BAR_NET_STACK, BAR_NET_DOWN, BAR_NET_UP };
+ * BAR_NET_DOWN / BAR_NET_UP: the first interface and its IFQ_State. BAR_NET_NOAPI: a stack whose jump table stops before
+ * QueryInterfaceTagList (-468: AmiTCP, Miami, Genesis); the segment is removed from the bar, nothing is drawn.
+ * The numbers are what BAR STATUS prints as net=. */
+enum { BAR_NET_NONE = 0, BAR_NET_EMULATED, BAR_NET_STACK, BAR_NET_DOWN, BAR_NET_UP, BAR_NET_NOAPI };
+/* The lowest LVO the interface query calls (QueryInterfaceTagList); a stack whose lib_NegSize is smaller lacks it. */
+#define BAR_NET_MIN_NEGSIZE 468
 int bar_net_kind(const char *id_string);
 /* Roadshow's IFQ_State values (SM_Offline, SM_Online, SM_Down, SM_Up of libraries/bsdsocket.h; bar.c asserts at compile
  * time that these equal the header's). Online and Up are "up" (the interface receives); Offline and Down are "down";

@@ -546,6 +546,15 @@ static void remove_at(bar *b, int i)
     b->n--;
 }
 
+int bar_remove(bar *b, int id)
+{
+    int i = find_seg(b, id);
+    if (i < 0)
+        return 0;
+    remove_at(b, i);
+    return 1;
+}
+
 int bar_set_accent(bar *b, int id, int on)
 {
     int i = find_seg(b, id);

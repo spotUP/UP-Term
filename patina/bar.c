@@ -328,7 +328,7 @@ static int sample_net(int force)
     SocketBase = OpenLibrary((STRPTR) "bsdsocket.library", 0);
     kind = SocketBase ? bar_net_kind(SocketBase->lib_IdString ? (const char *)SocketBase->lib_IdString : "") : BAR_NET_NONE;
     if (kind == BAR_NET_STACK)
-        kind = query_net(name, sizeof name, &addr);
+        kind = SocketBase->lib_NegSize >= BAR_NET_MIN_NEGSIZE ? query_net(name, sizeof name, &addr) : BAR_NET_NOAPI;
     if (SocketBase) {
         CloseLibrary(SocketBase);
         SocketBase = 0;
@@ -338,6 +338,8 @@ static int sample_net(int force)
         return 0;
     g_net_kind = kind;
     strcpy(g_net_name, name);
+    if (kind == BAR_NET_NOAPI)
+        return bar_remove(&g_bar, BAR_SEG_NET);
     bar_fmt_net(t, sizeof t, kind, name);
     bar_set_slot(&g_bar, BAR_SEG_NET, net_slot());
     return set_seg(BAR_SEG_NET, t) | 1;

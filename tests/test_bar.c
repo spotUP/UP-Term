@@ -26,6 +26,12 @@ static void test_layout_groups(void)
     bar_layout(&b, 320);
     CHECK_INT(b.seg[a].x, 0);
     CHECK_INT(b.seg[r2].x + b.seg[r2].w, 320);
+    /* BAR_NET_NOAPI: the segment leaves the bar, its neighbour closes the gap */
+    CHECK_INT(bar_remove(&b, BAR_SEG_AGENTS), 1);
+    CHECK_INT(bar_remove(&b, BAR_SEG_AGENTS), 0);
+    CHECK_INT(b.n, 3);
+    bar_layout(&b, 640);
+    CHECK_INT(b.seg[r1].x + b.seg[r1].w, 640);
 }
 
 /* Shown segments in order of x: none overlaps another and none starts left of 0 (the 640 px rig bar showed the clock
