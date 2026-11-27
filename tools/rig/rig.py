@@ -2608,15 +2608,19 @@ def start(retries=START_RETRIES):
 
 # --ks13 exec: 1.3 has no TCP stack for wasabid, so BOOTX: (a host drawer: UAE's filesys mounts on KS 1.3) is the
 # channel. The floppy copy's Startup-Sequence runs BOOTX:loop13 in the background; it polls BOOTX:ks13.cmd each
-# second and Runs it as BOOTX:ks13.run; ami.exec13 writes that script (the command redirected to BOOTX:ks13.out).
+# second and Runs it from RAM:ks13.run; ami.exec13 writes that script (output and rc to fresh BOOTX: names).
 # shortcut: 1.3 Execute has no Skip BACK, so the loop is unrolled KS13_POLLS times (about 1 h of polls, then the
 # rig stops answering); a 68000 exec daemon on BOOTX: would lift that if a run ever needs longer.
 KS13_POLLS = 3600
-# Run, not a nested Execute: on rig 31 the loop ran one nested Execute and never polled again. BOOTX:ks13.run is the
-# busy flag: the Amiga cannot delete it (its Execute holds a lock), so the host deletes it once the result lands, and
-# a new command waits in ks13.cmd until then. loop13 starts with FailAt 1000: a failed command must not end the loop.
-KS13_POLL = ("If EXISTS BOOTX:ks13.cmd\nIf NOT EXISTS BOOTX:ks13.run\nRename >NIL: BOOTX:ks13.cmd BOOTX:ks13.run\n"
-             "Run >NIL: Execute BOOTX:ks13.run\nEndIf\nEndIf\nWait 1\n")
+# Each command runs from a RAM: copy in its own Run CLI. Traced on rig 31 (Echo >SER: per step): a BOOTX: file the
+# host deletes stays EXISTS on the Amiga side of the UAE filesys, so a BOOTX: busy flag never cleared and the second
+# command was never picked up (ami.exec13 never reuses an output name for the same reason). Now the Amiga deletes
+# BOOTX:ks13.cmd itself (Copy closes it), and RAM:ks13.run is the busy flag: its Delete fails while a running
+# Execute holds it and succeeds once it is done.
+# loop13 starts with FailAt 1000: a failed command must not end the loop.
+KS13_POLL = ("If EXISTS BOOTX:ks13.cmd\nDelete >NIL: RAM:ks13.run\nIf NOT EXISTS RAM:ks13.run\n"
+             "Copy BOOTX:ks13.cmd RAM:ks13.run\nDelete >NIL: BOOTX:ks13.cmd\nRun >NIL: Execute RAM:ks13.run\n"
+             "EndIf\nEndIf\nWait 1\n")
 KS13_BOOT_SECS = 600   # a 7 MHz floppy boot; the up marker came after 64 s on rig 31
 
 def start_ks13():

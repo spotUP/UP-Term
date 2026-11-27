@@ -785,23 +785,28 @@ def exec13(cmd, secs=60):
     second; returns (rc, output). shortcut: a 1.3 If overwrites the return code it tests, so one If WARN is all the
     script can ask: rc is 0 or 5 (meaning 5 or more); the 2.0+ $RC would give the number."""
     d = paths.RIG / 'boot13'
-    # ks13.run is the busy flag BOOTX:loop13 renames ks13.cmd onto. The Amiga cannot delete it: its own Execute
-    # holds a lock on it (seen on rig 31), so the host deletes it here and after the result lands.
-    for n in ('ks13.out', 'ks13.rc', 'ks13.r', 'ks13.run'):
-        (d / n).unlink(missing_ok=True)
+    # A name the host deletes stays EXISTS on the Amiga side of the UAE filesys (traced on rig 31: a Rename onto a
+    # host-deleted ks13.rc failed), so every exec writes fresh names; the host clears the older ones.
+    n = time.time_ns() // 1000000 % 10**9
+    for f in d.glob('ks13.[orx].*'):
+        f.unlink(missing_ok=True)
+    out, r, rcf = d / ('ks13.o.%d' % n), 'BOOTX:ks13.x.%d' % n, d / ('ks13.r.%d' % n)
+    # 1.3 takes a redirection only straight after the command name
+    verb, _, args = cmd.strip().partition(' ')
     tmp = d / 'ks13.cmd.tmp'
-    tmp.write_text('FailAt 1000\n%s >BOOTX:ks13.out\nIf WARN\nEcho >BOOTX:ks13.r "5"\nElse\nEcho >BOOTX:ks13.r "0"\n'
-                   'EndIf\nRename BOOTX:ks13.r BOOTX:ks13.rc\n' % cmd, encoding='latin-1')
+    tmp.write_text('FailAt 1000\n%s >BOOTX:%s %s\nIf WARN\nEcho >%s "5"\nElse\nEcho >%s "0"\nEndIf\nRename %s BOOTX:%s\n'
+                   % (verb, out.name, args, r, r, r, rcf.name), encoding='latin-1')
     os.replace(tmp, d / 'ks13.cmd')
     paths.touch_command()
     end = time.time() + secs + 5   # + the loop's poll and the load of Echo/Rename
-    while not (d / 'ks13.rc').exists():
+    while not rcf.exists():
         if time.time() > end:
-            raise SystemExit('ami: --ks13 exec: no BOOTX:ks13.rc after %d s (%r)' % (secs, cmd))
+            raise SystemExit('ami: --ks13 exec: no BOOTX:%s after %d s (%r)' % (rcf.name, secs, cmd))
         time.sleep(0.25)
-    rc, out = int((d / 'ks13.rc').read_text(encoding='latin-1').split()[0]), (d / 'ks13.out').read_text(encoding='latin-1')
-    (d / 'ks13.run').unlink(missing_ok=True)
-    return rc, out
+    rc = rcf.read_text(encoding='latin-1').split()
+    if not rc or not out.exists():   # Rename is atomic, so neither should happen; name it if it does
+        raise SystemExit('ami: --ks13 exec: %s %r, %s %s (%r)' % (rcf.name, rc, out.name, 'there' if out.exists() else 'missing', cmd))
+    return int(rc[0]), out.read_text(encoding='latin-1')
 
 
 def main(a):
