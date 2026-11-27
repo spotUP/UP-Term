@@ -30,6 +30,8 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   --os <30|31|314|32|321|322|35|39>: boot the owner's clean installed
                   Workbench of that version (paths.OS_IMAGES; own copy per rig,
                   --fresh copies it anew; the Kickstart goes with it)
+                  --screen <aga|aga256|rtg>: the Workbench screen mode from this start's first boot (as `rig.py aga|aga256|rtg`
+                  without their reboot of a running rig; kept for later starts; rtg refused with --a500)
   rig.py aga      Workbench on native AGA (PAL hires, 16 colours) from next boot
   rig.py rtg      Workbench back on the graphics card from next boot
   (The screen mode is the Workbench's ScreenMode prefs, not the config: the
@@ -157,6 +159,15 @@ OS = sys.argv[sys.argv.index("--os") + 1] if "--os" in sys.argv else None
 PURPOSE = " ".join(sys.argv[sys.argv.index("--purpose") + 1].split()) if "--purpose" in sys.argv[:-1] else None
 if OS is not None and OS not in OS_NAMES:
     sys.exit("rig: --os %s: one of %s" % (OS, " ".join(OS_NAMES)))
+# --screen <aga|aga256|rtg>: the Workbench screen mode of this start's first boot, as `rig.py aga|aga256|rtg` would set
+# it, but with no reboot of a running rig (ST2 2026-11-27: Super Type's rigtest switched to AGA mid-test with `rig.py aga`
+# and the reboot froze rig 30). It is written to RIG/screenmode.name before the clone, so later reboots keep it too.
+# Without it a start keeps the last choice. --a500 has no graphics card: rtg is refused there.
+SCREEN = sys.argv[sys.argv.index("--screen") + 1] if "--screen" in sys.argv[:-1] else None
+if SCREEN is not None and SCREEN not in ("aga", "aga256", "rtg"):
+    sys.exit("rig: --screen %s: one of aga aga256 rtg" % SCREEN)
+if SCREEN == "rtg" and "--a500" in sys.argv:
+    sys.exit("rig: --screen rtg: the --a500 machine has no graphics card")
 FRESH = "--fresh" in sys.argv
 # --keep-sys (internal, from `rig.py reboot`): this start boots the sys.hdf the last run left, no new clone
 KEEP_SYS = "--keep-sys" in sys.argv
@@ -2361,6 +2372,9 @@ def screenmode(name):
     print(ami.req(0x02, (20).to_bytes(2, "big") + cmd)[4:].decode("latin-1"))
     SCREENMODE_NAME.write_text(name)   # the reboot's fresh sys.hdf gets the mode from here (sys_hdf_screenmode)
     args = reboot_args(sys.argv[2:])
+    if "--screen" in args[:-1]:   # the last start's --screen would undo this choice
+        i = args.index("--screen")
+        args = args[:i] + ["--screen", name] + args[i + 2:]
     stop()
     # a new process: the machine flags are read from sys.argv when rig.py is loaded
     subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve()), "start"] + args, check=True)
@@ -2662,11 +2676,17 @@ def _start(retries):
         return
     with phase("refuse_port_clash"):
         refuse_port_clash()
+    if SCREEN:
+        RIG.mkdir(parents=True, exist_ok=True)
+        SCREENMODE_NAME.write_text(SCREEN)   # the clone below (sys_hdf_screenmode) boots with it
     # the system disk is new from the master on every start: nothing a dead run wrote into DH0: survives, and a rig
     # that never had one gets it here. Only here: no emulator of this rig runs (mine() above).
     if KEEP_SYS and not OS and not OS32 and (RIG / "sys.hdf").exists():
         # `rig.py reboot`: DH0: stays as the last run left it. The clone-time edits are in it already; only the
         # wasabi block goes again (an install may have written it, and its wasabid takes port 1234, sys_hdf_no_wasabid)
+        if SCREEN:   # --keep-sys with --screen: the kept image gets the asked mode too
+            with phase("sys_hdf_screenmode"):
+                sys_hdf_screenmode(RIG / "sys.hdf")
         with phase("sys_hdf_no_wasabid"):
             sys_hdf_no_wasabid(RIG / "sys.hdf")
         with phase("sys_hdf_upterm_bin"):

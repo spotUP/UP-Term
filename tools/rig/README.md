@@ -71,7 +71,9 @@ In a fresh git worktree run `make worktree-ready` first (seeds build/ from the m
 `rig.py install` copies `build/amiga/vtcon-handler` into the VTC: drawer
 (host folder `build/rig/vtc`); a reboot is needed for DOS to load a new
 handler. `rig.py aga` and `rig.py rtg` choose the Workbench screen mode from the
-next boot.
+next boot (they reboot a running rig). A test that needs a mode from the start
+passes `--screen aga|aga256|rtg` to the start instead (with `--a1200 --purpose ...`):
+the first boot is on that mode, no reboot mid-test.
 
 Kept output (reports, screenshots, verdicts) is written to `build/rig-reports/rig<N>/` (`paths.REPORTS`), never into the rig folder: `rig.py stop` deletes `build/rig<N>` for N > 1. Test: `tests/test_rig_reports_not_in_rig_dir.py`.
 
