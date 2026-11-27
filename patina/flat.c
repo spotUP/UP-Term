@@ -2273,6 +2273,13 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
             r->gbhits++;
         }
     }
+    else if (on && (rp->DrawMode & JAM2) && rp->Layer && flat_gr_row_face(&r->st, rp->BgPen) >= 0
+             && flat_gr_match(&r->st, &r->gr, flat_tx_surface(rp->Layer, rp->BitMap), rp->cp_x, rp->cp_y, rp->cp_x, rp->cp_y)) {
+        SetBPen(rp, (UBYTE)flat_gr_row_face(&r->st, rp->BgPen));   /* LV-ROW-PENS: the selected row's label, as a button label */
+        SetAPen(rp, r->st.pen_ptext);
+        set = 1;
+        r->gbhits++;
+    }
     if (!(on && icl_label(r, rp, str, count)))
         ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
     if (set) {
@@ -2927,12 +2934,24 @@ static int rf_gbox(flatshared *r, struct RastPort *rp, const LONG *b)
     const flat_grbox *gb;
     UBYTE fg;
     int k;
-    if (rp->AreaPtSz || rp->FgPen != r->st.pen_back || !rp->Layer)
+    int row;
+    if (rp->AreaPtSz || !rp->Layer)
+        return 0;
+    row = rp->FgPen == r->st.pen_back ? -1 : flat_gr_row_face(&r->st, rp->FgPen);
+    if (rp->FgPen != r->st.pen_back && row < 0)
         return 0;
     gb = flat_gr_match(&r->st, &r->gr, flat_tx_surface(rp->Layer, rp->BitMap), (int)b[0], (int)b[1], (int)b[2], (int)b[3]);
     if (!gb)
         return 0;
     fg = rp->FgPen;
+    if (row >= 0) {                             /* LV-ROW-PENS: the selected row bar inside the ground, in the button face */
+        SetAPen(rp, (UBYTE)row);
+        for (k = 0; k < 3; k++)
+            rf_gband(r, rp, gb, b, k);
+        SetAPen(rp, fg);
+        r->gbhits++;
+        return 1;
+    }
     for (k = 0; k < 4; k++)                     /* FgPen is pen_back here: the band part of the erase */
         rf_gring(r, rp, gb, b, k);
     SetAPen(rp, (UBYTE)gb->pen);
