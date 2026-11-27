@@ -90,7 +90,7 @@ Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts wasabid), vtc/ (VTC:, the binaries
 under test), shots/.
 """
-import contextlib, fcntl, filecmp, hashlib, io, json, os, pathlib, re, shutil, signal, subprocess, sys, tempfile, time
+import contextlib, fcntl, filecmp, hashlib, io, json, os, pathlib, re, shutil, signal, struct, subprocess, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import a1200_drift
 import paths
@@ -3145,7 +3145,46 @@ WB_SCREEN_WAIT = 120  # s after wasabid answers for a screen to open and turn RT
 LATE_REQ_WATCH = 65   # s after the RTG switch a late System Request may still come (IPrefs on the RTG DOpus screen, ~boot+65 s)
 
 
-def late_sysreq(ami, log, after):
+def sysreq_window_lines(tree):
+    """The W line of every window titled "System Request" in a UITREE dump, each with the G lines (gadgets and
+    label rows: the requester body text) that follow it."""
+    out, keep = [], False
+    for line in tree:
+        if line.startswith("W "):
+            keep = '"System Request"' in line
+        elif not line.startswith("G "):
+            keep = False
+        if keep:
+            out.append(line.strip())
+    return out
+
+
+def capture_sysreq(ami, tree, state):
+    """RIG5-SYSREQ-CAPTURE: at the FIRST sight of a System Request (any text, any screen), write its window and body
+    text plus the Assign and Info output to build/rigN/logs/late-sysreq.log, once per start. Diagnostic only: it
+    changes no behaviour and never raises. Assign and Info get 15 s each: with the requester open they may block."""
+    if state.get("done"):
+        return
+    lines = sysreq_window_lines(tree)
+    if not lines:
+        return
+    state["done"] = True
+    parts = ["%s first System Request seen" % time.strftime("%Y-%m-%d %H:%M:%S"), *lines, "--- UITREE ---", *tree]
+    for cmd in ("Assign", "Info"):
+        try:
+            r = ami.req(0x02, struct.pack(">H", 15) + cmd.encode("latin-1"))
+            parts.append("--- %s (rc %d) ---\n%s" % (cmd, int.from_bytes(r[:4], "big"), r[4:].decode("latin-1")))
+        except (SystemExit, OSError) as e:
+            parts.append("--- %s failed: %s ---" % (cmd, e))
+    try:
+        paths.FSUAE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        with open(paths.FSUAE_LOG_DIR / "late-sysreq.log", "a") as f:
+            f.write("\n".join(parts) + "\n")
+    except OSError:
+        pass
+
+
+def late_sysreq(ami, log, after, state=None):
     """RIG-LATE-REQ: a System Request raised AFTER the Workbench turned RTG (IPrefs' second reset, on the
     'Directory Opus' screen) was never seen and start returned 0. Fail the start on it, and keep its window
     list in paths.REPORTS (retry.log goes when the rig stops). Retry is not clicked: windows are open by then."""
@@ -3154,6 +3193,7 @@ def late_sysreq(ami, log, after):
     sysreq = [l.strip() for l in tree if l.startswith("W ") and '"System Request"' in l]
     if not (gads or other or sysreq):
         return
+    capture_sysreq(ami, tree, state if state is not None else {})
     shown = " | ".join(l.strip() for l in tree if l.startswith(("S ", "W ", "G ")))
     line = "%.0fs after RTG: late System Request: %s\n" % (after, shown)
     log.write(line)
@@ -3188,6 +3228,7 @@ def retry_wb_reset():
     rtg0 = None   # when the Workbench last turned RTG
     noted = False
     blank = False   # the last poll saw no screen open at all
+    cap = {}   # capture_sysreq's once-per-start flag
     while rtg0 is not None or time.time() - t0 < WB_SCREEN_WAIT:
         b = ami.req(0x0A)
         width, height = int.from_bytes(b[2:4], "big"), int.from_bytes(b[4:6], "big")
@@ -3207,12 +3248,15 @@ def retry_wb_reset():
             if now - rtg0 > LATE_REQ_WATCH:
                 return
             if now - t0 > 20:
-                late_sysreq(ami, log, now - rtg0)
+                late_sysreq(ami, log, now - rtg0, cap)
+            else:   # RIG5-SYSREQ-CAPTURE: look from the first RTG poll on, not only after 20 s
+                capture_sysreq(ami, ami.req(0x0D).decode("latin-1").splitlines(), cap)
             time.sleep(2)
             continue
         rtg0 = None
         tree = ami.req(0x0D).decode("latin-1").splitlines()
         log.write("%.0fs PAL\n%s\n" % (time.time() - t0, "\n".join(tree[:20])))
+        capture_sysreq(ami, tree, cap)
         # the requester: the gadget labelled Retry; ami.py's UITREE gives gadgets
         # in absolute screen pixels
         gads, other = wb_reset_retry_gadgets(tree)
