@@ -124,6 +124,10 @@ static void t_pens(void)
     CHECK_INT(icl_pen_choice(2, 4, 9, 60, 50, 80, 1, 0), 0);
     CHECK_INT(icl_pen_choice(3, 4, 9, 60, 50, 80, 1, 0), 1);
     CHECK_INT(icl_pen_choice(3, 4, -1, 0, 50, 80, 1, 0), 1);
+    /* PATINA-AA-TOO-BRIGHT: Tokyo Night #414868 on #191b26, the only in-between pen #3e4253 (pm_dist numbers): the 40% step
+     * keeps the background instead of an 85%-bright halo pen; the 60% step still takes it */
+    CHECK_INT(icl_pen_choice(2, 4, 9, 3758, 8649, 4103, 1, 0), 0);
+    CHECK_INT(icl_pen_choice(3, 4, 9, 1275, 3739, 9613, 1, 0), 9);
 }
 
 static void t_cache(void)

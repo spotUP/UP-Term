@@ -50,7 +50,7 @@ int icl_blend_rgb(const uint8_t *cov, const uint32_t *after, uint32_t fg, int n,
 uint32_t icl_pen_target(uint32_t fg_rgb, uint32_t bg_rgb, int k, int n);
 
 /* The pen a shade gets: the pen the screen found nearest (pen, at pm_dist d_pen from the target) when it shows the
- * shade closer than fg (d_fg) and bg (d_bg) do (aa_ink_shade_accept); else the shade rounds to fg (upper half of the
+ * shade at most half as far as fg (d_fg) and bg (d_bg) do (aa_ink_shade_accept); else the shade rounds to fg (upper half of the
  * ramp) or bg. */
 int icl_pen_choice(int k, int n, int pen, long d_pen, long d_fg, long d_bg, int fgpen, int bgpen);
 

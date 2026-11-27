@@ -140,6 +140,8 @@ static void aa_ink_rules(void)
     CHECK(!aa_ink_shade_accept(50, 50, 60));  /* as far as the text pen: the text pen draws it */
     CHECK(!aa_ink_shade_accept(60, 70, 60));  /* as far as the background pen */
     CHECK(!aa_ink_shade_accept(90, 50, 60));
+    CHECK(!aa_ink_shade_accept(3758, 8649, 4103)); /* Tokyo Night 40% step on pen #3e4253: barely nearer than bg, a halo */
+    CHECK(aa_ink_shade_accept(1275, 3739, 9613));  /* the same pen at the 60% step: clearly the shade */
 }
 
 void suite_pens(void)

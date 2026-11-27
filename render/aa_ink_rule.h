@@ -68,11 +68,13 @@ AA_INK_RULE vt_u32 aa_ink_shade_target(const aa_ink_rgb *tab, int i, int n)
     return tab[aa_ink_level(i + 1, n)];
 }
 
-/* A pen the screen found nearest a shade is used only when it shows the shade closer than the text pen and the
- * background pen do (distances from pm_dist; smaller is closer). */
+/* A pen the screen found nearest a shade is used only when it shows the shade at most half as far (pm_dist, a squared
+ * distance; smaller is closer) as the text pen and the background pen do. Merely nearer let a sparse palette's one
+ * in-between pen stand for every step: on Tokyo Night (#414868 on #191b26) pen #3e4253, at 85% of the text's
+ * brightness, drew the 40% step (3758 against the background's 4103), a bright halo round the glyphs. */
 AA_INK_RULE int aa_ink_shade_accept(long d_pen, long d_fg, long d_bg)
 {
-    return d_pen < d_fg && d_pen < d_bg;
+    return 2 * d_pen < d_fg && 2 * d_pen < d_bg;
 }
 
 #endif
