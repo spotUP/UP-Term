@@ -1392,7 +1392,7 @@ static void test_which_from_gtype(void)
             CHECK_INT(flat_cycle_frame(0x8001, 0x0001, 0, 0, 18, 11, 0, 0, 18, 11), 0);           /* system gadget */
             CHECK_INT(flat_cycle_frame(0x0001, 0x0001, 0, 0, 0, 0, 0, 0, 0, 0), 0);
             /* a slider holder also matches, but noline_frame classes its frame TRACK first and draws nothing when filled */
-            CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 0, 1, 5), 1);
+            CHECK_INT(flat_track_frame(FLAT_FC_TRACK), 1);
         }
         {   /* INSTALLER-BORDER-BUTTON: the 3.2 Installer's buttons (rig 97 gprobe: type 5, flags 0002, render != select, no text, 238x16) */
             int ren = 0, sel = 0;
@@ -2439,11 +2439,9 @@ static void test_palette_preview_sites(void)
     CHECK_INT(flat_palette_site(0x5ace), FLAT_PAL_GROOVE);
     CHECK_INT(flat_palette_site(0x5ae0), FLAT_PAL_GROOVE);
     CHECK_INT(flat_palette_site(0x5ab8) == FLAT_PAL_GROOVE, 0);  /* the title band keeps its accent */
-    CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 1, 0, 5), 1);     /* SLIDER-SCROLLER-NO-FRAME: slider: no box */
-    CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 0, 1, 5), 1);     /* filled holder of a scroller: no box, the prop stays */
-    CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 0, 0, -1), 1);    /* no input ground: no box either, never the accent ring */
-    CHECK_INT(flat_track_frame(FLAT_FC_TRACK, 0, 0, 5), 2);     /* edges-only track with an input ground: the ground box */
-    CHECK_INT(flat_track_frame(FLAT_FC_CELL, 0, 1, 5), 0);
+    CHECK_INT(flat_track_frame(FLAT_FC_TRACK), 1);              /* C8-SCROLL-TRANSPARENT: slider, scroller, filled or not: never a ground box */
+    CHECK_INT(flat_track_frame(FLAT_FC_CELL), 0);
+    CHECK_INT(flat_track_frame(FLAT_FC_STRING), 0);
     CHECK_INT(flat_palette_site(0x54e4), FLAT_PAL_EDGE);
     CHECK_INT(flat_palette_site(0x5526), FLAT_PAL_EDGE);
     CHECK_INT(flat_palette_site(0x5556), FLAT_PAL_EDGE);

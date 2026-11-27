@@ -909,12 +909,10 @@ void flat_fc_add(flat_fc *a, int fx, int fy, int fw, int fh, const flat_gadbox *
         a->holds = 1;
 }
 
-int flat_track_frame(int cls, int slider, int fill, int pen)
+int flat_track_frame(int cls)
 {
-    if (cls != FLAT_FC_TRACK)
-        return 0;
-    /* a slider, a filled holder (drawn after the prop: a fill would erase it) or no input ground: the window ground stays */
-    return slider || fill || pen < 0 ? 1 : 2;
+    /* C8-SCROLL-TRANSPARENT: no ground box behind any prop; its track fills take pen_back (flat_scroller_pen), so the window ground shows */
+    return cls == FLAT_FC_TRACK;
 }
 
 int flat_fc_class(const flat_fc *a)

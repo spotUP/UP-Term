@@ -604,8 +604,8 @@ typedef struct flat_gadbox {
 } flat_gadbox;
 #define FLAT_FC_STRING   0
 #define FLAT_FC_TRACK    1
-/* SLIDER-SCROLLER-NO-FRAME: what a frame around a prop draws: 0 not a track frame, 1 nothing (no box), 2 the ground box of pen */
-int flat_track_frame(int cls, int slider, int fill, int pen);
+/* SLIDER-SCROLLER-NO-FRAME, C8-SCROLL-TRANSPARENT: 1 when a frame around a prop draws nothing (no box, no ground: only the knob shows), else 0 */
+int flat_track_frame(int cls);
 #define FLAT_FC_CELL     2
 #define FLAT_FC_BORDERED 3
 #define FLAT_FC_GROUP    4

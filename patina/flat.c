@@ -1186,10 +1186,9 @@ static int dopus_push_claim(struct RastPort *rp, int x0, int y0, int x1, int y1,
 }
 
 /* PREFS-NO-OUTLINES: the frame box ox,oy,w,h of an edges-only frame, classified by the window's gadget list (flat_fc_add / flat_fc_class,
- * pure, host tested), drawn without a coloured outline. TRACK, CELL and DISPLAY become a rounded ground box and are recorded so the
- * pen-0 content the app draws after the frame lands on it (flat_rf_c, flat_tx_c); GROUP draws nothing. 1 = handled, 0 = stock draw
+ * pure, host tested), drawn without a coloured outline. CELL and DISPLAY become a rounded ground box and are recorded so the
+ * pen-0 content the app draws after the frame lands on it (flat_rf_c, flat_tx_c); GROUP and TRACK (C8-SCROLL-TRANSPARENT: only the knob shows) draw nothing. 1 = handled, 0 = stock draw
  * (a frame bordering another gadget type, or no pen on this screen). Any frame draw first drops the records it overlaps. */
-static int prop_knob(struct Gadget *g, struct PropInfo *pi, int cx, int cy, int *k);
 /* C8-SCROLLER: the window-relative box x, y, w, h of gadget g in o (GRELRIGHT/BOTTOM/WIDTH/HEIGHT resolved as noline_frame does) */
 static void gad_xywh(struct Window *w, struct Gadget *g, int *o)
 {
@@ -1220,15 +1219,6 @@ static int prop_arrows(struct Window *w, struct Gadget *g)
     return 0;
 }
 
-/* MODERN-SLIDER: 1 when prop gadget g (resolved box gb) of win draws as a slider (flat_prop_slider on its knob box) */
-static int prop_slider_of(flatshared *r, struct Window *win, struct Gadget *g, const flat_gadbox *gb)
-{
-    struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
-    int k[4];
-    return st_scr(r, win->WScreen)->pen_line && prop_knob(g, pi, gb->x + pi->LeftBorder, gb->y + pi->TopBorder, k) &&
-           flat_prop_slider(g->Activation, pi->Flags, k[2], k[3], side_px(r, win->WScreen), prop_arrows(win, g)) != 0;
-}
-
 /* The rounded ground box of a frame in pen (no outline) and its record, so content drawn after the frame (erases in the window
  * ground, JAM2 text) stays on that ground. */
 static void ground_frame(flatshared *r, struct RastPort *rp, struct Window *win, int ox, int oy, int w, int h, int pen)
@@ -1244,7 +1234,7 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
     const void *surf = flat_tx_surface(lay, rp->BitMap);
     struct Gadget *g;
     flat_fc fc;
-    int n, cls, pen, depth = rp->BitMap ? rp->BitMap->Depth : 0, centre = -1, slider = 0;
+    int n, cls, pen, depth = rp->BitMap ? rp->BitMap->Depth : 0, centre = -1;
     flat_gr_drop(&r->gr, surf, ox, oy, ox + w - 1, oy + h - 1);
     if (!win)
         return 0;
@@ -1260,11 +1250,8 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
         if (flat_string_ext(gt, g->Flags, g->Activation, si != NULL, si && si->Extension != NULL,
                             gt == GTYP_CUSTOMGADGET && gadget_class_has(g, "strgclass", 8)))
             gb.kind = FLAT_GK_STRING;
-        else if (gt == GTYP_PROPGADGET && gadget_has_propinfo(g)) {
+        else if (gt == GTYP_PROPGADGET && gadget_has_propinfo(g))
             gb.kind = FLAT_GK_PROP;
-            if (!slider && flat_string_frame(ox, oy, w, h, gb.x, gb.y, gb.w, gb.h))
-                slider = prop_slider_of(r, win, g, &gb);
-        }
         else if (flat_display_gadget(g->Flags, g->Activation))
             gb.kind = FLAT_GK_DISPLAY;      /* S74-TEXT-BOX: GadTools TEXT_KIND / NUMBER_KIND with its own bevel */
         else
@@ -1272,8 +1259,7 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
         flat_fc_add(&fc, ox, oy, w, h, &gb);
     }
     cls = flat_fc_class(&fc);
-    pen = cls == FLAT_FC_TRACK ? flat_noline_pen(st_scr(r, win->WScreen), cls, depth, -1) : 0;
-    if (flat_track_frame(cls, slider, fill, pen) == 1) {   /* MODERN-SLIDER, SLIDER-SCROLLER-NO-FRAME: no box around a prop */
+    if (flat_track_frame(cls)) {   /* MODERN-SLIDER, SLIDER-SCROLLER-NO-FRAME, C8-SCROLL-TRANSPARENT: no box around a prop */
         r->gbhits++;
         return 1;
     }
