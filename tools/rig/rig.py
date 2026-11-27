@@ -300,7 +300,21 @@ def kit_entries(nofpu=False, m060=False):
 # (VTC: name, SYS: place, backup name), one row per derived file the boot shadows (kitset): nothing hand-listed,
 # so a file install.dos gains (C:Reboot, C:UPTerm, C:uptelnet, UP-Term:bin/hl mdv ps rz sz top sh) is shadowed at once.
 # The keymap rows are spelled by path, never ENVARC:/ENV: (kitset.SPELL).
-KIT_SHADOWS = [(e.vtc, e.dest, e.bak) for e in kit_entries() if e.shadow]
+def __getattr__(name):
+    """KIT_SHADOWS, derived on first use: kitset.derive reads build/amiga, which a fresh worktree lacks at import."""
+    if name == "SHADOWS_UP_SCRIPT":
+        globals()[name] = _SHADOWS_UP_TEMPLATE % {
+            "shadows": ind(kit_shadow_lines(False), 1), "shadows_up": ind(kit_shadow_lines(True), 1),
+            "kit_stamp": ind(KIT_STAMP_BOOT, 1), "libs": "\n".join("      C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE}
+        return globals()[name]
+    if name == "KIT_SHADOWS":
+        globals()[name] = [(e.vtc, e.dest, e.bak) for e in kit_entries() if e.shadow]
+        return globals()[name]
+    raise AttributeError(name)
+
+
+def kit_shadows():
+    return globals().get("KIT_SHADOWS") or __getattr__("KIT_SHADOWS")
 
 def kit_shadow_src(name):
     """The host file the VTC: copy of a KIT_SHADOWS name comes from: dist/ for the files the kit
@@ -335,7 +349,7 @@ def kit_shadow_lines(upterm):
     """The boot lines of KIT_SHADOWS: shadow, or restore when VTC:kit-restore exists. UP-Term:
     is the kit's assign from its User-Startup block, which has run only after go's Wait:
     upterm=True gives the UP-Term: places, False all the others."""
-    shadows = [x for x in KIT_SHADOWS if x[1].startswith("UP-Term:") == upterm]
+    shadows = [x for x in kit_shadows() if x[1].startswith("UP-Term:") == upterm]
     out = ["If NOT EXISTS VTC:kit-orig", "  C:MakeDir >NIL: VTC:kit-orig", "EndIf",
            "If EXISTS VTC:kit-restore"]
     for _, dest, bak in shadows:
@@ -398,7 +412,7 @@ KIT_PATINA_BLOCK = ";BEGIN UP-Term Patina"
 # Workbench first (OpenWorkBench, after IPrefs: right mode), as the kit's Patina-Pens block does at this boot point;
 # LoadWB itself must stay after the pass, it starts WBStartup's Patina. The shadow rows say bare `Copy`, which the
 # shell finds on the resident list, so C:Copy is loaded once instead of once per row (~550 rows).
-SHADOWS_UP_SCRIPT = """FailAt 21
+_SHADOWS_UP_TEMPLATE = """FailAt 21
 C:Assign >NIL: UP-Term: EXISTS
 If NOT WARN
   If EXISTS UP-Term:bin/patina-flat
@@ -444,8 +458,7 @@ If NOT WARN
   Echo >>BOOTX:boot.log "UP-Term shadows done"
 EndIf
 C:Resident >NIL: Copy REMOVE
-""" % {"shadows": ind(kit_shadow_lines(False), 1), "shadows_up": ind(kit_shadow_lines(True), 1),
-       "kit_stamp": ind(KIT_STAMP_BOOT, 1), "libs": "\n".join("      C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE}
+"""
 SHADOWS_UP_BLOCK_TEXT = ";BEGIN %s\nExecute BOOTX:shadows-up\n;END %s\n" % (SHADOWS_UP_BLOCK, SHADOWS_UP_BLOCK)
 
 
@@ -1723,11 +1736,11 @@ def setup():
     for rel, why in media_drift:
         print("[WARN] UP-Term:%s is %s in the rig's UP-Term: tree; `rig.py install` puts the kit's copy there" % (rel, why))
     (RIG / "boot/go").write_text(GO)
-    (RIG / "boot/shadows-up").write_text(SHADOWS_UP_SCRIPT)
+    (RIG / "boot/shadows-up").write_text(__getattr__("SHADOWS_UP_SCRIPT"))
     (RIG / "boot/wasabid-up").write_text(WASABID_UP_SCRIPT)
     (RIG / "boot/solidwin-up").write_text(
         'Echo >>BOOTX:boot.log "rig SolidWin skipped (--no-solidwin)"\n' if NOSOLIDWIN else SOLIDWIN_UP_SCRIPT)
-    (RIG / "boot" / kitstamp.LIST).write_text("".join(n + "\n" for n in sorted({x[0] for x in KIT_SHADOWS})))
+    (RIG / "boot" / kitstamp.LIST).write_text("".join(n + "\n" for n in sorted({x[0] for x in kit_shadows()})))
     kitstamp.check(RIG / "boot", RIG / "vtc")
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
     machine = [
@@ -2290,7 +2303,7 @@ def refresh_kit_shadows(vtc):
     A stale VTC: copy is worse than none: each boot puts it over what the kit's install wrote, and
     a kit check after a reboot runs the old program (rig 3, 2026-10-19: Execute install.dos wrote
     the 237268-byte C:vsh, the next boot put VTC:'s 236784-byte one of 09:54 back)."""
-    for name in sorted({x[0] for x in KIT_SHADOWS}):
+    for name in sorted({x[0] for x in kit_shadows()}):
         src, dst = kit_shadow_src(name), vtc / name
         if src.is_file() and not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
             dst.parent.mkdir(parents=True, exist_ok=True)
