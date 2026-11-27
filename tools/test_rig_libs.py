@@ -35,8 +35,10 @@ check(amissl and amissl[-1] > last_new,
       "GO adds AmiSSL's drawer after it assigns LIBS: anew (line %d): %r" % (last_new, lines[last_new]))
 # install_rig.py puts LIBS: back from RIG_LIBS after its cases: AmiSSL stays there too
 check(any(l.endswith(AMISSL) for l in rig.RIG_LIBS), "RIG_LIBS carries AmiSSL's drawer")
-# by its volume, never through the AmiSSL: assign (a rig image without it would ask for a volume and stop the boot)
-check(not any("AmiSSL:" in l for l in rig.RIG_LIBS), "RIG_LIBS does not name the AmiSSL: assign")
+# LIBS: is built by volume, never through the AmiSSL: assign (a rig image without it would ask for a volume and stop the boot).
+# RIG_LIBS defines that assign itself (2026-11-25, aef4e6a8) so TLS clients find AmiSSL:Certs; only its own definition may name it.
+check(not any("AmiSSL:" in l for l in rig.RIG_LIBS if " LIBS: " in l), "RIG_LIBS LIBS: lines do not name the AmiSSL: assign")
+check(any(l.endswith("AmiSSL: DH0:AmiSSL") for l in rig.RIG_LIBS), "RIG_LIBS defines AmiSSL: by volume")
 
 # Regression (2026-10-21, upkg_browse_rig step 0): the system disk's AmiSSL/ holds only the kit's
 # per-CPU subdrawers, so amisslmaster.library found no LIBS:AmiSSL/amissl_v362.library ("Couldn't open
