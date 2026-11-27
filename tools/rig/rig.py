@@ -1494,6 +1494,11 @@ def sys_hdf_screenmode(image):
     if not SCREENMODE_NAME.exists():
         return
     src = RIG / ("vtc/screenmode.%s.prefs" % screenmode_prefs_name())
+    # a plain `stop` deletes vtc/ but keeps screenmode.name, and stage_rig_vtc runs after this clone: write the file here
+    for name, did, w, h, depth in SCREENMODE_PREFS:
+        if name == screenmode_prefs_name() and not src.exists():
+            src.parent.mkdir(parents=True, exist_ok=True)
+            src.write_bytes(screenmode_prefs_bytes(did, w, h, depth))
     paths.require_input(src, "UPTERM_RIG", "the ScreenMode prefs of `rig.py %s`" % SCREENMODE_NAME.read_text().strip())
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
     dst = "Prefs/Env-Archive/Sys/screenmode.prefs"
