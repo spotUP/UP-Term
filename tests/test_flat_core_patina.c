@@ -1376,9 +1376,24 @@ static void test_which_from_gtype(void)
                 flat_state cs;
                 memset(&cs, 0, sizeof cs);
                 cs.side = 2; cs.pen_line = 7; cs.pen_back = 0; cs.pen_button = 3; cs.pen_outline = 1;
-                CHECK_INT(flat_cycle_pen(&cs), 3);
+                CHECK_INT(flat_cycle_pen(&cs), 3);                           /* a held select pen: the raised tone */
                 CHECK_INT(cs.pen_button == 3 && cs.pen_line == 7, 1);        /* the state is left as it was */
+                cs.pen_inbar = 5;                                            /* a screen with an input ground pen: not taken */
+                CHECK_INT(flat_cycle_pen(&cs), 3);
+                /* CYCLE-FILL (rig 13 eye check): no held select pen, so flat_frame_state left pen_button = pen_back; the Workbench
+                 * status line reads back=0 ptext=0. The fill must never be the window ground: it takes the accent, as push buttons */
+                cs.pen_inbar = 0; cs.pen_button = 0; cs.pen_ptext = 0;
+                CHECK_INT(flat_cycle_pen(&cs) != cs.pen_back, 1);
+                CHECK_INT(flat_cycle_pen(&cs), 7);
+                CHECK_INT(flat_cycle_pen(&cs), flat_secondary_face(&cs));   /* the same face a secondary push button shows */
+                cs.pen_inbar = 5;
+                CHECK_INT(flat_cycle_pen(&cs), 7);
+                cs.pen_inbar = 0; cs.pen_back = 2; cs.pen_button = 2; cs.pen_ptext = 1;  /* face == ground, ptext elsewhere */
+                CHECK_INT(flat_cycle_pen(&cs) != cs.pen_back, 1);
+                cs.pen_back = 0; cs.pen_button = 4; cs.pen_ptext = 4;        /* face == label pen (CANCEL-INVISIBLE-FLAT) */
+                CHECK_INT(flat_cycle_pen(&cs), 7);
                 CHECK_INT(flat_cycle_pen(0), -1);
+                CHECK_INT(flat_secondary_face(0), -1);
             }
             CHECK_INT(flat_cycle_frame(0x0005, 0x0001, 15, 20, 285, 20, 15, 20, 285, 20), 0);     /* custom (Palette's colour wheel) */
             /* C8-RING: the 3.1 cycle's frame is its render == select image: still a cycle; a push button with the same box is not */

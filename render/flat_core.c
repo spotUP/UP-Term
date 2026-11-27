@@ -1137,9 +1137,18 @@ int flat_cycle_border_pen(int in_cycle, int role, int front, int edge_pen)
     return role == 2 ? -1 : edge_pen;
 }
 
+int flat_secondary_face(const flat_state *st)
+{
+    int face;
+    if (!st)
+        return -1;
+    face = st->pen_button ? st->pen_button : st->pen_back;
+    return face != st->pen_back && face != st->pen_ptext ? face : st->pen_line;
+}
+
 int flat_cycle_pen(const flat_state *st)
 {
-    return st ? st->pen_button : -1;
+    return flat_secondary_face(st);
 }
 
 int flat_border_button(unsigned gadget_type, unsigned flags, const void *gadget_render, const void *select_render, int has_text, int w, int h)
