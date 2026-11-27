@@ -1048,6 +1048,19 @@ int vtwin_attach(vtwin *w, struct Window *win)
     else if (w->pers == VT_XTERM && w->cp437)
         vt_set_charset(w->t, VT_CS_CP437);
     bind(w, win);
+    {
+        /* once per process: no diskfont.library means ROM and loaded fonts only; say so, keep running */
+        static int diskfont_checked;
+        if (!diskfont_checked) {
+            struct Library *lib = OpenLibrary((STRPTR)"diskfont.library", 36);
+            static const vt_u8 msg[] = "UP-Term: diskfont.library missing, using system font\r\n";
+            diskfont_checked = 1;
+            if (lib)
+                CloseLibrary(lib);
+            else
+                vtwin_write(w, msg, sizeof(msg) - 1);
+        }
+    }
     return 1;
 }
 
