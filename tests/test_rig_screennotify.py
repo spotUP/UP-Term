@@ -9,7 +9,7 @@ import rig
 
 class StageScreenNotify(unittest.TestCase):
     def test_the_library_lands_in_the_first_libs_drawer(self):
-        self.assertTrue(rig.RIG_LIBS[0].endswith("LIBS: VTC:ixp6"))
+        self.assertTrue(rig.RIG_LIBS[0].endswith("LIBS: VTC:ixp6 DH0:Libs"))
         with tempfile.TemporaryDirectory() as d:
             vtc = pathlib.Path(d)
             rig.stage_screennotify(vtc)

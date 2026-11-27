@@ -221,8 +221,9 @@ EndCLI >NIL:
 # for the CPU this boot emulates, flat, as Install-AmiSSL lays it out
 # (stage_amissl). The rig image has no AmiTCP and no usergroup.library: the
 # kit's curl is the upterm-ports build on ixemul sockets (owner, 2026-10-27).
-RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6",
-            "Assign >NIL: LIBS: DH0:Libs ADD",
+# VTC:ixp6 and DH0:Libs in one Assign: go runs beside the Startup-Sequence, whose `LoadResource LIBS:diskfont.library`
+# landed between a bare `Assign LIBS: VTC:ixp6` and the next ADD on the 68000 ("object not found", rig 29, 2026-11-27).
+RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6 DH0:Libs",
             "Assign >NIL: LIBS: DH0:Classes ADD",
             "Assign >NIL: LIBS: DH0:MUI/Libs ADD",
             "Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD",

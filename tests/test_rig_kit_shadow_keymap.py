@@ -43,7 +43,7 @@ class KitShadowKeymap(unittest.TestCase):
         # PATINA-MENU-IXEMUL-BOOT-RACE: patina-menu started from User-Startup with no ixemul.library in LIBS:
         script = rig.SHADOWS_UP_SCRIPT
         self.assertIn("If EXISTS VTC:ixp6/ixemul.library", script)
-        self.assertIn("C:Assign >NIL: LIBS: VTC:ixp6\n", script)
+        self.assertIn("C:Assign >NIL: LIBS: VTC:ixp6 DH0:Libs\n", script)
         self.assertIn("Echo >%s" % rig.RIG_LIBS_DONE, script)
         self.assertIn("If NOT EXISTS %s" % rig.RIG_LIBS_DONE, script)   # a go that assigned first leaves the marker
         kit = b";BEGIN UP-Term Patina\n  Run >NIL: UP-Term:bin/Patina\n;END UP-Term Patina\n"
@@ -52,8 +52,8 @@ class KitShadowKeymap(unittest.TestCase):
         go = rig.GO
         self.assertIn("If EXISTS %s" % rig.RIG_LIBS_DONE, go)
         go_else = go.split("If EXISTS %s" % rig.RIG_LIBS_DONE, 1)[1]
-        self.assertIn("C:Assign >NIL: LIBS: VTC:ixp6\n", go_else)   # go still assigns without the marker
-        self.assertEqual(go.count("LIBS: VTC:ixp6\n"), 1)
+        self.assertIn("C:Assign >NIL: LIBS: VTC:ixp6 DH0:Libs\n", go_else)   # go still assigns without the marker
+        self.assertEqual(go.count("LIBS: VTC:ixp6 DH0:Libs\n"), 1)
         self.assertIn("If NOT EXISTS %s" % rig.RIG_LIBS_DONE, go)   # the ncurses ADD is skipped too
 
     def test_boot_never_names_env_or_envarc(self):
