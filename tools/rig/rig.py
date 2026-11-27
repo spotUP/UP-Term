@@ -28,6 +28,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   C/LoadWB and no Libs/workbench.library, the ROM's runs);
                   --idle-minutes <N>: stop the rig after N minutes with no command (default 15, 0 = off, rig 1 never);
                   --allow-stale-base "<reason>": start although this checkout's HEAD lacks origin/main
+                  env RIG_NO_BUILD=1: push build/amiga as it is, no stale check or rebuild (release staging)
                   (RIG-STALE-BASE-GUARD; the reason is required and printed);
                   --purpose "<who: what>": the window title says which session runs the
                   rig and for what, e.g. "Patina session: menu terminal check")
@@ -2134,6 +2135,9 @@ def ensure_built(files, run=None):
     `[ERROR] ... <program>`. A file make has no rule for or fails on (rc 2) is pushed as it is, with a [WARN]. Nothing stale: one make pass, no
     build. Held under paths.build_lock. Before, install and the refresh gate copied build/amiga as-is, and rig 91 ran a pre-K40d handler after a merge
     (RIG-PUSH-STALE-BUILD). Files outside this tree's build/amiga (the main checkout's, via merge_build) are not ours to build."""
+    if os.environ.get("RIG_NO_BUILD") == "1":   # release staging pushes a fixed kit build; it must not be rebuilt under it
+        print("[WARN] RIG_NO_BUILD=1: build/amiga pushed as it is, no stale check")
+        return []
     run = run or subprocess.run
     own = (ROOT / "build/amiga").resolve()
     names = sorted({f.name for f in map(pathlib.Path, files) if f.resolve().parent == own} - _BUILT_CURRENT)
