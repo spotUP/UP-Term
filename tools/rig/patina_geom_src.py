@@ -3,4 +3,5 @@ test (tests/test_patina_geom_term.py), so a new link dependency of the menu code
 GEOM_SRC = ['tools/rig/patina_geom.c', 'patina/menu_geom.c', 'patina/menu_core.c', 'patina/menu_tree.c',
             'patina/menu_icon.c', 'config/keymap.c', 'config/upconf_rows.c', 'render/emoji.c',
             'prefs/settings_def.c', 'prefs/prefs_core.c', 'config/upconf.c', 'handler/kcmode.c', 'handler/slash.c',
-            'config/amconf_keys.c', 'config/win_core.c']
+            'config/amconf_keys.c', 'config/win_core.c',
+            'render/gthemes_core.c']

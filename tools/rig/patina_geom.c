@@ -20,13 +20,13 @@
 #include "../../render/unifont.h"
 #include "keymap_default.inc"
 
-static char *tab_s[256];
-static int tab_n[256];
+static char *tab_s[1024];
+static int tab_n[1024];
 static int ntab, fixed_cw;
 
 static int text_len(const char *s, void *ctx)
 {
-    static char seen[256][96];
+    static char seen[1024][96];
     static int nseen;
     int i;
     (void)ctx;
@@ -36,7 +36,7 @@ static int text_len(const char *s, void *ctx)
     for (i = 0; i < nseen; i++)
         if (!strcmp(seen[i], s))
             return (int)strlen(s) * fixed_cw;
-    if (nseen < 256 && strlen(s) < 96) {
+    if (nseen < 1024 && strlen(s) < 96) {
         strcpy(seen[nseen++], s);
         printf("need %s\n", s);
     }
@@ -89,7 +89,7 @@ int main(int argc, char **argv)
     f.cw = fixed_cw = atoi(argv[4]);
     s.rx = atoi(argv[5]);
     s.ry = atoi(argv[6]);
-    for (i = 7; i < argc && ntab < 256; i++) {
+    for (i = 7; i < argc && ntab < 1024; i++) {
         char *eq = strrchr(argv[i], '=');
         if (!eq)
             return 2;

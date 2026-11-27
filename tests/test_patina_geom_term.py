@@ -16,7 +16,7 @@ def levels(exe, *flag):
 
 def build(init):
     exe = str(pathlib.Path(tempfile.mkdtemp(prefix='geomterm')) / 'geom')
-    subprocess.run(['cc', '-std=c99', '-I', 'build/amiga', '-ftrivial-auto-var-init=' + init, '-o', exe] + SRC, cwd=ROOT, check=True)
+    subprocess.run(['cc', '-std=c99', '-I', 'build/amiga', '-I', '.', '-ftrivial-auto-var-init=' + init, '-o', exe] + SRC, cwd=ROOT, check=True)
     return exe
 
 
@@ -35,7 +35,7 @@ def uninitialised_screen_ok():
 
 def main():
     exe = str(pathlib.Path(tempfile.mkdtemp(prefix='geomterm')) / 'geom')
-    subprocess.run(['cc', '-std=c99', '-I', 'build/amiga', '-o', exe] + SRC, cwd=ROOT, check=True)
+    subprocess.run(['cc', '-std=c99', '-I', 'build/amiga', '-I', '.', '-o', exe] + SRC, cwd=ROOT, check=True)
     wb, term = levels(exe), levels(exe, '--term')
     # Over Workbench gui.c drops the tab:, menuid: and slash: rows. They now sit in the Apps and Screens levels, not
     # the root, so the check is: no level grows over Workbench, at least one shrinks, and the root is not empty.

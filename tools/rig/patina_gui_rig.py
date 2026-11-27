@@ -73,7 +73,7 @@ def check(ok, what):
 def build_geom():
     out = os.path.join(tempfile.mkdtemp(prefix='patina_geom'), 'geom')
     src = GEOM_SRC
-    r = subprocess.run(['cc', '-std=c99', '-I', 'build/amiga', '-o', out] + src, cwd=REPO, capture_output=True, text=True)
+    r = subprocess.run(['cc', '-std=c99', '-I', 'build/amiga', '-I', '.', '-o', out] + src, cwd=REPO, capture_output=True, text=True)
     if r.returncode:
         raise SystemExit('patina_geom did not build:\n' + r.stderr[-600:])
     return out
